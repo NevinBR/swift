@@ -79,13 +79,13 @@ extension D {
   init() { i = 17 }
 }
 
-F() // expected-error{{missing arguments for parameters 'd', 'b', 'c' in call}}
+F() // expected-error{{missing argument for parameter 'd'}}
 D() // okay // expected-warning{{unused}}
 B() // okay // expected-warning{{unused}}
 C() // expected-error{{missing argument for parameter 'd'}}
 
 struct E {
-  init(x : Wonka) { } // expected-error{{cannot find type 'Wonka' in scope}}
+  init(x : Wonka) { } // expected-error{{use of undeclared type 'Wonka'}}
 }
 
 var e : E
@@ -101,7 +101,7 @@ class ArgParamSep {
 // rdar://14082378
 
 struct NoCrash1a {
-  init(_: NoCrash1b) {} // expected-error {{cannot find type 'NoCrash1b' in scope}}
+  init(_: NoCrash1b) {} // expected-error {{use of undeclared type 'NoCrash1b'}}
 }
 var noCrash1c : NoCrash1a
 

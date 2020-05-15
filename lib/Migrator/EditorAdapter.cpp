@@ -29,11 +29,9 @@ EditorAdapter::getLocInfo(swift::SourceLoc Loc) const {
 
 bool
 EditorAdapter::cacheReplacement(CharSourceRange Range, StringRef Text) const {
-  if (!CacheEnabled)
-    return false;
   unsigned SwiftBufferID, Offset;
   std::tie(SwiftBufferID, Offset) = getLocInfo(Range.getStart());
-  Replacement R{Offset, Range.getByteLength(), Text.str()};
+  Replacement R { Offset, Range.getByteLength(), Text };
   if (Replacements.count(R)) {
     return true;
   } else {

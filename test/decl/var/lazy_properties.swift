@@ -1,20 +1,17 @@
-// RUN: %target-typecheck-verify-swift -parse-as-library
+// RUN: %target-typecheck-verify-swift -parse-as-library -swift-version 4
 
 lazy func lazy_func() {} // expected-error {{'lazy' may only be used on 'var' declarations}} {{1-6=}}
 
-lazy var b = 42  // expected-error {{'lazy' must not be used on an already-lazy global}} {{1-6=}}
+lazy var b = 42  // expected-error {{'lazy' may not be used on an already-lazy global}} {{1-6=}}
 
 struct S {
-  lazy static var lazy_global = 42 // expected-error {{'lazy' must not be used on an already-lazy global}} {{3-8=}}
+  lazy static var lazy_global = 42 // expected-error {{'lazy' may not be used on an already-lazy global}} {{3-8=}}
 }
 
 protocol SomeProtocol {
   lazy var x : Int  // expected-error {{'lazy' isn't allowed on a protocol requirement}} {{3-8=}}
-  // expected-error@-1 {{property in protocol must have explicit { get } or { get set } specifier}} {{19-19= { get <#set#> \}}}
-  // expected-error@-2 {{lazy properties must have an initializer}}
+  // expected-error@-1 {{property in protocol must have explicit { get } or { get set } specifier}}
   lazy var y : Int { get } // expected-error {{'lazy' isn't allowed on a protocol requirement}} {{3-8=}}
-  // expected-error@-1 {{'lazy' must not be used on a computed property}}
-  // expected-error@-2 {{lazy properties must have an initializer}}
 }
 
 
@@ -24,12 +21,11 @@ class TestClass {
 
   lazy let b = 42  // expected-error {{'lazy' cannot be used on a let}} {{3-8=}}
 
-  lazy var c : Int { return 42 } // expected-error {{'lazy' must not be used on a computed property}} {{3-8=}}
-  // expected-error@-1 {{lazy properties must have an initializer}}
+  lazy var c : Int { return 42 } // expected-error {{'lazy' may not be used on a computed property}} {{3-8=}}
 
   lazy var d : Int  // expected-error {{lazy properties must have an initializer}} {{3-8=}}
 
-  lazy var (e, f) = (1,2)  // expected-error 2{{'lazy' cannot destructure an initializer}} {{3-8=}}
+  lazy var (e, f) = (1,2)  // expected-error {{'lazy' cannot destructure an initializer}} {{3-8=}}
 
   lazy var g = { 0 }()   // single-expr closure
 
@@ -41,17 +37,9 @@ class TestClass {
 
   lazy var k : Int = { () -> Int in return 0 }()+1  // multi-stmt closure
 
-  lazy var l : Int = 42 {  // Okay
-    didSet {}
-    willSet {}
-  }
-
-  lazy var m : Int = 42 { // Okay
-    didSet {}
-  }
-
-  lazy var n : Int = 42 {
-    willSet {} // Okay
+  lazy var l : Int = 42 {  // expected-error {{lazy properties may not have observers}} {{3-8=}}
+    didSet {
+    }
   }
 
   init() {
@@ -94,7 +82,7 @@ class CaptureListInLazyProperty {
 // property type and also as part of the getter
 class WeShouldNotReTypeCheckStatements {
   lazy var firstCase = {
-    _ = nil // expected-error{{'nil' requires a contextual type}}
+    _ = nil // expected-error {{'nil' requires a contextual type}}
     _ = ()
   }
 
@@ -120,7 +108,7 @@ struct Outer {
 
     lazy var y = {_ = 3}()
     // expected-warning@-1 {{variable 'y' inferred to have type '()', which may be unexpected}}
-    // expected-note@-2 {{add an explicit type annotation to silence this warning}} {{15-15=: ()}}
+    // expected-note@-2 {{add an explicit type annotation to silence this warning}}
   }
 }
 

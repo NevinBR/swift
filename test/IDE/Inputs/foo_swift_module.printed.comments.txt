@@ -1,10 +1,21 @@
 import SwiftOnoneSupport
 
-func %%% (lhs: Int, rhs: Int) -> Int
+precedencegroup High {
+  associativity: left
+  higherThan: BitwiseShiftPrecedence
+}
 
-postfix func =-> (lhs: Int) -> Int
+infix operator %%% : High
 
-postfix func => (lhs: Int) -> Int
+postfix operator =->
+
+postfix operator =>
+
+func %%%(lhs: Int, rhs: Int) -> Int
+
+postfix func =->(lhs: Int) -> Int
+
+postfix func =>(lhs: Int) -> Int
 
 struct BarGenericSwiftStruct1<T> {
   init(t: T)
@@ -52,15 +63,4 @@ func hiddenImport()
 func overlayedFoo()
 
 func visibleImport()
-
-precedencegroup High {
-  associativity: left
-  higherThan: BitwiseShiftPrecedence
-}
-
-infix operator %%% : High
-
-postfix operator =>
-
-postfix operator =->
 

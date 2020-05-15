@@ -1,4 +1,4 @@
-// Copyright (c) 2014 - 2018 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See https://swift.org/LICENSE.txt for license information
@@ -6,11 +6,11 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// RUN: %empty-directory(%t)
+// RUN: rm -rf %t
+// RUN: mkdir -p %t
 //
 // RUN: %target-clang %S/Inputs/FoundationBridge/FoundationBridge.m -c -o %t/FoundationBridgeObjC.o -g
 // RUN: %target-build-swift %s -I %S/Inputs/FoundationBridge/ -Xlinker %t/FoundationBridgeObjC.o -o %t/TestDecimal
-// RUN: %target-codesign %t/TestDecimal
 
 // RUN: %target-run %t/TestDecimal > %t.txt
 // REQUIRES: executable_test
@@ -119,12 +119,6 @@ class TestDecimal : TestDecimalSuper {
         expectFalse(zero.isInfinite)
         expectFalse(zero.isNaN)
         expectFalse(zero.isSignaling)
-
-        if #available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *) {
-            let d1 = Decimal(1234567890123456789 as UInt64)
-            expectEqual(d1._exponent, 0)
-            expectEqual(d1._length, 4)
-        }
     }
     func test_Constants() {
         expectEqual(8, NSDecimalMaxSize)
@@ -251,7 +245,7 @@ class TestDecimal : TestDecimalSuper {
                     var failed: Bool = false
                     var count = 0
                     let SIG_FIG = 14
-                    for (a, b) in zip(answerDescription, approximationDescription) {
+                    for (a, b) in zip(answerDescription.characters, approximationDescription.characters) {
                         if a != b {
                             failed = true
                             break
@@ -279,9 +273,6 @@ class TestDecimal : TestDecimalSuper {
         expectEqual(.minus, d.sign)
         d.negate()
         expectEqual(.plus, d.sign)
-        var e = Decimal(0)
-        e.negate()
-        expectEqual(e, 0)
         expectTrue(Decimal(3.5).isEqual(to: Decimal(3.5)))
         expectTrue(Decimal.nan.isEqual(to: Decimal.nan))
         expectTrue(Decimal(1.28).isLess(than: Decimal(2.24)))
@@ -305,43 +296,34 @@ class TestDecimal : TestDecimalSuper {
         expectEqual(Decimal(68040), Decimal(386).advanced(by: Decimal(67654)))
         expectEqual(Decimal(1.234), abs(Decimal(1.234)))
         expectEqual(Decimal(1.234), abs(Decimal(-1.234)))
-        if #available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *) {
-            expectTrue(Decimal.nan.magnitude.isNaN)
-        }
         var a = Decimal(1234)
-        var r = a
-        expectEqual(.noError, NSDecimalMultiplyByPowerOf10(&r, &a, 1, .plain))
-        expectEqual(Decimal(12340), r)
+        expectEqual(.noError, NSDecimalMultiplyByPowerOf10(&a, &a, 1, .plain))
+        expectEqual(Decimal(12340), a)
         a = Decimal(1234)
-        expectEqual(.noError, NSDecimalMultiplyByPowerOf10(&r, &a, 2, .plain))
-        expectEqual(Decimal(123400), r)
-        expectEqual(.overflow, NSDecimalMultiplyByPowerOf10(&r, &a, 128, .plain))
-        expectTrue(r.isNaN)
+        expectEqual(.noError, NSDecimalMultiplyByPowerOf10(&a, &a, 2, .plain))
+        expectEqual(Decimal(123400), a)
+        expectEqual(.overflow, NSDecimalMultiplyByPowerOf10(&a, &a, 128, .plain))
+        expectTrue(a.isNaN)
         a = Decimal(1234)
-        expectEqual(.noError, NSDecimalMultiplyByPowerOf10(&r, &a, -2, .plain))
-        expectEqual(Decimal(12.34), r)
-        var ur = r
-        expectEqual(.underflow, NSDecimalMultiplyByPowerOf10(&ur, &r, -128, .plain))
-        expectTrue(ur.isNaN)
+        expectEqual(.noError, NSDecimalMultiplyByPowerOf10(&a, &a, -2, .plain))
+        expectEqual(Decimal(12.34), a)
+        expectEqual(.underflow, NSDecimalMultiplyByPowerOf10(&a, &a, -128, .plain))
+        expectTrue(a.isNaN)
         a = Decimal(1234)
-        expectEqual(.noError, NSDecimalPower(&r, &a, 0, .plain))
-        expectEqual(Decimal(1), r)
+        expectEqual(.noError, NSDecimalPower(&a, &a, 0, .plain))
+        expectEqual(Decimal(1), a)
         a = Decimal(8)
-        expectEqual(.noError, NSDecimalPower(&r, &a, 2, .plain))
-        expectEqual(Decimal(64), r)
+        expectEqual(.noError, NSDecimalPower(&a, &a, 2, .plain))
+        expectEqual(Decimal(64), a)
         a = Decimal(-2)
-        expectEqual(.noError, NSDecimalPower(&r, &a, 3, .plain))
-        expectEqual(Decimal(-8), r)
+        expectEqual(.noError, NSDecimalPower(&a, &a, 3, .plain))
+        expectEqual(Decimal(-8), a)
         for i in -2...10 {
             for j in 0...5 {
                 var actual = Decimal(i)
-                var result = actual
-                expectEqual(.noError, NSDecimalPower(&result, &actual, j, .plain))
+                expectEqual(.noError, NSDecimalPower(&actual, &actual, j, .plain))
                 let expected = Decimal(pow(Double(i), Double(j)))
-                expectEqual(expected, result, "\(result) == \(i)^\(j)")
-                if #available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *) {
-                    expectEqual(expected, pow(actual, j))
-                }
+                expectEqual(expected, actual, "\(actual) == \(i)^\(j)")
             }
         }
     }
@@ -526,9 +508,8 @@ class TestDecimal : TestDecimalSuper {
         for testCase in testCases {
             let (expected, start, scale, mode) = testCase
             var num = Decimal(start)
-            var r = num
-            NSDecimalRound(&r, &num, scale, mode)
-            expectEqual(Decimal(expected), r)
+            NSDecimalRound(&num, &num, scale, mode)
+            expectEqual(Decimal(expected), num)
             let numnum = NSDecimalNumber(decimal:Decimal(start))
             let behavior = NSDecimalNumberHandler(roundingMode: mode, scale: Int16(scale), raiseOnExactness: false, raiseOnOverflow: true, raiseOnUnderflow: true, raiseOnDivideByZero: true)
             let result = numnum.rounding(accordingToBehavior:behavior)

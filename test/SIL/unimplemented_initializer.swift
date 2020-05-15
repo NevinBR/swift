@@ -1,5 +1,7 @@
-// RUN: %target-swift-frontend -sdk %S/../SILGen/Inputs -I %S/../SILGen/Inputs -Xllvm -sil-print-debuginfo -enable-objc-interop -enable-source-import -primary-file %s -emit-sil -emit-verbose-sil | %FileCheck %s -check-prefix=CHECK-DEBUG
-// RUN: %target-swift-frontend -sdk %S/../SILGen/Inputs -I %S/../SILGen/Inputs -Xllvm -sil-print-debuginfo -enable-objc-interop -enable-source-import -primary-file %s -emit-sil -emit-verbose-sil -O | %FileCheck %s -check-prefix=CHECK-RELEASE
+// RUN: %target-swift-frontend -sdk %S/../SILGen/Inputs -I %S/../SILGen/Inputs -Xllvm -sil-print-debuginfo -enable-source-import -primary-file %s -emit-sil -emit-verbose-sil | %FileCheck %s -check-prefix=CHECK-DEBUG
+// RUN: %target-swift-frontend -sdk %S/../SILGen/Inputs -I %S/../SILGen/Inputs -Xllvm -sil-print-debuginfo -enable-source-import -primary-file %s -emit-sil -emit-verbose-sil -O | %FileCheck %s -check-prefix=CHECK-RELEASE
+
+// XFAIL: linux
 
 import gizmo
 

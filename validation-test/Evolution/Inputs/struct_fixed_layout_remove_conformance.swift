@@ -1,5 +1,5 @@
 
-@frozen public struct RemoveConformance {
+@_fixed_layout public struct RemoveConformance {
   public init() {
     x = 0
     y = 0

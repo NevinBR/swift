@@ -20,11 +20,11 @@ func infer_type(_ i: Int, f: Float) {
 
 func infer_generic_args() {
   // Simple types
-  let x : Dictionary = ["Hello" : 1]
+  var x : Dictionary = ["Hello" : 1]
   var i : Int = x["Hello"]!
 
   // Tuples
-  let (d, s) : (Dictionary, Array) = ( ["Hello" : 1], [1, 2, 3] )
+  var (d, s) : (Dictionary, Array) = ( ["Hello" : 1], [1, 2, 3] )
   i = d["Hello"]!
   i = s[i]
 

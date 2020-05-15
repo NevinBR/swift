@@ -33,7 +33,7 @@
 #include "swift/SILOptimizer/Analysis/EscapeAnalysis.h"
 #include "swift/SILOptimizer/Analysis/TypeExpansionAnalysis.h"
 #include "swift/SILOptimizer/Analysis/ValueTracking.h"
-#include "swift/SILOptimizer/Utils/InstOptUtils.h"
+#include "swift/SILOptimizer/Utils/Local.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Hashing.h"
@@ -169,15 +169,12 @@ public:
   }
 
   /// Print the LSBase.
-  virtual void print(llvm::raw_ostream &os, SILModule *Mod,
-                     TypeExpansionContext context) {
+  virtual void print(llvm::raw_ostream &os, SILModule *Mod) { 
     os << Base;
-    Path.getValue().print(os, *Mod, context);
+    Path.getValue().print(os, *Mod);
   }
 
-  virtual void dump(SILModule *Mod, TypeExpansionContext context) {
-    print(llvm::dbgs(), Mod, context);
-  }
+  virtual void dump(SILModule *Mod) { print(llvm::dbgs(), Mod); }
 };
 
 static inline llvm::hash_code hash_value(const LSBase &S) {
@@ -260,18 +257,16 @@ public:
     return Path.getValue().createExtract(Base, Inst, true);
   }
 
-  void print(llvm::raw_ostream &os, SILModule *Mod,
-             TypeExpansionContext context) {
+  void print(llvm::raw_ostream &os, SILModule *Mod) {
     if (CoveringValue) {
       os << "Covering Value";
       return;
     }
-    LSBase::print(os, Mod, context);
+    LSBase::print(os, Mod);
   }
 
   /// Expand this SILValue to all individual fields it contains.
-  static void expand(SILValue Base, SILModule *Mod,
-                     TypeExpansionContext context, LSValueList &Vals,
+  static void expand(SILValue Base, SILModule *Mod, LSValueList &Vals,
                      TypeExpansionAnalysis *TE);
 
   /// Given a memory location and a map between the expansions of the location
@@ -294,6 +289,7 @@ static inline llvm::hash_code hash_value(const LSValue &V) {
 //===----------------------------------------------------------------------===//
 //                            Load Store Location
 //===----------------------------------------------------------------------===//
+using LSLocationSet = llvm::DenseSet<LSLocation>;
 using LSLocationList = llvm::SmallVector<LSLocation, 8>;
 using LSLocationIndexMap = llvm::SmallDenseMap<LSLocation, unsigned, 32>;
 using LSLocationBaseMap = llvm::DenseMap<SILValue, LSLocation>;
@@ -334,14 +330,13 @@ public:
   }
 
   /// Returns the type of the object the LSLocation represents.
-  SILType getType(SILModule *M, TypeExpansionContext context) {
-    return Path.getValue().getMostDerivedType(*M, context);
+  SILType getType(SILModule *M) {
+    return Path.getValue().getMostDerivedType(*M);
   }
 
   /// Get the first level locations based on this location's first level
   /// projection.
-  void getNextLevelLSLocations(LSLocationList &Locs, SILModule *Mod,
-                               TypeExpansionContext context);
+  void getNextLevelLSLocations(LSLocationList &Locs, SILModule *Mod);
 
   /// Check whether the 2 LSLocations may alias each other or not.
   bool isMayAliasLSLocation(const LSLocation &RHS, AliasAnalysis *AA);
@@ -357,18 +352,15 @@ public:
   /// In SIL, we can have a store to an aggregate and loads from its individual
   /// fields. Therefore, we expand all the operations on aggregates onto
   /// individual fields and process them separately.
-  static void expand(LSLocation Base, SILModule *Mod,
-                     TypeExpansionContext context, LSLocationList &Locs,
+  static void expand(LSLocation Base, SILModule *Mod, LSLocationList &Locs,
                      TypeExpansionAnalysis *TE);
 
   /// Given a set of locations derived from the same base, try to merge/reduce
   /// them into smallest number of LSLocations possible.
-  static void reduce(LSLocation Base, SILModule *Mod,
-                     TypeExpansionContext context, LSLocationList &Locs);
+  static bool reduce(LSLocation Base, SILModule *Mod, LSLocationSet &Locs);
 
   /// Enumerate the given Mem LSLocation.
-  static void enumerateLSLocation(TypeExpansionContext context, SILModule *M,
-                                  SILValue Mem,
+  static void enumerateLSLocation(SILModule *M, SILValue Mem,
                                   std::vector<LSLocation> &LSLocationVault,
                                   LSLocationIndexMap &LocToBit,
                                   LSLocationBaseMap &BaseToLoc,

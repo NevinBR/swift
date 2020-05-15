@@ -1,7 +1,3 @@
 module ObjCRuntimeVisible {
   header "ObjCRuntimeVisible.h"
 }
-
-module ErrorEnums {
-  header "ErrorEnums.h"
-}

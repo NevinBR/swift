@@ -20,7 +20,6 @@
 #include "swift/AST/ASTContext.h"
 #include "swift/AST/DiagnosticsIRGen.h"
 
-#include "BitPatternBuilder.h"
 #include "FixedTypeInfo.h"
 #include "IRGenFunction.h"
 #include "IRGenModule.h"
@@ -39,13 +38,18 @@ static bool requiresHeapHeader(LayoutKind kind) {
   llvm_unreachable("bad layout kind!");
 }
 
+/// Return the size of the standard heap header.
+Size irgen::getHeapHeaderSize(IRGenModule &IGM) {
+  return IGM.getPointerSize() + Size(8);
+}
+
 /// Perform structure layout on the given types.
-StructLayout::StructLayout(IRGenModule &IGM,
-                           NominalTypeDecl *decl,
+StructLayout::StructLayout(IRGenModule &IGM, CanType astTy,
                            LayoutKind layoutKind,
                            LayoutStrategy strategy,
                            ArrayRef<const TypeInfo *> types,
                            llvm::StructType *typeToFill) {
+  ASTTy = astTy;
   Elements.reserve(types.size());
 
   // Fill in the Elements array.
@@ -70,7 +74,6 @@ StructLayout::StructLayout(IRGenModule &IGM,
     assert(!builder.empty() == requiresHeapHeader(layoutKind));
     MinimumAlign = Alignment(1);
     MinimumSize = Size(0);
-    headerSize = builder.getHeaderSize();
     SpareBits.clear();
     IsFixedLayout = true;
     IsKnownPOD = IsPOD;
@@ -80,8 +83,7 @@ StructLayout::StructLayout(IRGenModule &IGM,
   } else {
     MinimumAlign = builder.getAlignment();
     MinimumSize = builder.getSize();
-    headerSize = builder.getHeaderSize();
-    SpareBits = builder.getSpareBits();
+    SpareBits = std::move(builder.getSpareBits());
     IsFixedLayout = builder.isFixedLayout();
     IsKnownPOD = builder.isPOD();
     IsKnownBitwiseTakable = builder.isBitwiseTakable();
@@ -94,43 +96,41 @@ StructLayout::StructLayout(IRGenModule &IGM,
     }
   }
 
-  assert(typeToFill == nullptr || Ty == typeToFill);
-
-  // If the struct is not @frozen, it will have a dynamic
+  // If the struct is not @_fixed_layout, it will have a dynamic
   // layout outside of its resilience domain.
-  if (decl) {
-    if (IGM.isResilient(decl, ResilienceExpansion::Minimal))
+  if (astTy && astTy->getAnyNominal())
+    if (IGM.isResilient(astTy->getAnyNominal(), ResilienceExpansion::Minimal))
       IsKnownAlwaysFixedSize = IsNotFixedSize;
 
-    applyLayoutAttributes(IGM, decl, IsFixedLayout, MinimumAlign);
-  }
+  assert(typeToFill == nullptr || Ty == typeToFill);
+  if (ASTTy)
+    applyLayoutAttributes(IGM, ASTTy, IsFixedLayout, MinimumAlign);
 }
 
 void irgen::applyLayoutAttributes(IRGenModule &IGM,
-                                  NominalTypeDecl *decl,
+                                  CanType ASTTy,
                                   bool IsFixedLayout,
                                   Alignment &MinimumAlign) {
+  assert(ASTTy && "shouldn't call applyLayoutAttributes without a type");
+  
   auto &Diags = IGM.Context.Diags;
-
+  auto decl = ASTTy->getAnyNominal();
+  if (!decl)
+    return;
+  
   if (auto alignment = decl->getAttrs().getAttribute<AlignmentAttr>()) {
-    auto value = alignment->getValue();
-    assert(value != 0 && ((value - 1) & value) == 0
+    assert(alignment->Value != 0
+           && ((alignment->Value - 1) & alignment->Value) == 0
            && "alignment not a power of two!");
     
     if (!IsFixedLayout)
       Diags.diagnose(alignment->getLocation(),
                      diag::alignment_dynamic_type_layout_unsupported);
-    else if (value < MinimumAlign.getValue())
+    else if (alignment->Value < MinimumAlign.getValue())
       Diags.diagnose(alignment->getLocation(),
                    diag::alignment_less_than_natural, MinimumAlign.getValue());
-    else {
-      auto requestedAlignment = Alignment(value);
-      MinimumAlign = IGM.getCappedAlignment(requestedAlignment);
-      if (requestedAlignment > MinimumAlign)
-        Diags.diagnose(alignment->getLocation(),
-                       diag::alignment_more_than_maximum,
-                       MinimumAlign.getValue());
-    }
+    else
+      MinimumAlign = Alignment(alignment->Value);
   }
 }
 
@@ -158,7 +158,6 @@ Address ElementLayout::project(IRGenFunction &IGF, Address baseAddr,
                                const llvm::Twine &suffix) const {
   switch (getKind()) {
   case Kind::Empty:
-  case Kind::EmptyTailAllocatedCType:
     return getType().getUndefAddress();
 
   case Kind::Fixed:
@@ -185,10 +184,9 @@ Address ElementLayout::project(IRGenFunction &IGF, Address baseAddr,
 
 void StructLayoutBuilder::addHeapHeader() {
   assert(StructFields.empty() && "adding heap header at a non-zero offset");
-  CurSize = IGM.RefCountedStructSize;
+  CurSize = getHeapHeaderSize(IGM);
   CurAlignment = IGM.getPointerAlignment();
   StructFields.push_back(IGM.RefCountedStructTy);
-  headerSize = CurSize;
 }
 
 void StructLayoutBuilder::addNSObjectHeader() {
@@ -196,7 +194,6 @@ void StructLayoutBuilder::addNSObjectHeader() {
   CurSize = IGM.getPointerSize();
   CurAlignment = IGM.getPointerAlignment();
   StructFields.push_back(IGM.ObjCClassPtrTy);
-  headerSize = CurSize;
 }
 
 bool StructLayoutBuilder::addFields(llvm::MutableArrayRef<ElementLayout> elts,
@@ -207,39 +204,36 @@ bool StructLayoutBuilder::addFields(llvm::MutableArrayRef<ElementLayout> elts,
   // Loop through the elements.  The only valid field in each element
   // is Type; StructIndex and ByteOffset need to be laid out.
   for (auto &elt : elts) {
-    addedStorage |= addField(elt, strategy);
+    auto &eltTI = elt.getType();
+    IsKnownPOD &= eltTI.isPOD(ResilienceExpansion::Maximal);
+    IsKnownBitwiseTakable &= eltTI.isBitwiseTakable(ResilienceExpansion::Maximal);
+    IsKnownAlwaysFixedSize &= eltTI.isFixedSize(ResilienceExpansion::Minimal);
+    
+    // If the element type is empty, it adds nothing.
+    if (eltTI.isKnownEmpty(ResilienceExpansion::Maximal)) {
+      addEmptyElement(elt);
+    } else {
+      // Anything else we do at least potentially adds storage requirements.
+      addedStorage = true;
+
+      // TODO: consider using different layout rules.
+      // If the rules are changed so that fields aren't necessarily laid
+      // out sequentially, the computation of InstanceStart in the
+      // RO-data will need to be fixed.
+
+      // If this element is resiliently- or dependently-sized, record
+      // that and configure the ElementLayout appropriately.
+      if (isa<FixedTypeInfo>(eltTI)) {
+        addFixedSizeElement(elt);
+      } else {
+        addNonFixedSizeElement(elt);
+      }
+    }
+
+    NextNonFixedOffsetIndex++;
   }
 
   return addedStorage;
-}
-
-bool StructLayoutBuilder::addField(ElementLayout &elt,
-                                  LayoutStrategy strategy) {
-  auto &eltTI = elt.getType();
-  IsKnownPOD &= eltTI.isPOD(ResilienceExpansion::Maximal);
-  IsKnownBitwiseTakable &= eltTI.isBitwiseTakable(ResilienceExpansion::Maximal);
-  IsKnownAlwaysFixedSize &= eltTI.isFixedSize(ResilienceExpansion::Minimal);
-
-  if (eltTI.isKnownEmpty(ResilienceExpansion::Maximal)) {
-    addEmptyElement(elt);
-    // If the element type is empty, it adds nothing.
-    NextNonFixedOffsetIndex++;
-    return false;
-  }
-  // TODO: consider using different layout rules.
-  // If the rules are changed so that fields aren't necessarily laid
-  // out sequentially, the computation of InstanceStart in the
-  // RO-data will need to be fixed.
-
-  // If this element is resiliently- or dependently-sized, record
-  // that and configure the ElementLayout appropriately.
-  if (isa<FixedTypeInfo>(eltTI)) {
-    addFixedSizeElement(elt);
-  } else {
-    addNonFixedSizeElement(elt);
-  }
-  NextNonFixedOffsetIndex++;
-  return true;
 }
 
 void StructLayoutBuilder::addFixedSizeElement(ElementLayout &elt) {
@@ -269,11 +263,9 @@ void StructLayoutBuilder::addFixedSizeElement(ElementLayout &elt) {
     if (isFixedLayout()) {
       auto paddingTy = llvm::ArrayType::get(IGM.Int8Ty, paddingRequired);
       StructFields.push_back(paddingTy);
-
+      
       // The padding can be used as spare bits by enum layout.
-      auto numBits = Size(paddingRequired).getValueInBits();
-      auto mask = llvm::APInt::getAllOnesValue(numBits);
-      CurSpareBits.push_back(SpareBitVector::fromAPInt(mask));
+      CurSpareBits.appendSetBits(Size(paddingRequired).getValueInBits());
     }
   }
 
@@ -312,7 +304,8 @@ void StructLayoutBuilder::addNonFixedSizeElement(ElementLayout &elt) {
 
 /// Add an empty element to the aggregate.
 void StructLayoutBuilder::addEmptyElement(ElementLayout &elt) {
-  elt.completeEmpty(elt.getType().isPOD(ResilienceExpansion::Maximal));
+  elt.completeEmpty(elt.getType().isPOD(ResilienceExpansion::Maximal),
+                    CurSize);
 }
 
 /// Add an element at the fixed offset of the current end of the
@@ -326,7 +319,7 @@ void StructLayoutBuilder::addElementAtFixedOffset(ElementLayout &elt) {
   StructFields.push_back(elt.getType().getStorageType());
   
   // Carry over the spare bits from the element.
-  CurSpareBits.push_back(eltTI.getSpareBits());
+  CurSpareBits.append(eltTI.getSpareBits());
 }
 
 /// Add an element at a non-fixed offset to the aggregate.
@@ -334,7 +327,7 @@ void StructLayoutBuilder::addElementAtNonFixedOffset(ElementLayout &elt) {
   assert(!isFixedLayout());
   elt.completeNonFixed(elt.getType().isPOD(ResilienceExpansion::Maximal),
                        NextNonFixedOffsetIndex);
-  CurSpareBits = SmallVector<SpareBitVector, 8>(); // clear spare bits
+  CurSpareBits.clear();
 }
 
 /// Add a non-fixed-size element to the aggregate at offset zero.
@@ -343,7 +336,7 @@ void StructLayoutBuilder::addNonFixedSizeElementAtOffsetZero(ElementLayout &elt)
   assert(!isa<FixedTypeInfo>(elt.getType()));
   assert(CurSize.isZero());
   elt.completeInitialNonFixedSize(elt.getType().isPOD(ResilienceExpansion::Maximal));
-  CurSpareBits = SmallVector<SpareBitVector, 8>(); // clear spare bits
+  CurSpareBits.clear();
 }
 
 /// Produce the current fields as an anonymous structure.
@@ -365,13 +358,4 @@ void StructLayoutBuilder::setAsBodyOfStruct(llvm::StructType *type) const {
           || IGM.DataLayout.getStructLayout(type)->getSizeInBytes()
             == CurSize.getValue())
          && "LLVM size of fixed struct type does not match StructLayout size");
-}
-
-/// Return the spare bit mask of the structure built so far.
-SpareBitVector StructLayoutBuilder::getSpareBits() const {
-  auto spareBits = BitPatternBuilder(IGM.Triple.isLittleEndian());
-  for (const auto &v : CurSpareBits) {
-    spareBits.append(v);
-  }
-  return spareBits.build();
 }

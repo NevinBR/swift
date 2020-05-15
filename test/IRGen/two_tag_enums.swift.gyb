@@ -1,4 +1,5 @@
-// RUN: %empty-directory(%t)
+// RUN: rm -rf %t
+// RUN: mkdir -p %t
 // RUN: %gyb %s > %t/main.swift
 // RUN: %target-swift-frontend -emit-ir %t/main.swift | %FileCheck %s
 

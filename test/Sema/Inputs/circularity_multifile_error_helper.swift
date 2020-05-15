@@ -1,5 +1,5 @@
 struct External {
-  var member: Something // expected-error {{cannot find type 'Something' in scope}}
+  var member: Something
 }
 
 struct OtherExternal {}

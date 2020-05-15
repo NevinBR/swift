@@ -39,11 +39,10 @@ if #available(OSX) { // expected-error {{expected version number}}
 if #available(OSX 10.51 { // expected-error {{expected ')'}} expected-note {{to match this opening '('}} expected-error {{must handle potential future platforms with '*'}} {{24-24=, *}}
 }
 
-if #available(iDishwasherOS 10.51) { // expected-warning {{unrecognized platform name 'iDishwasherOS'}}
-// expected-error@-1 {{must handle potential future platforms with '*'}}
+if #available(iDishwasherOS 10.51) { // expected-error {{unrecognized platform name 'iDishwasherOS'}}
 }
 
-if #available(iDishwasherOS 10.51, *) { // expected-warning {{unrecognized platform name 'iDishwasherOS'}}
+if #available(iDishwasherOS 10.51, *) { // expected-error {{unrecognized platform name 'iDishwasherOS'}}
 }
 
 if #available(OSX 10.51, OSX 10.52, *) {  // expected-error {{version for 'OSX' already specified}}
@@ -56,9 +55,6 @@ if #available(OSX 10.51, iOS 8.0) { }  // expected-error {{must handle potential
 if #available(iOS 8.0, *) {
 }
 
-if #available(iOSApplicationExtension, unavailable) { // expected-error 2{{expected version number}}
-}
-	
 // Want to make sure we can parse this. Perhaps we should not let this validate, though.
 if #available(*) {
 }
@@ -80,12 +76,10 @@ if #available(OSX 10.51,) { // expected-error {{expected platform name}}
 if #available(OSX 10.51, iOS { // expected-error {{expected version number}} // expected-error {{expected ')'}} expected-note {{to match this opening '('}}
 }
 
-if #available(OSX 10.51, iOS 8.0, iDishwasherOS 10.51) { // expected-warning {{unrecognized platform name 'iDishwasherOS'}}
-// expected-error@-1 {{must handle potential future platforms with '*'}}
+if #available(OSX 10.51, iOS 8.0, iDishwasherOS 10.51) { // expected-error {{unrecognized platform name 'iDishwasherOS'}}
 }
 
-if #available(iDishwasherOS 10.51, OSX 10.51) { // expected-warning {{unrecognized platform name 'iDishwasherOS'}}
-// expected-error@-1 {{must handle potential future platforms with '*'}}
+if #available(iDishwasherOS 10.51, OSX 10.51) { // expected-error {{unrecognized platform name 'iDishwasherOS'}}
 }
 
 if #available(OSX 10.51 || iOS 8.0) {// expected-error {{'||' cannot be used in an availability condition}}

@@ -24,11 +24,11 @@
 import SwiftShims
 
 @objc
-internal protocol _ShadowProtocol {}
+public protocol _ShadowProtocol {}
 
 /// A shadow for the `NSFastEnumeration` protocol.
 @objc
-internal protocol _NSFastEnumeration: _ShadowProtocol {
+public protocol _NSFastEnumeration : _ShadowProtocol {
   @objc(countByEnumeratingWithState:objects:count:)
   func countByEnumerating(
     with state: UnsafeMutablePointer<_SwiftNSFastEnumerationState>,
@@ -38,17 +38,17 @@ internal protocol _NSFastEnumeration: _ShadowProtocol {
 
 /// A shadow for the `NSEnumerator` class.
 @objc
-internal protocol _NSEnumerator: _ShadowProtocol {
+public protocol _NSEnumerator : _ShadowProtocol {
   init()
   func nextObject() -> AnyObject?
 }
 
 /// A token that can be used for `NSZone*`.
-internal typealias _SwiftNSZone = OpaquePointer
+public typealias _SwiftNSZone = OpaquePointer
 
 /// A shadow for the `NSCopying` protocol.
 @objc
-internal protocol _NSCopying: _ShadowProtocol {
+public protocol _NSCopying : _ShadowProtocol {
   @objc(copyWithZone:)
   func copy(with zone: _SwiftNSZone?) -> AnyObject
 }
@@ -58,7 +58,8 @@ internal protocol _NSCopying: _ShadowProtocol {
 /// Covers a set of operations everyone needs to implement in order to
 /// be a useful `NSArray` subclass.
 @unsafe_no_objc_tagged_pointer @objc
-internal protocol _NSArrayCore: _NSCopying, _NSFastEnumeration {
+public protocol _NSArrayCore :
+    _NSCopying, _NSFastEnumeration {
 
   @objc(objectAtIndex:)
   func objectAt(_ index: Int) -> AnyObject
@@ -66,7 +67,7 @@ internal protocol _NSArrayCore: _NSCopying, _NSFastEnumeration {
   func getObjects(_: UnsafeMutablePointer<AnyObject>, range: _SwiftNSRange)
 
   @objc(countByEnumeratingWithState:objects:count:)
-  override func countByEnumerating(
+  func countByEnumerating(
     with state: UnsafeMutablePointer<_SwiftNSFastEnumerationState>,
     objects: UnsafeMutablePointer<AnyObject>?, count: Int
   ) -> Int
@@ -79,7 +80,9 @@ internal protocol _NSArrayCore: _NSCopying, _NSFastEnumeration {
 /// Covers a set of operations everyone needs to implement in order to
 /// be a useful `NSDictionary` subclass.
 @objc
-internal protocol _NSDictionaryCore: _NSCopying, _NSFastEnumeration {
+public protocol _NSDictionaryCore :
+    _NSCopying, _NSFastEnumeration {
+
   // The following methods should be overridden when implementing an
   // NSDictionary subclass.
 
@@ -91,24 +94,20 @@ internal protocol _NSDictionaryCore: _NSCopying, _NSFastEnumeration {
   var count: Int { get }
 
   @objc(objectForKey:)
-  func object(forKey aKey: AnyObject) -> AnyObject?
+  func objectFor(_ aKey: AnyObject) -> AnyObject?
 
   func keyEnumerator() -> _NSEnumerator
 
   // We also override the following methods for efficiency.
 
   @objc(copyWithZone:)
-  override func copy(with zone: _SwiftNSZone?) -> AnyObject
+  func copy(with zone: _SwiftNSZone?) -> AnyObject
 
-  @objc(getObjects:andKeys:count:)
-  func getObjects(
-    _ objects: UnsafeMutablePointer<AnyObject>?,
-    andKeys keys: UnsafeMutablePointer<AnyObject>?,
-    count: Int
-  )
+  func getObjects(_ objects: UnsafeMutablePointer<AnyObject>?,
+    andKeys keys: UnsafeMutablePointer<AnyObject>?)
 
   @objc(countByEnumeratingWithState:objects:count:)
-  override func countByEnumerating(
+  func countByEnumerating(
     with state: UnsafeMutablePointer<_SwiftNSFastEnumerationState>,
     objects: UnsafeMutablePointer<AnyObject>?, count: Int
   ) -> Int
@@ -123,21 +122,20 @@ internal protocol _NSDictionaryCore: _NSCopying, _NSFastEnumeration {
 /// forced to implement operations that `NSDictionary` already
 /// supplies.
 @unsafe_no_objc_tagged_pointer @objc
-internal protocol _NSDictionary: _NSDictionaryCore {
+public protocol _NSDictionary : _NSDictionaryCore {
   // Note! This API's type is different from what is imported by the clang
   // importer.
-  override func getObjects(
-    _ objects: UnsafeMutablePointer<AnyObject>?,
-    andKeys keys: UnsafeMutablePointer<AnyObject>?,
-    count: Int)
-}
+  func getObjects(_ objects: UnsafeMutablePointer<AnyObject>?,
+      andKeys keys: UnsafeMutablePointer<AnyObject>?)
+    }
 
 /// A shadow for the "core operations" of NSSet.
 ///
 /// Covers a set of operations everyone needs to implement in order to
 /// be a useful `NSSet` subclass.
 @objc
-internal protocol _NSSetCore: _NSCopying, _NSFastEnumeration {
+public protocol _NSSetCore :
+    _NSCopying, _NSFastEnumeration {
 
   // The following methods should be overridden when implementing an
   // NSSet subclass.
@@ -152,10 +150,10 @@ internal protocol _NSSetCore: _NSCopying, _NSFastEnumeration {
   // We also override the following methods for efficiency.
 
   @objc(copyWithZone:)
-  override func copy(with zone: _SwiftNSZone?) -> AnyObject
+  func copy(with zone: _SwiftNSZone?) -> AnyObject
 
   @objc(countByEnumeratingWithState:objects:count:)
-  override func countByEnumerating(
+  func countByEnumerating(
     with state: UnsafeMutablePointer<_SwiftNSFastEnumerationState>,
     objects: UnsafeMutablePointer<AnyObject>?, count: Int
   ) -> Int
@@ -170,21 +168,13 @@ internal protocol _NSSetCore: _NSCopying, _NSFastEnumeration {
 /// forced to implement operations that `NSSet` already
 /// supplies.
 @unsafe_no_objc_tagged_pointer @objc
-internal protocol _NSSet: _NSSetCore {
-  @objc(getObjects:count:) func getObjects(
-    _ buffer: UnsafeMutablePointer<AnyObject>,
-    count: Int
-  )
-
-  @objc(getObjects:) func getObjects(
-    _ buffer: UnsafeMutablePointer<AnyObject>
-  )
+public protocol _NSSet : _NSSetCore {
 }
 
 /// A shadow for the API of NSNumber we will use in the core
 /// stdlib.
 @objc
-internal protocol _NSNumber {
+public protocol _NSNumber {
   var doubleValue: Double { get }
   var floatValue: Float { get }
   var unsignedLongLongValue: UInt64 { get }
@@ -194,7 +184,8 @@ internal protocol _NSNumber {
 
 #else
 
-internal protocol _NSSetCore {}
-internal protocol _NSDictionaryCore {}
+public protocol _NSArrayCore {}
+public protocol _NSDictionaryCore {}
+public protocol _NSSetCore {}
 
 #endif

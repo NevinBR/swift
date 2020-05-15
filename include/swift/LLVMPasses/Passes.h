@@ -15,8 +15,6 @@
 
 #include "swift/LLVMPasses/PassesFwd.h"
 #include "llvm/Analysis/AliasAnalysis.h"
-#include "llvm/Analysis/Passes.h"
-#include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 
 namespace swift {
@@ -32,14 +30,8 @@ namespace swift {
                     const llvm::PreservedAnalyses &) { return false; }
 
     using AAResultBase::getModRefInfo;
-    llvm::ModRefInfo getModRefInfo(const llvm::CallBase *Call,
-                                   const llvm::MemoryLocation &Loc) {
-      llvm::AAQueryInfo AAQI;
-      return getModRefInfo(Call, Loc, AAQI);
-    }
-    llvm::ModRefInfo getModRefInfo(const llvm::CallBase *Call,
-                                   const llvm::MemoryLocation &Loc,
-                                   llvm::AAQueryInfo &AAQI);
+    llvm::ModRefInfo getModRefInfo(llvm::ImmutableCallSite CS,
+                                   const llvm::MemoryLocation &Loc);
   };
 
   class SwiftAAWrapperPass : public llvm::ImmutablePass {

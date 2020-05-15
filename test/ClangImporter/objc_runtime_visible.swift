@@ -1,4 +1,6 @@
-// RUN: %target-swift-frontend -typecheck -enable-objc-interop -disable-objc-attr-requires-foundation-module -I %S/../Inputs/custom-modules %s -verify
+// RUN: %target-swift-frontend -typecheck -disable-objc-attr-requires-foundation-module -I %S/../Inputs/custom-modules %s -verify
+
+// REQUIRES: objc_interop
 
 import ObjCRuntimeVisible
 

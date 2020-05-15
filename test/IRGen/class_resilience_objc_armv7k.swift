@@ -1,5 +1,6 @@
 // RUN: %target-swift-frontend(mock-sdk: %clang-importer-sdk) -emit-ir -o - -primary-file %s | %FileCheck %s --check-prefix=CHECK
 
+// REQUIRES: objc_interop
 // REQUIRES: CPU=armv7k
 
 // CHECK: %swift.type = type { [[INT:i32|i64]] }
@@ -12,8 +13,8 @@ public class FixedLayoutObjCSubclass : NSObject {
   public final var field: Int32 = 0
 };
 
-// CHECK-LABEL: define hidden swiftcc void @"$s28class_resilience_objc_armv7k29testConstantDirectFieldAccessyyAA23FixedLayoutObjCSubclassCF"(%T28class_resilience_objc_armv7k23FixedLayoutObjCSubclassC* %0)
-// CHECK:      [[OFFSET:%.*]] = load [[INT]], [[INT]]* @"$s28class_resilience_objc_armv7k23FixedLayoutObjCSubclassC5fields5Int32VvpWvd"
+// CHECK-LABEL: define hidden swiftcc void @_T028class_resilience_objc_armv7k29testConstantDirectFieldAccessyAA23FixedLayoutObjCSubclassCF(%T28class_resilience_objc_armv7k23FixedLayoutObjCSubclassC*)
+// CHECK:      [[OFFSET:%.*]] = load [[INT]], [[INT]]* @_T028class_resilience_objc_armv7k23FixedLayoutObjCSubclassC5fields5Int32VvWvd
 // CHECK-NEXT: [[OBJECT:%.*]] = bitcast %T28class_resilience_objc_armv7k23FixedLayoutObjCSubclassC* %0 to i8*
 // CHECK-NEXT: [[ADDR:%.*]] = getelementptr inbounds i8, i8* [[OBJECT]], [[INT]] [[OFFSET]]
 // CHECK-NEXT: [[FIELD_ADDR:%.*]] = bitcast i8* [[ADDR]] to %Ts5Int32V*
@@ -31,8 +32,8 @@ public class NonFixedLayoutObjCSubclass : NSCoder {
   public final var field: Int32 = 0
 }
 
-// CHECK-LABEL: define hidden swiftcc void @"$s28class_resilience_objc_armv7k32testNonConstantDirectFieldAccessyyAA0F23FixedLayoutObjCSubclassCF"(%T28class_resilience_objc_armv7k26NonFixedLayoutObjCSubclassC* %0)
-// CHECK:      [[OFFSET:%.*]] = load [[INT]], [[INT]]* @"$s28class_resilience_objc_armv7k26NonFixedLayoutObjCSubclassC5fields5Int32VvpWvd"
+// CHECK-LABEL: define hidden swiftcc void @_T028class_resilience_objc_armv7k32testNonConstantDirectFieldAccessyAA0F23FixedLayoutObjCSubclassCF(%T28class_resilience_objc_armv7k26NonFixedLayoutObjCSubclassC*)
+// CHECK:      [[OFFSET:%.*]] = load [[INT]], [[INT]]* @_T028class_resilience_objc_armv7k26NonFixedLayoutObjCSubclassC5fields5Int32VvWvd
 // CHECK-NEXT: [[OBJECT:%.*]] = bitcast %T28class_resilience_objc_armv7k26NonFixedLayoutObjCSubclassC* %0 to i8*
 // CHECK-NEXT: [[ADDR:%.*]] = getelementptr inbounds i8, i8* [[OBJECT]], [[INT]] [[OFFSET]]
 // CHECK-NEXT: [[FIELD_ADDR:%.*]] = bitcast i8* [[ADDR]] to %Ts5Int32V*
@@ -53,7 +54,7 @@ public class GenericObjCSubclass<T> : NSCoder {
   }
 }
 
-// CHECK-LABEL: define hidden swiftcc void @"$s28class_resilience_objc_armv7k31testConstantIndirectFieldAccessyyAA19GenericObjCSubclassCyxGlF"(%T28class_resilience_objc_armv7k19GenericObjCSubclassC* %0)
+// CHECK-LABEL: define hidden swiftcc void @_T028class_resilience_objc_armv7k31testConstantIndirectFieldAccessyAA19GenericObjCSubclassCyxGlF(%T28class_resilience_objc_armv7k19GenericObjCSubclassC*)
 
 // FIXME: we could eliminate the unnecessary isa load by lazily emitting
 // metadata sources in EmitPolymorphicParameters
@@ -63,7 +64,7 @@ public class GenericObjCSubclass<T> : NSCoder {
 // CHECK-NEXT: [[KLASS:%.*]] = call %objc_class* @object_getClass(%objc_object* [[ADDR]])
 // CHECK-NEXT: [[ISA:%.*]] = bitcast %objc_class* [[KLASS]] to %swift.type*
 // CHECK-NEXT: [[ISA_ADDR:%.*]] = bitcast %swift.type* [[ISA]] to [[INT]]*
-// CHECK-NEXT: [[FIELD_OFFSET_ADDR:%.*]] = getelementptr inbounds [[INT]], [[INT]]* [[ISA_ADDR]], [[INT]] 15
+// CHECK-NEXT: [[FIELD_OFFSET_ADDR:%.*]] = getelementptr inbounds [[INT]], [[INT]]* [[ISA_ADDR]], [[INT]] 16
 // CHECK-NEXT: [[FIELD_OFFSET:%.*]] = load [[INT]], [[INT]]* [[FIELD_OFFSET_ADDR:%.*]]
 // CHECK-NEXT: [[OBJECT:%.*]] = bitcast %T28class_resilience_objc_armv7k19GenericObjCSubclassC* %0 to i8*
 // CHECK-NEXT: [[ADDR:%.*]] = getelementptr inbounds i8, i8* [[OBJECT]], [[INT]] [[FIELD_OFFSET]]

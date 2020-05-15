@@ -5,8 +5,9 @@
 // UNSUPPORTED: OS=ios
 // UNSUPPORTED: OS=tvos
 // UNSUPPORTED: OS=watchos
+// UNSUPPORTED: OS=linux-androideabi
 
-// REQUIRES: OS=linux-gnu || OS=linux-androideabi || OS=linux-android
+// REQUIRES: OS=linux-gnu
 
 import Swift
 import StdlibUnittest
@@ -25,7 +26,7 @@ GlibcTestSuite.test("errno") {
 
 GlibcTestSuite.test("sendfile") {
   // Check that `sendfile` is available.  Don't actually call it, because doing that is non-trivial.
-  _ = sendfile
+  expectEqual(((Int32, Int32, UnsafeMutablePointer<off_t>!, ssize_t) -> ssize_t).self, type(of: sendfile))
 }
 
 var GlibcIoctlConstants = TestSuite("GlibcIoctlConstants")

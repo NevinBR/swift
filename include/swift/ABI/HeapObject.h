@@ -14,9 +14,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef SWIFT_ABI_HEAPOBJECT_H
-#define SWIFT_ABI_HEAPOBJECT_H
+#ifndef __SWIFT_ABI_HEAPOBJECT_H__
+#define __SWIFT_ABI_HEAPOBJECT_H__
 
 #include "../../../stdlib/public/SwiftShims/HeapObject.h"
 
-#endif // SWIFT_ABI_HEAPOBJECT_H
+#endif // __SWIFT_ABI_HEAPOBJECT_H__

@@ -19,7 +19,6 @@
 #include "swift/AST/Module.h"
 #include "swift/AST/Stmt.h"
 #include "swift/AST/Expr.h"
-#include "swift/AST/SourceFile.h"
 #include "swift/AST/TypeRefinementContext.h"
 #include "swift/Basic/SourceManager.h"
 
@@ -198,7 +197,7 @@ SourceLoc TypeRefinementContext::getIntroductionLoc() const {
 static SourceRange
 getAvailabilityConditionVersionSourceRange(const PoundAvailableInfo *PAI,
                                            PlatformKind Platform,
-                                           const llvm::VersionTuple &Version) {
+                                           const clang::VersionTuple &Version) {
   SourceRange Range;
   for (auto *S : PAI->getQueries()) {
     if (auto *V = dyn_cast<PlatformVersionConstraintAvailabilitySpec>(S)) {
@@ -218,7 +217,7 @@ static SourceRange
 getAvailabilityConditionVersionSourceRange(
     const MutableArrayRef<StmtConditionElement> &Conds,
     PlatformKind Platform,
-    const llvm::VersionTuple &Version) {
+    const clang::VersionTuple &Version) {
   SourceRange Range;
   for (auto const& C : Conds) {
     if (C.getKind() == StmtConditionElement::CK_Availability) {
@@ -237,7 +236,7 @@ getAvailabilityConditionVersionSourceRange(
 static SourceRange
 getAvailabilityConditionVersionSourceRange(const DeclAttributes &DeclAttrs,
                                            PlatformKind Platform,
-                                           const llvm::VersionTuple &Version) {
+                                           const clang::VersionTuple &Version) {
   SourceRange Range;
   for (auto *Attr : DeclAttrs) {
     if (auto *AA = dyn_cast<AvailableAttr>(Attr)) {
@@ -259,7 +258,7 @@ getAvailabilityConditionVersionSourceRange(const DeclAttributes &DeclAttrs,
 SourceRange
 TypeRefinementContext::getAvailabilityConditionVersionSourceRange(
     PlatformKind Platform,
-    const llvm::VersionTuple &Version) const {
+    const clang::VersionTuple &Version) const {
   switch (getReason()) {
   case Reason::Decl:
     return ::getAvailabilityConditionVersionSourceRange(
@@ -301,7 +300,7 @@ void TypeRefinementContext::print(raw_ostream &OS, SourceManager &SrcMgr,
     Decl *D = Node.getAsDecl();
     OS << " decl=";
     if (auto VD = dyn_cast<ValueDecl>(D)) {
-      OS << VD->getName();
+      OS << VD->getFullName();
     } else if (auto *ED = dyn_cast<ExtensionDecl>(D)) {
       OS << "extension." << ED->getExtendedType().getString();
     }

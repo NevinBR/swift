@@ -1,7 +1,6 @@
 // RUN: %target-run-simple-swift
 // REQUIRES: long_test
 // REQUIRES: executable_test
-// UNSUPPORTED: CPU=armv7k
 
 import SwiftPrivate
 import StdlibUnittest
@@ -19,7 +18,7 @@ UTF8Decoder.test("Internal/_decodeOne") {
       i += 1
     }
     let (codePoint, _) = UTF8._decodeOne(data)
-    expectEqual(scalar.value, codePoint, "data=\(asHex(data))")
+    expectOptionalEqual(scalar.value, codePoint, "data=\(asHex(data))")
   }
 
   for i in 0..<0xd800 { ensureValid(UnicodeScalar(i)!) }

@@ -63,7 +63,7 @@ Logger::~Logger() {
   OS << llvm::format("%7.4f] ", TR.getWallTime() - sBeginTR.getWallTime());
   OS << Msg.str();
 
-  fprintf(stderr, "%s: %s", LoggerName.c_str(), LogMsg.c_str());
+  llvm::errs() << LoggerName << ": " << LogMsg.str() << '\n';
 
 #if __APPLE__
   // Use the Apple System Log facility.

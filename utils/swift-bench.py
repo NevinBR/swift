@@ -174,7 +174,7 @@ func main() {
     N = CommandLine.arguments[1].toInt()!
   }
 """
-        main_body = r"""
+        main_body = """
   name = "%s"
   if CommandLine.arguments.count <= 2 || CommandLine.arguments[2] == name {
     let start = __mach_absolute_time__()

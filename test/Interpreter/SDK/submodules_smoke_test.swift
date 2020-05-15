@@ -20,7 +20,7 @@ typealias PanRecognizer = NSPanGestureRecognizer
 typealias PanRecognizer2 = AppKit.NSPanGestureRecognizer
 
 #if !NO_ERROR
-_ = glVertexPointer // expected-error{{cannot find 'glVertexPointer' in scope}}
+_ = glVertexPointer // expected-error{{use of unresolved identifier 'glVertexPointer'}}
 #endif
 
 // FIXME: Remove -verify-ignore-unknown.

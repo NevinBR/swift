@@ -1,6 +1,5 @@
 // Make sure that we can deserialize the stdlib.
-// RUN: %target-sil-opt %platform-module-dir/Swift.swiftmodule/%target-swiftmodule-name -module-name Swift > /dev/null || %target-sil-opt %platform-module-dir/Swift.swiftmodule -module-name Swift > /dev/null
-// RUN: llvm-bcanalyzer %platform-module-dir/Swift.swiftmodule/%target-swiftmodule-name > %t || llvm-bcanalyzer %platform-module-dir/Swift.swiftmodule > %t
-// RUN: %FileCheck %s < %t
+// RUN: %target-sil-opt -assume-parsing-unqualified-ownership-sil %platform-module-dir/Swift.swiftmodule > /dev/null
+// RUN: llvm-bcanalyzer %platform-module-dir/Swift.swiftmodule | %FileCheck %s
 
 // CHECK-NOT: Unknown

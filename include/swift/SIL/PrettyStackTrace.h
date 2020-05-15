@@ -22,9 +22,8 @@
 #include "llvm/Support/PrettyStackTrace.h"
 
 namespace swift {
-class ASTContext;
-class SILFunction;
-class SILNode;
+  class ASTContext;
+  class SILFunction;
 
 void printSILLocationDescription(llvm::raw_ostream &out, SILLocation loc,
                                  ASTContext &ctx);
@@ -45,26 +44,14 @@ public:
 
 /// Observe that we are doing some processing of a SIL function.
 class PrettyStackTraceSILFunction : public llvm::PrettyStackTraceEntry {
-  const SILFunction *TheFn;
+  SILFunction *TheFn;
   const char *Action;
 public:
-  PrettyStackTraceSILFunction(const char *action, const SILFunction *F)
+  PrettyStackTraceSILFunction(const char *action, SILFunction *F)
     : TheFn(F), Action(action) {}
   virtual void print(llvm::raw_ostream &OS) const;
 protected:
   void printFunctionInfo(llvm::raw_ostream &out) const;
-};
-
-/// Observe that we are visiting SIL nodes.
-class PrettyStackTraceSILNode : public llvm::PrettyStackTraceEntry {
-  const SILNode *Node;
-  const char *Action;
-
-public:
-  PrettyStackTraceSILNode(const char *action, const SILNode *node)
-    : Node(node), Action(action) {}
-
-  virtual void print(llvm::raw_ostream &OS) const;
 };
 
 } // end namespace swift

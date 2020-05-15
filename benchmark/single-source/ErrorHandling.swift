@@ -12,12 +12,6 @@
 
 import TestsUtils
 
-public let ErrorHandling = BenchmarkInfo(
-  name: "ErrorHandling",
-  runFunction: run_ErrorHandling,
-  tags: [.validation, .exceptions],
-  legacyFactor: 10)
-
 enum PizzaError : Error {
   case Pepperoni, Olives, Anchovy
 }
@@ -36,7 +30,7 @@ func doSomething() throws -> String {
 
 @inline(never)
 public func run_ErrorHandling(_ N: Int) {
-  for _ in 1...500*N {
+  for _ in 1...5000*N {
     do {
       _ = try doSomething()
     } catch _ {
@@ -44,3 +38,4 @@ public func run_ErrorHandling(_ N: Int) {
     }
   }
 }
+

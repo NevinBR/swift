@@ -13,19 +13,20 @@
 #include <Foundation/Foundation.h>
 #include "swift/Runtime/Config.h"
 
-SWIFT_CC(swift) SWIFT_RUNTIME_LIBRARY_VISIBILITY
+SWIFT_CC(swift)
 extern "C" void
-NSArray_getObjects(NSArray *_Nonnull nsArray,
-                   id *objects, NSUInteger rangeLocation,
-                   NSUInteger rangeLength) {
+swift_stdlib_NSArray_getObjects(NSArray NS_RELEASES_ARGUMENT *_Nonnull nsArray,
+                                id *objects, NSUInteger rangeLocation,
+                                NSUInteger rangeLength) {
   [nsArray getObjects:objects range:NSMakeRange(rangeLocation, rangeLength)];
+  [nsArray release];
 }
 
-SWIFT_CC(swift) SWIFT_RUNTIME_LIBRARY_VISIBILITY
+SWIFT_CC(swift)
 extern "C" void
-NSDictionary_getObjectsAndKeysWithCount(NSDictionary *_Nonnull nsDictionary,
-                                        id *objects, id *keys,
-                                        NSInteger count) {
-  [nsDictionary getObjects:objects andKeys:keys count:count];
+swift_stdlib_NSDictionary_getObjects(NSDictionary *_Nonnull nsDictionary,
+                                     id *objects, id *keys) {
+  [nsDictionary getObjects:objects andKeys:keys];
+  [nsDictionary release];
 }
 

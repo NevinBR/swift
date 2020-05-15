@@ -16,7 +16,7 @@ struct Guts {
 
 class Target : NSString {
   // This dynamic property is observed by KVO
-  @objc dynamic var objcValue: String
+  dynamic var objcValue: String
 
   // This Swift-typed property causes vtable usage on this class.
   var swiftValue: Guts

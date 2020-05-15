@@ -18,7 +18,6 @@
 #define SWIFT_IRGEN_STRUCTMETADATALAYOUT_H
 
 #include "NominalMetadataVisitor.h"
-#include "swift/AST/IRGenOptions.h"
 
 namespace swift {
 namespace irgen {
@@ -48,43 +47,29 @@ public:
 
     // StructMetadata header.
     asImpl().addNominalTypeDescriptor();
+    asImpl().addParentMetadataRef();
 
-    // Everything after this is type-specific.
-    asImpl().noteStartOfTypeSpecificMembers();
-
-    // Generic arguments.
-    // This must always be the first piece of trailing data.
-    asImpl().addGenericFields(Target);
-
+    // If changing this layout, you must update the magic number in
+    // emitParentMetadataRef.
+    
     // Struct field offsets.
     asImpl().noteStartOfFieldOffsets();
     for (VarDecl *prop : Target->getStoredProperties())
       asImpl().addFieldOffset(prop);
 
-    asImpl().noteEndOfFieldOffsets();
-
-    if (asImpl().hasTrailingFlags())
-      asImpl().addTrailingFlags();
+    // Instantiation-specific.
+    asImpl().addGenericFields(Target, Target->getDeclaredTypeInContext());
   }
   
   // Note the start of the field offset vector.
   void noteStartOfFieldOffsets() {}
-
-  // Note the end of the field offset vector.
-  void noteEndOfFieldOffsets() {}
-
-  bool hasTrailingFlags() {
-    return Target->isGenericContext() &&
-           IGM.shouldPrespecializeGenericMetadata();
-  }
 };
 
 /// An "implementation" of StructMetadataVisitor that just scans through
 /// the metadata layout, maintaining the offset of the next field.
 template <class Impl>
 class StructMetadataScanner : public StructMetadataVisitor<Impl> {
-  using super = StructMetadataVisitor<Impl>;
-
+  typedef StructMetadataVisitor<Impl> super;
 protected:
   Size NextOffset = Size(0);
 
@@ -95,23 +80,17 @@ public:
   void addMetadataFlags() { addPointer(); }
   void addValueWitnessTable() { addPointer(); }
   void addNominalTypeDescriptor() { addPointer(); }
-  void addFieldOffset(VarDecl *) { addInt32(); }
-  void addGenericArgument(GenericRequirement requirement) { addPointer(); }
-  void addGenericWitnessTable(GenericRequirement requirement) { addPointer(); }
-  void noteStartOfTypeSpecificMembers() {}
-
-  void noteEndOfFieldOffsets() {
-    NextOffset = NextOffset.roundUpToAlignment(super::IGM.getPointerAlignment());
+  void addParentMetadataRef() { addPointer(); }
+  void addFieldOffset(VarDecl*) { addPointer(); }
+  void addGenericArgument(CanType argument) { addPointer(); }
+  void addGenericWitnessTable(CanType argument, ProtocolConformanceRef conf) {
+    addPointer();
   }
-
-  void addTrailingFlags() { addInt64(); }
 
 private:
   void addPointer() {
     NextOffset += super::IGM.getPointerSize();
   }
-  void addInt32() { NextOffset += Size(4); }
-  void addInt64() { NextOffset += Size(8); }
 };
 
 } // end namespace irgen

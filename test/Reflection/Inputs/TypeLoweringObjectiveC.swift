@@ -21,6 +21,3 @@ public struct HasObjCEnum {
   let reference: AnyObject
 }
 
-public struct UnownedReferenceStruct {
-  unowned var unownedRef: NSObjectSubclass
-}

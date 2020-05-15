@@ -17,10 +17,7 @@
 #ifndef SWIFT_IRGEN_GENDECL_H
 #define SWIFT_IRGEN_GENDECL_H
 
-#include "swift/Basic/OptimizationMode.h"
-#include "swift/SIL/SILLocation.h"
 #include "llvm/IR/CallingConv.h"
-#include "llvm/Support/CommandLine.h"
 #include "DebugTypeInfo.h"
 #include "IRGen.h"
 
@@ -32,34 +29,23 @@ namespace llvm {
 namespace swift {
 namespace irgen {
   class IRGenModule;
-  class LinkEntity;
   class LinkInfo;
   class Signature;
-
-  void updateLinkageForDefinition(IRGenModule &IGM,
-                                  llvm::GlobalValue *global,
-                                  const LinkEntity &entity);
 
   llvm::Function *createFunction(IRGenModule &IGM,
                                  LinkInfo &linkInfo,
                                  const Signature &signature,
-                                 llvm::Function *insertBefore = nullptr,
-                                 OptimizationMode FuncOptMode =
-                                   OptimizationMode::NotSet);
+                                 llvm::Function *insertBefore = nullptr);
 
-  llvm::GlobalVariable *
-  createVariable(IRGenModule &IGM, LinkInfo &linkInfo, llvm::Type *objectType,
-                 Alignment alignment, DebugTypeInfo DebugType = DebugTypeInfo(),
-                 Optional<SILLocation> DebugLoc = None,
-                 StringRef DebugName = StringRef(), bool heapAllocated = false);
 
-  llvm::GlobalVariable *
-  createLinkerDirectiveVariable(IRGenModule &IGM, StringRef Name);
-
-  void disableAddressSanitizer(IRGenModule &IGM, llvm::GlobalVariable *var);
+  llvm::GlobalVariable *createVariable(IRGenModule &IGM,
+                                       LinkInfo &linkInfo,
+                                       llvm::Type *objectType,
+                                       Alignment alignment,
+                                       DebugTypeInfo DebugType=DebugTypeInfo(),
+                                       Optional<SILLocation> DebugLoc = None,
+                                       StringRef DebugName = StringRef());
 }
 }
-
-extern llvm::cl::opt<bool> UseBasicDynamicReplacement;
 
 #endif

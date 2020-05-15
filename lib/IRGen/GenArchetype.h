@@ -32,16 +32,13 @@ namespace swift {
 namespace irgen {
   class Address;
   class IRGenFunction;
-  class DynamicMetadataRequest;
-  class MetadataResponse;
 
   using GetTypeParameterInContextFn =
     llvm::function_ref<CanType(CanType type)>;
 
   /// Emit a type metadata reference for an archetype.
-  MetadataResponse emitArchetypeTypeMetadataRef(IRGenFunction &IGF,
-                                                CanArchetypeType archetype,
-                                                DynamicMetadataRequest request);
+  llvm::Value *emitArchetypeTypeMetadataRef(IRGenFunction &IGF,
+                                            CanArchetypeType archetype);
 
   /// Emit a witness table reference.
   llvm::Value *emitArchetypeWitnessTableRef(IRGenFunction &IGF,
@@ -49,24 +46,16 @@ namespace irgen {
                                             ProtocolDecl *protocol);
 
   /// Emit a metadata reference for an associated type of an archetype.
-  MetadataResponse emitAssociatedTypeMetadataRef(IRGenFunction &IGF,
-                                                 CanArchetypeType origin,
-                                                 AssociatedType association,
-                                                 DynamicMetadataRequest request);
+  llvm::Value *emitAssociatedTypeMetadataRef(IRGenFunction &IGF,
+                                             CanArchetypeType origin,
+                                             AssociatedType association);
 
   /// Emit a dynamic metatype lookup for the given archetype.
   llvm::Value *emitDynamicTypeOfOpaqueArchetype(IRGenFunction &IGF,
                                                 Address archetypeAddr,
                                                 SILType archetypeType);
   
-  /// Emit a lookup for an opaque result type's metadata.
-  MetadataResponse emitOpaqueTypeMetadataRef(IRGenFunction &IGF,
-                                             CanOpaqueTypeArchetypeType archetype,
-                                             DynamicMetadataRequest request);
-  /// Emit a lookup for an opaque result type's protocol conformance.
-  llvm::Value *emitOpaqueTypeWitnessTableRef(IRGenFunction &IGF,
-                                             CanOpaqueTypeArchetypeType archetype,
-                                             ProtocolDecl *protocol);
+  
 } // end namespace irgen
 } // end namespace swift
 

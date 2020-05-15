@@ -26,7 +26,7 @@ class SideEffectsDumper : public SILModuleTransform {
 
   void run() override {
 
-    LLVM_DEBUG(llvm::dbgs() << "** SideEffectsDumper **\n");
+    DEBUG(llvm::dbgs() << "** SideEffectsDumper **\n");
 
 #ifndef NDEBUG
     auto *SEA = PM->getAnalysis<SideEffectAnalysis>();

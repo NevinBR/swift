@@ -1,6 +1,5 @@
 // RUN: %empty-directory(%t)
 // RUN: %target-build-swift %s -o %t/a.out
-// RUN: %target-codesign %t/a.out
 // RUN: %target-run %t/a.out | %FileCheck %s
 // REQUIRES: executable_test
 
@@ -184,16 +183,10 @@ class MoreConcreteQuadruple : SemiConcreteTriple<State> {
   }
 }
 
-// This check triggers SR-815 (rdar://problem/25318716) on macOS 10.9 and iOS 7.
-// Disable it for now when testing on those versions.
-if #available(macOS 10.10, iOS 8, *) {
-  var u = MoreConcreteQuadruple(10, 17, State.CA, "Hella")
+var u = MoreConcreteQuadruple(10, 17, State.CA, "Hella")
 
-  // CHECK: 10 17
-  printConcretePair(u)
-} else {
-  print("10 17") // Hack to satisfy FileCheck.
-}
+// CHECK: 10 17
+printConcretePair(u)
 
 class RootGenericFixedLayout<T> {
   let a: [T]

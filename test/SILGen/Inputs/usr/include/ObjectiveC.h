@@ -6,25 +6,25 @@ typedef long NSInteger;
 typedef struct _NSZone NSZone;
 
 @protocol NSCopying
-- (_Null_unspecified id) copyWithZone: (nullable NSZone*)zone;
+- (id) copyWithZone: (nullable NSZone*)zone;
 @end
 
-_Null_unspecified SEL sel_registerName(const char * _Null_unspecified);
+SEL sel_registerName(const char *);
 
 @interface NSObject
-+ (NSObject* _Null_unspecified) alloc;
-- (NSObject* _Null_unspecified) init;
-+ (NSObject* _Null_unspecified) new;
++ (NSObject*) alloc;
+- (NSObject*) init;
++ (NSObject*) new;
 + (void) load;
 + (void) initialize;
 
-- (_Null_unspecified id)performSelector:(_Null_unspecified SEL)selector withObject:(_Null_unspecified id)object;
+- (id)performSelector:(SEL)selector withObject:(id)object;
 
-@property (readonly, copy) NSString * _Null_unspecified description;
+@property (readonly, copy) NSString *description;
 
-@property NSString * _Null_unspecified stringProperty;
+@property NSString *stringProperty;
 
-@property Class _Null_unspecified classProp;
+@property Class classProp;
 @end
 
 #define NS_RETURNS_INNER_POINTER __attribute__((objc_returns_inner_pointer))

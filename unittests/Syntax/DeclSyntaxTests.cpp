@@ -43,9 +43,9 @@ TEST(DeclSyntaxTests, DeclModifierGetAPIs) {
   auto Mod = SyntaxFactory::makeDeclModifier(Private, LParen, Set, RParen);
 
   ASSERT_EQ(Private.getRaw(), Mod.getName().getRaw());
-  ASSERT_EQ(LParen.getRaw(), Mod.getDetailLeftParen()->getRaw());
-  ASSERT_EQ(Set.getRaw(), Mod.getDetail()->getRaw());
-  ASSERT_EQ(RParen.getRaw(), Mod.getDetailRightParen()->getRaw());
+  ASSERT_EQ(LParen.getRaw(), Mod.getLeftParen()->getRaw());
+  ASSERT_EQ(Set.getRaw(), Mod.getArgument()->getRaw());
+  ASSERT_EQ(RParen.getRaw(), Mod.getRightParen()->getRaw());
 }
 
 TEST(DeclSyntaxTests, DeclModifierWithAPIs) {
@@ -57,11 +57,11 @@ TEST(DeclSyntaxTests, DeclModifierWithAPIs) {
   SmallString<24> Scratch;
   llvm::raw_svector_ostream OS(Scratch);
   SyntaxFactory::makeBlankDeclModifier()
-      .withName(Private)
-      .withDetailLeftParen(LParen)
-      .withDetail(Set)
-      .withDetailRightParen(RParen)
-      .print(OS);
+    .withName(Private)
+    .withLeftParen(LParen)
+    .withArgument(Set)
+    .withRightParen(RParen)
+    .print(OS);
   ASSERT_EQ(OS.str().str(), "private(set)");
 }
 
@@ -80,9 +80,9 @@ TEST(DeclSyntaxTests, TypealiasMakeAPIs) {
     auto Typealias =
       SyntaxFactory::makeTypealiasKeyword({}, { Trivia::spaces(1) });
     auto Subsequence = SyntaxFactory::makeIdentifier("MyCollection", {}, {});
-    auto ElementName = SyntaxFactory::makeIdentifier("Element", {}, {});
+    auto ElementType = SyntaxFactory::makeTypeIdentifier("Element", {}, {});
     auto ElementParam =
-      SyntaxFactory::makeGenericParameter(None, ElementName, None, None, None);
+      SyntaxFactory::makeGenericParameter(ElementType, None, None, None);
     auto LeftAngle = SyntaxFactory::makeLeftAngleToken({}, {});
     auto RightAngle = SyntaxFactory::makeRightAngleToken({}, Trivia::spaces(1));
     auto GenericParams = GenericParameterClauseSyntaxBuilder()
@@ -91,22 +91,21 @@ TEST(DeclSyntaxTests, TypealiasMakeAPIs) {
       .addGenericParameter(ElementParam)
       .build();
     auto Assignment = SyntaxFactory::makeEqualToken({}, { Trivia::spaces(1) });
-    auto ElementType = SyntaxFactory::makeTypeIdentifier("Element", {}, {});
     auto ElementArg = SyntaxFactory::makeGenericArgument(ElementType, None);
 
     auto GenericArgs = GenericArgumentClauseSyntaxBuilder()
       .useLeftAngleBracket(LeftAngle)
       .useRightAngleBracket(SyntaxFactory::makeRightAngleToken({}, {}))
-      .addArgument(ElementArg)
+      .addGenericArgument(ElementArg)
       .build();
 
     auto Array = SyntaxFactory::makeIdentifier("Array", {}, {});
-    auto Array_Int =
-        SyntaxFactory::makeSimpleTypeIdentifier(Array, GenericArgs);
-    auto TypeInit = SyntaxFactory::makeTypeInitializerClause(Assignment,
-                                                             Array_Int);
+    auto Array_Int = SyntaxFactory::makeTypeIdentifier(Array, GenericArgs,
+                                                       None, None);
+
     SyntaxFactory::makeTypealiasDecl(None, None, Typealias,
-                                     Subsequence, GenericParams, TypeInit, None)
+                                     Subsequence, GenericParams,
+                                     Assignment, Array_Int)
       .print(OS);
     ASSERT_EQ(OS.str().str(),
               "typealias MyCollection<Element> = Array<Element>");
@@ -117,9 +116,9 @@ TEST(DeclSyntaxTests, TypealiasWithAPIs) {
   auto Typealias =
     SyntaxFactory::makeTypealiasKeyword({}, { Trivia::spaces(1) });
   auto MyCollection = SyntaxFactory::makeIdentifier("MyCollection", {}, {});
-  auto ElementName = SyntaxFactory::makeIdentifier("Element", {}, {});
+  auto ElementType = SyntaxFactory::makeTypeIdentifier("Element", {}, {});
   auto ElementParam =
-      SyntaxFactory::makeGenericParameter(None, ElementName, None, None, None);
+    SyntaxFactory::makeGenericParameter(ElementType, None, None, None);
   auto LeftAngle = SyntaxFactory::makeLeftAngleToken({}, {});
   auto RightAngle =
     SyntaxFactory::makeRightAngleToken({}, { Trivia::spaces(1) });
@@ -130,17 +129,17 @@ TEST(DeclSyntaxTests, TypealiasWithAPIs) {
     .build();
   auto Equal = SyntaxFactory::makeEqualToken({}, { Trivia::spaces(1) });
 
-  auto ElementType = SyntaxFactory::makeTypeIdentifier("Element", {} , {});
   auto ElementArg = SyntaxFactory::makeGenericArgument(ElementType, None);
   auto GenericArgs = GenericArgumentClauseSyntaxBuilder()
     .useLeftAngleBracket(LeftAngle)
     .useRightAngleBracket(SyntaxFactory::makeRightAngleToken({}, {}))
-    .addArgument(ElementArg)
+    .addGenericArgument(ElementArg)
     .build();
 
   auto Array = SyntaxFactory::makeIdentifier("Array", {}, {});
-  auto Array_Int = SyntaxFactory::makeSimpleTypeIdentifier(Array, GenericArgs);
-  auto Type_Init = SyntaxFactory::makeTypeInitializerClause(Equal, Array_Int);
+  auto Array_Int = SyntaxFactory::makeTypeIdentifier(Array, GenericArgs,
+                                                     None, None);
+
   {
     SmallString<1> Scratch;
     llvm::raw_svector_ostream OS(Scratch);
@@ -148,7 +147,8 @@ TEST(DeclSyntaxTests, TypealiasWithAPIs) {
       .withTypealiasKeyword(Typealias)
       .withIdentifier(MyCollection)
       .withGenericParameterClause(GenericParams)
-      .withInitializer(Type_Init)
+      .withEquals(Equal)
+      .withType(Array_Int)
       .print(OS);
     ASSERT_EQ(OS.str().str(),
               "typealias MyCollection<Element> = Array<Element>");
@@ -162,8 +162,9 @@ TEST(DeclSyntaxTests, TypealiasBuilderAPIs) {
   auto Typealias =
     SyntaxFactory::makeTypealiasKeyword({}, { Trivia::spaces(1) });
   auto MyCollection = SyntaxFactory::makeIdentifier("MyCollection", {}, {});
-  auto ElementName = SyntaxFactory::makeIdentifier("Element", {}, {});
-  auto ElementParam = SyntaxFactory::makeGenericParameter(ElementName, None);
+  auto ElementType = SyntaxFactory::makeTypeIdentifier("Element", {}, {});
+  auto ElementParam =
+    SyntaxFactory::makeGenericParameter(ElementType, None);
   auto LeftAngle = SyntaxFactory::makeLeftAngleToken({}, {});
   auto RightAngle =
     SyntaxFactory::makeRightAngleToken({}, { Trivia::spaces(1) });
@@ -175,23 +176,24 @@ TEST(DeclSyntaxTests, TypealiasBuilderAPIs) {
   auto Equal =
     SyntaxFactory::makeEqualToken({}, { Trivia::spaces(1) });
 
-  auto ElementType = SyntaxFactory::makeTypeIdentifier("Element", {}, {});
   auto ElementArg = SyntaxFactory::makeGenericArgument(ElementType, None);
 
   auto GenericArgs = GenericArgumentClauseSyntaxBuilder()
     .useLeftAngleBracket(LeftAngle)
     .useRightAngleBracket(SyntaxFactory::makeRightAngleToken({}, {}))
-    .addArgument(ElementArg)
+    .addGenericArgument(ElementArg)
     .build();
 
   auto Array = SyntaxFactory::makeIdentifier("Array", {}, {});
-  auto Array_Int = SyntaxFactory::makeSimpleTypeIdentifier(Array, GenericArgs);
-  auto Type_Init = SyntaxFactory::makeTypeInitializerClause(Equal, Array_Int);
+  auto Array_Int = SyntaxFactory::makeTypeIdentifier(Array, GenericArgs,
+                                                     None, None);
+
   TypealiasDeclSyntaxBuilder()
     .useTypealiasKeyword(Typealias)
     .useIdentifier(MyCollection)
     .useGenericParameterClause(GenericParams)
-    .useInitializer(Type_Init)
+    .useEquals(Equal)
+    .useType(Array_Int)
     .build()
     .print(OS);
   ASSERT_EQ(OS.str().str(),
@@ -207,19 +209,18 @@ FunctionParameterSyntax getCannedFunctionParameter() {
   auto Colon = SyntaxFactory::makeColonToken({}, Trivia::spaces(1));
   auto Int = SyntaxFactory::makeTypeIdentifier("Int", {},
                                                Trivia::spaces(1));
+  auto IntAnnotation = SyntaxFactory::makeTypeAnnotation({}, None, Int);
   auto NoEllipsis = TokenSyntax::missingToken(tok::identifier, "...");
   auto Equal = SyntaxFactory::makeEqualToken({}, Trivia::spaces(1));
 
   auto Sign = SyntaxFactory::makePrefixOperator("-", {}, {});
   auto OneDigits = SyntaxFactory::makeIntegerLiteral("1", {}, {});
-  auto One = SyntaxFactory::makePrefixOperatorExpr(Sign,
-    SyntaxFactory::makeIntegerLiteralExpr(OneDigits));
-  auto DefaultArg = SyntaxFactory::makeInitializerClause(Equal, One);
+  auto One = SyntaxFactory::makeIntegerLiteralExpr(Sign, OneDigits);
   auto Comma = SyntaxFactory::makeCommaToken({}, Trivia::spaces(1));
 
-  return SyntaxFactory::makeFunctionParameter(None, ExternalName, LocalName,
-                                              Colon, Int, NoEllipsis,
-                                              DefaultArg, Comma);
+  return SyntaxFactory::makeFunctionParameter(ExternalName, LocalName, Colon,
+                                              IntAnnotation, NoEllipsis, Equal,
+                                              One, Comma);
 }
 
 TEST(DeclSyntaxTests, FunctionParameterMakeAPIs) {
@@ -244,44 +245,43 @@ TEST(DeclSyntaxTests, FunctionParameterGetAPIs) {
   auto Colon = SyntaxFactory::makeColonToken({}, Trivia::spaces(1));
   auto Int = SyntaxFactory::makeTypeIdentifier("Int", {},
                                                Trivia::spaces(1));
+  auto IntAnnotation = SyntaxFactory::makeTypeAnnotation({}, None, Int);
   auto NoEllipsis = TokenSyntax::missingToken(tok::identifier, "...");
   auto Equal = SyntaxFactory::makeEqualToken({}, Trivia::spaces(1));
 
   auto Sign = SyntaxFactory::makePrefixOperator("-", {}, {});
   auto OneDigits = SyntaxFactory::makeIntegerLiteral("1", {}, {});
-  auto One = SyntaxFactory::makePrefixOperatorExpr(Sign,
-    SyntaxFactory::makeIntegerLiteralExpr(OneDigits));
-  auto DefaultArg = SyntaxFactory::makeInitializerClause(Equal, One);
+  auto One = SyntaxFactory::makeIntegerLiteralExpr(Sign, OneDigits);
   auto Comma = SyntaxFactory::makeCommaToken({}, {});
 
-  auto Param = SyntaxFactory::makeFunctionParameter(None, ExternalName,
-                                                    LocalName, Colon, Int,
-                                                    NoEllipsis, DefaultArg,
+  auto Param = SyntaxFactory::makeFunctionParameter(ExternalName, LocalName,
+                                                    Colon, IntAnnotation,
+                                                    NoEllipsis, Equal, One,
                                                     Comma);
 
-  ASSERT_EQ(ExternalName.getRaw(), Param.getFirstName()->getRaw());
-  ASSERT_EQ(LocalName.getRaw(), Param.getSecondName()->getRaw());
-  ASSERT_EQ(Colon.getRaw(), Param.getColon()->getRaw());
+  ASSERT_EQ(ExternalName.getRaw(), Param.getExternalName()->getRaw());
+  ASSERT_EQ(LocalName.getRaw(), Param.getLocalName().getRaw());
+  ASSERT_EQ(Colon.getRaw(), Param.getColon().getRaw());
 
-  auto GottenType = Param.getType();
-  auto GottenType2 = Param.getType();
-  ASSERT_TRUE(GottenType->hasSameIdentityAs(*GottenType2));
+  auto GottenType = Param.getTypeAnnotation();
+  auto GottenType2 = Param.getTypeAnnotation();
+  ASSERT_TRUE(GottenType.hasSameIdentityAs(GottenType2));
 
-  ASSERT_EQ(DefaultArg.getRaw(), Param.getDefaultArgument()->getRaw());
+  ASSERT_EQ(Equal.getRaw(), Param.getDefaultEquals()->getRaw());
 
-  auto GottenDefaultValue = Param.getDefaultArgument()->getValue();
-  auto GottenDefaultValue2 = Param.getDefaultArgument()->getValue();
+  auto GottenDefaultValue = Param.getDefaultValue().getValue();
+  auto GottenDefaultValue2 = Param.getDefaultValue().getValue();
   ASSERT_TRUE(GottenDefaultValue.hasSameIdentityAs(GottenDefaultValue2));
 
   ASSERT_EQ(Comma.getRaw(), Param.getTrailingComma()->getRaw());
 
   // Test that llvm::None is returned for non-token missing children:
   auto Decimated = Param
-    .withType(llvm::None)
-    .withDefaultArgument(llvm::None);
+    .withTypeAnnotation(llvm::None)
+    .withDefaultValue(llvm::None);
 
-  ASSERT_FALSE(Decimated.getType().hasValue());
-  ASSERT_FALSE(Decimated.getDefaultArgument().hasValue());
+  ASSERT_TRUE(Decimated.getTypeAnnotation().isMissing());
+  ASSERT_FALSE(Decimated.getDefaultValue().hasValue());
 }
 
 TEST(DeclSyntaxTests, FunctionParameterWithAPIs) {
@@ -292,23 +292,24 @@ TEST(DeclSyntaxTests, FunctionParameterWithAPIs) {
                                              Trivia::spaces(1));
   auto Int = SyntaxFactory::makeTypeIdentifier("Int", {},
                                                Trivia::spaces(1));
+  auto IntAnnotation = SyntaxFactory::makeTypeAnnotation({}, None, Int);
   auto Equal = SyntaxFactory::makeEqualToken({}, Trivia::spaces(1));
 
   auto NoSign = TokenSyntax::missingToken(tok::oper_prefix, "");
   auto OneDigits = SyntaxFactory::makeIntegerLiteral("1", {}, {});
-  auto One = SyntaxFactory::makeIntegerLiteralExpr(OneDigits);
-  auto DefaultArg = SyntaxFactory::makeInitializerClause(Equal, One);
+  auto One = SyntaxFactory::makeIntegerLiteralExpr(NoSign, OneDigits);
   auto Comma = SyntaxFactory::makeCommaToken({}, {});
 
   {
     SmallString<48> Scratch;
     llvm::raw_svector_ostream OS(Scratch);
     getCannedFunctionParameter()
-      .withFirstName(ExternalName)
-      .withSecondName(LocalName)
+      .withExternalName(ExternalName)
+      .withLocalName(LocalName)
       .withColon(Colon)
-      .withType(Int)
-      .withDefaultArgument(DefaultArg)
+      .withTypeAnnotation(IntAnnotation)
+      .withDefaultEquals(Equal)
+      .withDefaultValue(One)
       .withTrailingComma(Comma)
       .print(OS);
     ASSERT_EQ(OS.str().str(), "for integer : Int = 1,");
@@ -317,39 +318,11 @@ TEST(DeclSyntaxTests, FunctionParameterWithAPIs) {
     SmallString<48> Scratch;
     llvm::raw_svector_ostream OS(Scratch);
     getCannedFunctionParameter()
-      .withType(llvm::None)
-      .withDefaultArgument(llvm::None)
+      .withTypeAnnotation(llvm::None)
+      .withDefaultValue(llvm::None)
       .print(OS);
-    ASSERT_EQ(OS.str().str(), "with radius: , ");
+    ASSERT_EQ(OS.str().str(), "with radius: = , ");
   }
-}
-
-TEST(DeclSyntaxTests, FunctionParameterWithEllipsis) {
-    auto ExternalName = SyntaxFactory::makeIdentifier("for", {},
-                                                      Trivia::spaces(1));
-    auto LocalName = SyntaxFactory::makeIdentifier("integer", {}, {});
-    auto Colon = SyntaxFactory::makeColonToken(Trivia::spaces(1),
-                                               Trivia::spaces(1));
-    auto Int = SyntaxFactory::makeTypeIdentifier("Int", {},
-                                                 Trivia::spaces(0));
-    auto Ellipsis = SyntaxFactory::makeEllipsisToken({},
-                                                     Trivia::spaces(1));
-    auto Comma = SyntaxFactory::makeCommaToken({}, {});
-    
-    {
-        SmallString<48> Scratch;
-        llvm::raw_svector_ostream OS(Scratch);
-        getCannedFunctionParameter()
-        .withFirstName(ExternalName)
-        .withSecondName(LocalName)
-        .withColon(Colon)
-        .withType(Int)
-        .withEllipsis(Ellipsis)
-        .withDefaultArgument(llvm::None)
-        .withTrailingComma(Comma)
-        .print(OS);
-        ASSERT_EQ(OS.str().str(), "for integer : Int... ,");
-    }
 }
 
 #pragma mark - parameter-list
@@ -383,13 +356,13 @@ FunctionSignatureSyntax getCannedFunctionSignature() {
     .appending(Param)
     .castTo<FunctionParameterListSyntax>();
   auto RParen = SyntaxFactory::makeRightParenToken({}, Trivia::spaces(1));
-  auto Parameter = SyntaxFactory::makeParameterClause(LParen, List, RParen);
   auto Throws = SyntaxFactory::makeThrowsKeyword({}, Trivia::spaces(1));
   auto Arrow = SyntaxFactory::makeArrowToken({}, Trivia::spaces(1));
+  auto NoAttributes = SyntaxFactory::makeBlankAttributeList();
   auto Int = SyntaxFactory::makeTypeIdentifier("Int", {}, Trivia::spaces(1));
-  auto Return = SyntaxFactory::makeReturnClause(Arrow, Int);
 
-  return SyntaxFactory::makeFunctionSignature(Parameter, Throws, Return);
+  return SyntaxFactory::makeFunctionSignature(LParen, List, RParen, Throws,
+                                              Arrow, NoAttributes, Int);
 }
 
 TEST(DeclSyntaxTests, FunctionSignatureMakeAPIs) {
@@ -421,21 +394,19 @@ TEST(DeclSyntaxTests, FunctionSignatureGetAPIs) {
   auto RParen = SyntaxFactory::makeRightParenToken({}, Trivia::spaces(1));
   auto Throws = SyntaxFactory::makeThrowsKeyword({}, Trivia::spaces(1));
   auto Arrow = SyntaxFactory::makeArrowToken({}, Trivia::spaces(1));
-
+  auto NoAttributes = SyntaxFactory::makeBlankAttributeList();
   auto Int = SyntaxFactory::makeTypeIdentifier("Int", {}, {});
 
-  auto Sig = SyntaxFactory::makeFunctionSignature(
-    SyntaxFactory::makeParameterClause(LParen, List, RParen),
-    Throws,
-    SyntaxFactory::makeReturnClause(Arrow, Int));
+  auto Sig = SyntaxFactory::makeFunctionSignature(LParen, List, RParen, Throws,
+                                                  Arrow, NoAttributes, Int);
 
-  ASSERT_EQ(LParen.getRaw(), Sig.getInput().getLeftParen().getRaw());
+  ASSERT_EQ(LParen.getRaw(), Sig.getLeftParen().getRaw());
 
   {
     SmallString<48> Scratch;
     llvm::raw_svector_ostream OS(Scratch);
-    auto GottenList1 = Sig.getInput().getParameterList();
-    auto GottenList2 = Sig.getInput().getParameterList();
+    auto GottenList1 = Sig.getParameterList();
+    auto GottenList2 = Sig.getParameterList();
     ASSERT_TRUE(GottenList1.hasSameIdentityAs(GottenList2));
     GottenList1.print(OS);
     ASSERT_EQ(OS.str().str(),
@@ -444,16 +415,25 @@ TEST(DeclSyntaxTests, FunctionSignatureGetAPIs) {
               "with radius: Int = -1, ");
   }
 
-  ASSERT_EQ(RParen.getRaw(), Sig.getInput().getRightParen().getRaw());
+  ASSERT_EQ(RParen.getRaw(), Sig.getRightParen().getRaw());
   ASSERT_EQ(Throws.getRaw(), Sig.getThrowsOrRethrowsKeyword()->getRaw());
   ASSERT_EQ(Sig.getThrowsOrRethrowsKeyword()->getTokenKind(), tok::kw_throws);
-  ASSERT_EQ(Arrow.getRaw(), Sig.getOutput()->getArrow().getRaw());
+  ASSERT_EQ(Arrow.getRaw(), Sig.getArrow()->getRaw());
+
+  {
+    SmallString<48> Scratch;
+    llvm::raw_svector_ostream OS(Scratch);
+    auto GottenAttrs1 = Sig.getReturnTypeAttributes().getValue();
+    auto GottenAttrs2 = Sig.getReturnTypeAttributes().getValue();
+    ASSERT_TRUE(GottenAttrs1.hasSameIdentityAs(GottenAttrs2));
+    ASSERT_EQ(OS.str().str(), "");
+  }
 
   {
     SmallString<3> Scratch;
     llvm::raw_svector_ostream OS(Scratch);
-    auto GottenReturnType1 = Sig.getOutput()->getReturnType();
-    auto GottenReturnType2 = Sig.getOutput()->getReturnType();
+    auto GottenReturnType1 = Sig.getReturnType().getValue();
+    auto GottenReturnType2 = Sig.getReturnType().getValue();
     ASSERT_TRUE(GottenReturnType1.hasSameIdentityAs(GottenReturnType2));
     GottenReturnType1.print(OS);
     ASSERT_EQ(OS.str().str(), "Int");
@@ -471,16 +451,19 @@ TEST(DeclSyntaxTests, FunctionSignatureWithAPIs) {
   auto RParen = SyntaxFactory::makeRightParenToken({}, Trivia::spaces(1));
   auto Throws = SyntaxFactory::makeThrowsKeyword({}, Trivia::spaces(1));
   auto Arrow = SyntaxFactory::makeArrowToken({}, Trivia::spaces(1));
+  auto NoAttributes = SyntaxFactory::makeBlankAttributeList();
   auto Int = SyntaxFactory::makeTypeIdentifier("Int", {}, {});
 
-  auto Parameter = SyntaxFactory::makeParameterClause(LParen, List, RParen);
-  auto Return = SyntaxFactory::makeReturnClause(Arrow, Int);
   SmallString<48> Scratch;
   llvm::raw_svector_ostream OS(Scratch);
   SyntaxFactory::makeBlankFunctionSignature()
-    .withInput(Parameter)
+    .withLeftParen(LParen)
+    .withParameterList(List)
+    .withRightParen(RParen)
     .withThrowsOrRethrowsKeyword(Throws)
-    .withOutput(Return)
+    .withReturnTypeAttributes(NoAttributes)
+    .withArrow(Arrow)
+    .withReturnType(Int)
     .print(OS);
   ASSERT_EQ(OS.str().str(),
             "(with radius: Int = -1, "
@@ -495,12 +478,12 @@ ModifierListSyntax getCannedModifiers() {
   auto NoLParen = TokenSyntax::missingToken(tok::l_paren, "(");
   auto NoArgument = TokenSyntax::missingToken(tok::identifier, "");
   auto NoRParen = TokenSyntax::missingToken(tok::r_paren, ")");
-  auto Public =
-      SyntaxFactory::makeDeclModifier(PublicID, NoLParen, NoArgument, NoRParen);
+  auto Public = SyntaxFactory::makeDeclModifier(PublicID, NoLParen, NoArgument,
+                                                NoRParen);
 
   auto StaticKW = SyntaxFactory::makeStaticKeyword({}, Trivia::spaces(1));
-  auto Static =
-      SyntaxFactory::makeDeclModifier(StaticKW, NoLParen, NoArgument, NoRParen);
+  auto Static = SyntaxFactory::makeDeclModifier(StaticKW, NoLParen, NoArgument,
+                                                NoRParen);
 
   return SyntaxFactory::makeBlankModifierList()
     .appending(Public)
@@ -512,8 +495,8 @@ GenericParameterClauseSyntax getCannedGenericParams() {
 
   auto LAngle = SyntaxFactory::makeLeftAngleToken({}, {});
   auto RAngle = SyntaxFactory::makeRightAngleToken({}, {});
-  auto TType = SyntaxFactory::makeIdentifier("T", {}, {});
-  auto UType = SyntaxFactory::makeIdentifier("U", {}, {});
+  auto TType = SyntaxFactory::makeTypeIdentifier("T", {}, {});
+  auto UType = SyntaxFactory::makeTypeIdentifier("U", {}, {});
 
   auto Comma = SyntaxFactory::makeCommaToken({}, Trivia::spaces(1));
   auto T = SyntaxFactory::makeGenericParameter(TType, Comma);
@@ -530,14 +513,14 @@ GenericParameterClauseSyntax getCannedGenericParams() {
 CodeBlockSyntax getCannedBody() {
   auto NoSign = TokenSyntax::missingToken(tok::oper_prefix, "-");
   auto OneDigits = SyntaxFactory::makeIntegerLiteral("1", {}, {});
-  auto One = SyntaxFactory::makeIntegerLiteralExpr(OneDigits);
+  auto One = SyntaxFactory::makeIntegerLiteralExpr(NoSign, OneDigits);
   auto ReturnKW =
     SyntaxFactory::makeReturnKeyword(Trivia::newlines(1) + Trivia::spaces(2),
                                      {});
-  auto Return = SyntaxFactory::makeReturnStmt(ReturnKW, One);
-  auto ReturnItem = SyntaxFactory::makeCodeBlockItem(Return, None, None);
+  auto Return = SyntaxFactory::makeReturnStmt(ReturnKW, One, None);
 
-  auto Stmts = SyntaxFactory::makeCodeBlockItemList({ReturnItem});
+  auto Stmts = SyntaxFactory::makeBlankStmtList()
+    .appending(Return);
 
   auto LBrace = SyntaxFactory::makeLeftBraceToken({}, {});
   auto RBrace = SyntaxFactory::makeRightBraceToken(Trivia::newlines(1), {});
@@ -550,11 +533,11 @@ GenericWhereClauseSyntax getCannedWhereClause() {
   auto T = SyntaxFactory::makeTypeIdentifier("T", {}, Trivia::spaces(1));
   auto EqualEqual = SyntaxFactory::makeEqualityOperator({}, Trivia::spaces(1));
   auto Int = SyntaxFactory::makeTypeIdentifier("Int", {}, Trivia::spaces(1));
-  auto SameType = SyntaxFactory::makeSameTypeRequirement(T, EqualEqual, Int);
-  auto Req = SyntaxFactory::makeGenericRequirement(SameType, None);
+  auto SameType = SyntaxFactory::makeSameTypeRequirement(T, EqualEqual, Int,
+                                                         None);
 
   auto Requirements = SyntaxFactory::makeBlankGenericRequirementList()
-    .appending(Req);
+    .appending(SameType);
 
   return SyntaxFactory::makeBlankGenericWhereClause()
     .withWhereKeyword(WhereKW)

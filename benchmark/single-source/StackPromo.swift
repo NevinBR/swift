@@ -9,13 +9,6 @@
 // See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
-import TestsUtils
-
-public let StackPromo = BenchmarkInfo(
-  name: "StackPromo",
-  runFunction: run_StackPromo,
-  tags: [.regression],
-  legacyFactor: 100)
 
 protocol Proto {
   func at() -> Int
@@ -44,10 +37,17 @@ class Foo : Proto {
 @inline(never)
 func work(_ f: Foo) -> Int {
   var r = 0
-  for _ in 0..<1_000 {
+  for _ in 0..<100_000 {
     r += testStackAllocation(f)
   }
   return r
+}
+
+@inline(never)
+func hole(_ use: Int, _ N: Int) {
+  if (N == 0) {
+    print("use: \(use)")
+  }
 }
 
 public func run_StackPromo(_ N: Int) {
@@ -60,5 +60,5 @@ public func run_StackPromo(_ N: Int) {
       r -= work(foo)
     }
   }
-  blackHole(r)
+  hole(r, N)
 }

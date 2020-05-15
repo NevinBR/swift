@@ -118,7 +118,7 @@ CoreGraphicsTests.test("CGPoint.dictionaryRepresentation, CGPoint.init(dictionar
   let point = CGPoint(x: 1, y: 2)
   let dict = point.dictionaryRepresentation
   let newPoint = CGPoint(dictionaryRepresentation: dict)
-  expectEqual(point, newPoint)
+  expectOptionalEqual(point, newPoint)
 }
 
 CoreGraphicsTests.test("CGPoint.zero") {
@@ -185,7 +185,7 @@ CoreGraphicsTests.test("CGSize.dictionaryRepresentation, CGSize.init(dictionaryR
   let size = CGSize(width: 3, height: 4)
   let dict = size.dictionaryRepresentation
   let newSize = CGSize(dictionaryRepresentation: dict)
-  expectEqual(size, newSize)
+  expectOptionalEqual(size, newSize)
 }
 
 CoreGraphicsTests.test("CGSize.zero") {
@@ -269,7 +269,7 @@ CoreGraphicsTests.test("CGRect.dictionaryRepresentation, CGRect.init(dictionaryR
   let rect = CGRect(origin: point, size: size)
   let dict = rect.dictionaryRepresentation
   let newRect = CGRect(dictionaryRepresentation: dict)
-  expectEqual(rect, newRect)
+  expectOptionalEqual(rect, newRect)
 }
 
 CoreGraphicsTests.test("CGRect.isNull") {

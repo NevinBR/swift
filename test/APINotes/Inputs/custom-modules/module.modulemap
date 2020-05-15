@@ -1,6 +1,3 @@
 module APINotesTest {
   header "APINotesTest.h"
 }
-module ObsoletedAPINotesTest {
-  header "ObsoletedAPINotesTest.h"
-}

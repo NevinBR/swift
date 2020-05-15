@@ -19,30 +19,31 @@ using namespace reflection;
 
 class PrintMetadataSource
   : public MetadataSourceVisitor<PrintMetadataSource, void> {
-  FILE *file;
+  std::ostream &OS;
   unsigned Indent;
 
-  FILE * indent(unsigned Amount) {
+  std::ostream &indent(unsigned Amount) {
     for (unsigned i = 0; i < Amount; ++i)
-      fprintf(file, " ");
-    return file;
+      OS << ' ';
+    return OS;
   }
 
-  FILE * printHeader(std::string Name) {
-    fprintf(indent(Indent), "(%s", Name.c_str());
-    return file;
+  std::ostream &printHeader(std::string Name) {
+    indent(Indent) << '(' << Name;
+    return OS;
   }
 
-  FILE * printField(std::string name, std::string value) {
+  template<typename T>
+  std::ostream &printField(std::string name, const T &value) {
     if (!name.empty())
-      fprintf(file, " %s=%s", name.c_str(), value.c_str());
+      OS << " " << name << "=" << value;
     else
-      fprintf(file, " %s", value.c_str());
-    return file;
+      OS << " " << value;
+    return OS;
   }
 
   void printRec(const MetadataSource *MS) {
-    fprintf(file, "\n");
+    OS << "\n";
 
     Indent += 2;
     visit(MS);
@@ -50,39 +51,46 @@ class PrintMetadataSource
   }
 
   void closeForm() {
-    fprintf(file, ")");
+    OS << ')';
   }
 
 public:
-  PrintMetadataSource(FILE *file, unsigned Indent)
-    : file(file), Indent(Indent) {}
+  PrintMetadataSource(std::ostream &OS, unsigned Indent)
+    : OS(OS), Indent(Indent) {}
 
   void
   visitClosureBindingMetadataSource(const ClosureBindingMetadataSource *CB) {
     printHeader("closure_binding");
-    printField("index", std::to_string(CB->getIndex()));
+    printField("index", CB->getIndex());
     closeForm();
   }
 
   void
   visitReferenceCaptureMetadataSource(const ReferenceCaptureMetadataSource *RC){
     printHeader("reference_capture");
-    printField("index", std::to_string(RC->getIndex()));
+    printField("index", RC->getIndex());
     closeForm();
   }
 
   void
   visitMetadataCaptureMetadataSource(const MetadataCaptureMetadataSource *MC){
     printHeader("metadata_capture");
-    printField("index", std::to_string(MC->getIndex()));
+    printField("index", MC->getIndex());
     closeForm();
   }
 
   void
   visitGenericArgumentMetadataSource(const GenericArgumentMetadataSource *GA) {
     printHeader("generic_argument");
-    printField("index", std::to_string(GA->getIndex()));
+    printField("index", GA->getIndex());
     printRec(GA->getSource());
+    closeForm();
+  }
+
+  void
+  visitParentMetadataSource(const ParentMetadataSource *P) {
+    printHeader("parent_of");
+    printRec(P->getChild());
     closeForm();
   }
 
@@ -99,10 +107,10 @@ public:
 };
 
 void MetadataSource::dump() const {
-  dump(stderr, 0);
+  dump(std::cerr, 0);
 }
 
-void MetadataSource::dump(FILE *file, unsigned Indent) const {
-  PrintMetadataSource(file, Indent).visit(this);
-  fprintf(file, "\n");
+void MetadataSource::dump(std::ostream &OS, unsigned Indent) const {
+  PrintMetadataSource(OS, Indent).visit(this);
+  OS << '\n';
 }

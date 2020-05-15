@@ -53,15 +53,6 @@ public func testInitializers() {
   _ = Bar(__: 1)
 }
 
-// CHECK-LABEL: define linkonce_odr hidden {{.+}} @"$sSo3BarC8__noArgsABSgyt_tcfcTO"
-// CHECK: @"\01L_selector(initWithNoArgs)"
-// CHECK-LABEL: define linkonce_odr hidden {{.+}} @"$sSo3BarC8__oneArgABSgs5Int32V_tcfcTO"
-// CHECK: @"\01L_selector(initWithOneArg:)"
-// CHECK-LABEL: define linkonce_odr hidden {{.+}} @"$sSo3BarC9__twoArgs5otherABSgs5Int32V_AGtcfcTO"
-// CHECK: @"\01L_selector(initWithTwoArgs:other:)"
-// CHECK-LABEL: define linkonce_odr hidden {{.+}} @"$sSo3BarC2__ABSgs5Int32V_tcfcTO"
-// CHECK: @"\01L_selector(init:)"
-
 // CHECK-LABEL: define{{( protected)?}} swiftcc void @{{.+}}18testFactoryMethods
 public func testFactoryMethods() {
   // CHECK: @"\01L_selector(fooWithOneArg:)"
@@ -74,8 +65,8 @@ public func testFactoryMethods() {
 
 #if !IRGEN
 public func testSubscript(_ foo: Foo) {
-  _ = foo[foo] // expected-error {{value of type 'Foo' has no subscripts}}
-  _ = foo[1] // expected-error {{value of type 'Foo' has no subscripts}}
+  _ = foo[foo] // expected-error {{type 'Foo' has no subscript members}}
+  _ = foo[1] // expected-error {{type 'Foo' has no subscript members}}
 }
 #endif
 
@@ -94,11 +85,24 @@ public func testTopLevel() {
   _ = __PrivS1()
 
 #if !IRGEN
-  let _ = PrivFooSub() // expected-error {{cannot find 'PrivFooSub' in scope}}
-  privTest() // expected-error {{cannot find 'privTest' in scope}}
-  PrivS1() // expected-error {{cannot find 'PrivS1' in scope}}
+  let _ = PrivFooSub() // expected-error {{use of unresolved identifier}}
+  privTest() // expected-error {{use of unresolved identifier}}
+  PrivS1() // expected-error {{use of unresolved identifier}}
 #endif
 }
+
+// CHECK-LABEL: define linkonce_odr hidden %swift.type* @_T0So12__PrivFooSubCMa{{.*}} {
+// CHECK: %objc_class** @"OBJC_CLASS_REF_$_PrivFooSub"
+// CHECK: }
+
+// CHECK-LABEL: define linkonce_odr hidden {{.+}} @_T0So3BarCSQyABGs5Int32V2___tcfcTO
+// CHECK: @"\01L_selector(init:)"
+// CHECK-LABEL: define linkonce_odr hidden {{.+}} @_T0So3BarCSQyABGs5Int32V9__twoArgs_AE5othertcfcTO
+// CHECK: @"\01L_selector(initWithTwoArgs:other:)"
+// CHECK-LABEL: define linkonce_odr hidden {{.+}} @_T0So3BarCSQyABGs5Int32V8__oneArg_tcfcTO
+// CHECK: @"\01L_selector(initWithOneArg:)"
+// CHECK-LABEL: define linkonce_odr hidden {{.+}} @_T0So3BarCSQyABGyt8__noArgs_tcfcTO
+// CHECK: @"\01L_selector(initWithNoArgs)"
 
 _ = __PrivAnonymousA
 _ = __E0PrivA
@@ -121,7 +125,7 @@ func testCF(_ a: __PrivCFType, b: __PrivCFSub, c: __PrivInt) {
   makeSureAnyObject(a)
   makeSureAnyObject(b)
 #if !IRGEN
-  makeSureAnyObject(c) // expected-error {{argument type '__PrivInt' (aka 'Int32') expected to be an instance of a class or class-constrained type}}
+  makeSureAnyObject(c) // expected-error {{argument type '__PrivInt' (aka 'Int32') does not conform to expected type 'AnyObject'}}
 #endif
 }
 

@@ -19,7 +19,7 @@ TEST(TypeSyntaxTests, TypeAttributeWithAPIs) {
     llvm::raw_svector_ostream OS { Scratch };
     auto Autoclosure = SyntaxFactory::makeBlankAttribute()
       .withAtSignToken(At)
-      .withAttributeName(AutoclosureID);
+      .withIdentifier(AutoclosureID);
     Autoclosure.print(OS);
     ASSERT_EQ(OS.str().str(), "@autoclosure");
   }
@@ -31,7 +31,7 @@ TEST(TypeSyntaxTests, TypeAttributeWithAPIs) {
 
     auto Convention = SyntaxFactory::makeBlankAttribute()
       .withAtSignToken(At)
-      .withAttributeName(conventionID)
+      .withIdentifier(conventionID)
       .withLeftParen(LeftParen)
       .withRightParen(RightParen);
 
@@ -39,7 +39,8 @@ TEST(TypeSyntaxTests, TypeAttributeWithAPIs) {
       SmallString<48> Scratch;
       llvm::raw_svector_ostream OS { Scratch };
       auto cID = SyntaxFactory::makeIdentifier("c", {}, {});
-      Convention.withArgument(cID).print(OS);
+      auto cArgs = SyntaxFactory::makeTokenList({cID});
+      Convention.withBalancedTokens(cArgs).print(OS);
       ASSERT_EQ(OS.str().str(), "@convention(c)");
     }
 
@@ -47,8 +48,8 @@ TEST(TypeSyntaxTests, TypeAttributeWithAPIs) {
       SmallString<48> Scratch;
       llvm::raw_svector_ostream OS { Scratch };
       auto swiftID = SyntaxFactory::makeIdentifier("swift", {}, {});
-      auto swiftArgs = SyntaxFactory::makeTokenList({LeftParen, swiftID, RightParen});
-      Convention.withArgument(swiftID).print(OS);
+      auto swiftArgs = SyntaxFactory::makeTokenList({swiftID});
+      Convention.withBalancedTokens(swiftArgs).print(OS);
       ASSERT_EQ(OS.str().str(), "@convention(swift)");
     }
 
@@ -56,8 +57,8 @@ TEST(TypeSyntaxTests, TypeAttributeWithAPIs) {
       SmallString<48> Scratch;
       llvm::raw_svector_ostream OS { Scratch };
       auto blockID = SyntaxFactory::makeIdentifier("block", {}, {});
-      auto blockArgs = SyntaxFactory::makeTokenList({LeftParen, blockID, RightParen});
-      Convention.withArgument(blockID).print(OS);
+      auto blockArgs = SyntaxFactory::makeTokenList({blockID});
+      Convention.withBalancedTokens(blockArgs).print(OS);
       ASSERT_EQ(OS.str().str(), "@convention(block)");
     }
   }
@@ -68,7 +69,7 @@ TEST(TypeSyntaxTests, TypeAttributeWithAPIs) {
     auto EscapingID = SyntaxFactory::makeIdentifier("escaping", {}, {});
     auto Escaping = SyntaxFactory::makeBlankAttribute()
       .withAtSignToken(At)
-      .withAttributeName(EscapingID);
+      .withIdentifier(EscapingID);
     Escaping.print(OS);
     ASSERT_EQ(OS.str().str(), "@escaping");
   }
@@ -82,7 +83,7 @@ TEST(TypeSyntaxTests, TypeAttributeMakeAPIs) {
     llvm::raw_svector_ostream OS { Scratch };
     auto Autoclosure = SyntaxFactory::makeBlankAttribute()
     .withAtSignToken(At)
-    .withAttributeName(AutoclosureID);
+    .withIdentifier(AutoclosureID);
     Autoclosure.print(OS);
     ASSERT_EQ(OS.str().str(), "@autoclosure");
   }
@@ -96,9 +97,10 @@ TEST(TypeSyntaxTests, TypeAttributeMakeAPIs) {
       SmallString<48> Scratch;
       llvm::raw_svector_ostream OS { Scratch };
       auto cID = SyntaxFactory::makeIdentifier("c", {}, {});
-      SyntaxFactory::makeAttribute(At, conventionID, LeftParen, cID, RightParen,
-                                   llvm::None)
-          .print(OS);
+      auto cArgs = SyntaxFactory::makeTokenList({cID});
+      SyntaxFactory::makeAttribute(At, conventionID, LeftParen, cArgs,
+                                   RightParen)
+        .print(OS);
       ASSERT_EQ(OS.str().str(), "@convention(c)");
     }
 
@@ -106,9 +108,10 @@ TEST(TypeSyntaxTests, TypeAttributeMakeAPIs) {
       SmallString<48> Scratch;
       llvm::raw_svector_ostream OS { Scratch };
       auto swiftID = SyntaxFactory::makeIdentifier("swift", {}, {});
-      SyntaxFactory::makeAttribute(At, conventionID, LeftParen, swiftID,
-                                   RightParen, llvm::None)
-          .print(OS);
+      auto swiftArgs = SyntaxFactory::makeTokenList({swiftID});
+      SyntaxFactory::makeAttribute(At, conventionID, LeftParen,
+                                   swiftArgs, RightParen)
+        .print(OS);
       ASSERT_EQ(OS.str().str(), "@convention(swift)");
     }
 
@@ -116,9 +119,10 @@ TEST(TypeSyntaxTests, TypeAttributeMakeAPIs) {
       SmallString<48> Scratch;
       llvm::raw_svector_ostream OS { Scratch };
       auto blockID = SyntaxFactory::makeIdentifier("block", {}, {});
-      SyntaxFactory::makeAttribute(At, conventionID, LeftParen, blockID,
-                                   RightParen, llvm::None)
-          .print(OS);
+      auto blockArgs = SyntaxFactory::makeTokenList({blockID});
+      SyntaxFactory::makeAttribute(At, conventionID, LeftParen,
+                                   blockArgs,RightParen)
+        .print(OS);
       ASSERT_EQ(OS.str().str(), "@convention(block)");
     }
   }
@@ -129,7 +133,7 @@ TEST(TypeSyntaxTests, TypeAttributeMakeAPIs) {
     auto EscapingID = SyntaxFactory::makeIdentifier("escaping", {}, {});
     auto Escaping = SyntaxFactory::makeBlankAttribute()
       .withAtSignToken(At)
-      .withAttributeName(EscapingID);
+      .withIdentifier(EscapingID);
     Escaping.print(OS);
     ASSERT_EQ(OS.str().str(), "@escaping");
   }
@@ -196,15 +200,16 @@ TEST(TypeSyntaxTests, TupleBuilderAPIs) {
     Builder.useLeftParen(SyntaxFactory::makeLeftParenToken({}, {}));
     auto Comma = SyntaxFactory::makeCommaToken({}, { Trivia::spaces(1) });
     auto IntId = SyntaxFactory::makeIdentifier("Int", {}, {});
-    auto IntType = SyntaxFactory::makeSimpleTypeIdentifier(IntId, None);
+    auto IntType = SyntaxFactory::makeTypeIdentifier(IntId, None, None, None);
     auto Int = SyntaxFactory::makeTupleTypeElement(IntType);
     auto IntWithComma = SyntaxFactory::makeTupleTypeElement(IntType, Comma);
     auto StringId = SyntaxFactory::makeIdentifier("String", {}, {});
-    auto StringType = SyntaxFactory::makeSimpleTypeIdentifier(StringId, None);
+    auto StringType = SyntaxFactory::makeTypeIdentifier(StringId, None,
+                                                        None, None);
     auto String = SyntaxFactory::makeTupleTypeElement(StringType, Comma);
-    Builder.addElement(IntWithComma);
-    Builder.addElement(String);
-    Builder.addElement(Int);
+    Builder.addTupleTypeElement(IntWithComma);
+    Builder.addTupleTypeElement(String);
+    Builder.addTupleTypeElement(Int);
     Builder.useRightParen(SyntaxFactory::makeRightParenToken({}, {}));
 
     auto TupleType = Builder.build();
@@ -218,25 +223,26 @@ TEST(TypeSyntaxTests, TupleBuilderAPIs) {
 
     TupleTypeSyntaxBuilder Builder;
     Builder.useLeftParen(SyntaxFactory::makeLeftParenToken({}, {}));
-    auto Int = SyntaxFactory::makeTypeIdentifier("Int", {}, {});
     auto Comma = SyntaxFactory::makeCommaToken({}, { Trivia::spaces(1) });
     auto Colon = SyntaxFactory::makeColonToken({}, { Trivia::spaces(1) });
+    auto Int = SyntaxFactory::makeTypeIdentifier("Int", {}, {});
     auto xLabel = SyntaxFactory::makeIdentifier("x", {} , {});
     auto xTypeElt = SyntaxFactory::makeTupleTypeElement(xLabel, Colon,
                                                         Int, Comma);
-    auto inout = SyntaxFactory::makeInoutKeyword({}, { Trivia::spaces(1) });
     auto yLabel = SyntaxFactory::makeIdentifier("y", {} , {});
+    auto inout = SyntaxFactory::makeInoutKeyword({}, { Trivia::spaces(1) });
+    auto yTypeAnnotation = SyntaxFactory::makeTypeAnnotation({}, inout, Int);
     auto yTypeElt = SyntaxFactory::makeTupleTypeElement(yLabel, Colon,
-                                                        Int)
-      .withInOut(inout);
-    Builder.addElement(xTypeElt);
-    Builder.addElement(yTypeElt);
+                                                        yTypeAnnotation,
+                                                        None);
+    Builder.addTupleTypeElement(xTypeElt);
+    Builder.addTupleTypeElement(yTypeElt);
     Builder.useRightParen(SyntaxFactory::makeRightParenToken({}, {}));
 
     auto TupleType = Builder.build();
     TupleType.print(OS);
 
-    ASSERT_EQ(OS.str(), "(x: Int, inout y: Int)");
+    ASSERT_EQ(OS.str(), "(x: Int, y: inout Int)");
   }
 }
 
@@ -308,7 +314,7 @@ TEST(TypeSyntaxTests, OptionalTypeWithAPIs) {
     auto StringType = SyntaxFactory::makeTypeIdentifier("String",
                                                         Trivia::spaces(1), {});
     SyntaxFactory::makeBlankOptionalType()
-      .withWrappedType(StringType)
+      .withValueType(StringType)
       .withQuestionMark(SyntaxFactory::makePostfixQuestionMarkToken({}, {}))
       .print(OS);
     ASSERT_EQ(OS.str(), " String?");
@@ -336,7 +342,7 @@ TEST(TypeSyntaxTests, ImplicitlyUnwrappedOptionalTypeWithAPIs) {
                                                           { Trivia::spaces(1) },
                                                           {});
     SyntaxFactory::makeBlankImplicitlyUnwrappedOptionalType()
-      .withWrappedType(StringType)
+      .withValueType(StringType)
       .withExclamationMark(SyntaxFactory::makeExclamationMarkToken({}, {}))
       .print(OS);
     ASSERT_EQ(OS.str(), " String!");
@@ -469,8 +475,9 @@ TEST(TypeSyntaxTests, FunctionTypeMakeAPIs) {
   auto RightParen = SyntaxFactory::makeRightParenToken({},
                                                        {Trivia::spaces(1)});
   auto Int = SyntaxFactory::makeTypeIdentifier("Int", {}, {});
-  auto IntArg = SyntaxFactory::makeBlankTupleTypeElement()
-    .withType(Int);
+  auto IntAnnotation = SyntaxFactory::makeTypeAnnotation({}, None, Int);
+  auto IntArg = SyntaxFactory::makeBlankFunctionTypeArgument()
+    .withTypeAnnotation(IntAnnotation);
   auto Throws = SyntaxFactory::makeThrowsKeyword({}, { Trivia::spaces(1) });
   auto Rethrows = SyntaxFactory::makeRethrowsKeyword({},
                                                        { Trivia::spaces(1) });
@@ -482,20 +489,22 @@ TEST(TypeSyntaxTests, FunctionTypeMakeAPIs) {
 
     auto x = SyntaxFactory::makeIdentifier("x", {}, {});
     auto y = SyntaxFactory::makeIdentifier("y", {}, {});
-    auto xArg = SyntaxFactory::makeBlankTupleTypeElement()
-      .withName(x)
+    auto xArg = SyntaxFactory::makeBlankFunctionTypeArgument()
+      .withExternalName(x)
       .withColon(Colon)
-      .withType(Int)
+      .withTypeAnnotation(IntAnnotation)
       .withTrailingComma(Comma);
-    auto yArg = SyntaxFactory::makeBlankTupleTypeElement()
-      .withName(y)
+    auto yArg = SyntaxFactory::makeBlankFunctionTypeArgument()
+      .withExternalName(y)
       .withColon(Colon)
-      .withType(Int);
+      .withTypeAnnotation(IntAnnotation);
 
-    auto TypeList = SyntaxFactory::makeTupleTypeElementList({
+    auto Attrs = SyntaxFactory::makeBlankAttributeList();
+    auto TypeList = SyntaxFactory::makeFunctionTypeArgumentList({
       xArg, yArg
     });
-    SyntaxFactory::makeFunctionType(LeftParen,
+    SyntaxFactory::makeFunctionType(Attrs,
+                                    LeftParen,
                                     TypeList,
                                     RightParen,
                                     Throws,
@@ -508,11 +517,13 @@ TEST(TypeSyntaxTests, FunctionTypeMakeAPIs) {
   {
     SmallString<48> Scratch;
     llvm::raw_svector_ostream OS(Scratch);
-    auto TypeList = SyntaxFactory::makeTupleTypeElementList({
+    auto Attrs = SyntaxFactory::makeBlankAttributeList();
+    auto TypeList = SyntaxFactory::makeFunctionTypeArgumentList({
       IntArg.withTrailingComma(Comma),
       IntArg
     });
-    SyntaxFactory::makeFunctionType(LeftParen,
+    SyntaxFactory::makeFunctionType(Attrs,
+                                    LeftParen,
                                     TypeList,
                                     RightParen,
                                     Rethrows,
@@ -524,9 +535,11 @@ TEST(TypeSyntaxTests, FunctionTypeMakeAPIs) {
   {
     SmallString<48> Scratch;
     llvm::raw_svector_ostream OS(Scratch);
-    auto TypeList = SyntaxFactory::makeBlankTupleTypeElementList();
+    auto Attrs = SyntaxFactory::makeBlankAttributeList();
+    auto TypeList = SyntaxFactory::makeBlankFunctionTypeArgumentList();
     auto Void = SyntaxFactory::makeVoidTupleType();
-    SyntaxFactory::makeFunctionType(LeftParen,
+    SyntaxFactory::makeFunctionType(Attrs,
+                                    LeftParen,
                                     TypeList,
                                     RightParen,
                                     TokenSyntax::missingToken(tok::kw_throws,
@@ -535,15 +548,17 @@ TEST(TypeSyntaxTests, FunctionTypeMakeAPIs) {
                                     Void).print(OS);
     ASSERT_EQ(OS.str().str(), "() -> ()");
   }
-} 
+
+}
 
 TEST(TypeSyntaxTests, FunctionTypeWithAPIs) {
   auto Comma = SyntaxFactory::makeCommaToken({}, { Trivia::spaces(1) });
   auto LeftParen = SyntaxFactory::makeLeftParenToken({}, {});
   auto RightParen = SyntaxFactory::makeRightParenToken({}, Trivia::spaces(1));
   auto Int = SyntaxFactory::makeTypeIdentifier("Int", {}, {});
-  auto IntArg = SyntaxFactory::makeTupleTypeElement(None, None, None, None,
-                                                    Int, None, None, None);
+  auto IntAnnotation = SyntaxFactory::makeTypeAnnotation({}, None, Int);
+  auto IntArg = SyntaxFactory::makeFunctionTypeArgument(None, None, None,
+                                                        IntAnnotation, None);
   auto Throws = SyntaxFactory::makeThrowsKeyword({}, { Trivia::spaces(1) });
   auto Rethrows = SyntaxFactory::makeRethrowsKeyword({},
                                                        { Trivia::spaces(1) });
@@ -555,15 +570,16 @@ TEST(TypeSyntaxTests, FunctionTypeWithAPIs) {
     auto x = SyntaxFactory::makeIdentifier("x", {}, {});
     auto y = SyntaxFactory::makeIdentifier("y", {}, {});
     auto Colon = SyntaxFactory::makeColonToken({}, Trivia::spaces(1));
-    auto xArg = SyntaxFactory::makeTupleTypeElement(None, x, None, Colon,
-                                                    Int, None, None, Comma);
-    auto yArg = SyntaxFactory::makeTupleTypeElement(None, y, None, Colon,
-                                                    Int, None, None, None);
+    auto intAnnotation = SyntaxFactory::makeTypeAnnotation({}, None, Int);
+    auto xArg = SyntaxFactory::makeFunctionTypeArgument(x, None, Colon,
+                                                        intAnnotation, Comma);
+    auto yArg = SyntaxFactory::makeFunctionTypeArgument(y, None, Colon,
+                                                        intAnnotation, None);
 
     SyntaxFactory::makeBlankFunctionType()
       .withLeftParen(LeftParen)
-      .addArgument(xArg)
-      .addArgument(yArg)
+      .addFunctionTypeArgument(xArg)
+      .addFunctionTypeArgument(yArg)
       .withRightParen(RightParen)
       .withThrowsOrRethrowsKeyword(Throws)
       .withArrow(Arrow)
@@ -580,8 +596,8 @@ TEST(TypeSyntaxTests, FunctionTypeWithAPIs) {
     SyntaxFactory::makeBlankFunctionType()
       .withLeftParen(LeftParen)
       .withRightParen(RightParen)
-      .addArgument(IntArg.withTrailingComma(Comma))
-      .addArgument(IntArg)
+      .addFunctionTypeArgument(IntArg.withTrailingComma(Comma))
+      .addFunctionTypeArgument(IntArg)
       .withThrowsOrRethrowsKeyword(Rethrows)
       .withArrow(Arrow)
       .withReturnType(Int)
@@ -606,6 +622,8 @@ TEST(TypeSyntaxTests, FunctionTypeWithAPIs) {
 TEST(TypeSyntaxTests, FunctionTypeBuilderAPIs) {
   auto Comma = SyntaxFactory::makeCommaToken({}, { Trivia::spaces(1) });
   auto Int = SyntaxFactory::makeTypeIdentifier("Int", {}, {});
+  auto IntAnnotation =
+    SyntaxFactory::makeTypeAnnotation({}, None, Int);
   auto LeftParen = SyntaxFactory::makeLeftParenToken({}, {});
   auto RightParen = SyntaxFactory::makeRightParenToken({},
                                                          {Trivia::spaces(1)});
@@ -621,15 +639,15 @@ TEST(TypeSyntaxTests, FunctionTypeBuilderAPIs) {
     auto x = SyntaxFactory::makeIdentifier("x", {}, {});
     auto y = SyntaxFactory::makeIdentifier("y", {}, {});
     auto Colon = SyntaxFactory::makeColonToken({}, Trivia::spaces(1));
-    auto xArg = SyntaxFactory::makeTupleTypeElement(None, x, None, Colon,
-                                                    Int, None, None, Comma);
-    auto yArg = SyntaxFactory::makeTupleTypeElement(None, y, None, Colon,
-                                                    Int, None, None, None);
+    auto xArg = SyntaxFactory::makeFunctionTypeArgument(x, None, Colon,
+                                                        IntAnnotation, Comma);
+    auto yArg = SyntaxFactory::makeFunctionTypeArgument(y, None, Colon,
+                                                        IntAnnotation, None);
 
     Builder.useLeftParen(LeftParen)
       .useRightParen(RightParen)
-      .addArgument(xArg)
-      .addArgument(yArg)
+      .addFunctionTypeArgument(xArg)
+      .addFunctionTypeArgument(yArg)
       .useThrowsOrRethrowsKeyword(Throws)
       .useArrow(Arrow)
       .useReturnType(Int);
@@ -642,12 +660,13 @@ TEST(TypeSyntaxTests, FunctionTypeBuilderAPIs) {
     SmallString<48> Scratch;
     llvm::raw_svector_ostream OS(Scratch);
     FunctionTypeSyntaxBuilder Builder;
-    auto IntArg = SyntaxFactory::makeTupleTypeElement(None, None, None, None,
-                                                      Int, None, None, None);
+    auto IntArg = SyntaxFactory::makeFunctionTypeArgument(None, None,
+                                                          None, IntAnnotation,
+                                                          None);
     Builder.useLeftParen(LeftParen)
       .useRightParen(RightParen)
-      .addArgument(IntArg.withTrailingComma(Comma))
-      .addArgument(IntArg)
+      .addFunctionTypeArgument(IntArg.withTrailingComma(Comma))
+      .addFunctionTypeArgument(IntArg)
       .useThrowsOrRethrowsKeyword(Rethrows)
       .useArrow(Arrow)
       .useReturnType(Int);

@@ -212,8 +212,7 @@ private:
   IAMResult importAsTypeID(const clang::QualType typeIDTy,
                            EffectiveClangContext effectiveDC) {
     ++SuccessImportAsTypeID;
-    return {formDeclName("typeID", /*isInitializer=*/false),
-            IAMAccessorKind::Getter, effectiveDC};
+    return {formDeclName("typeID"), IAMAccessorKind::Getter, effectiveDC};
   }
 
   // Init
@@ -246,7 +245,7 @@ private:
 
       assert(didDrop != 0 && "specifier not present?");
     }
-    return {formDeclName("init", true, params, prefix), effectiveDC};
+    return {formDeclName("init", params, prefix), effectiveDC};
   }
 
   // Instance computed property
@@ -260,8 +259,7 @@ private:
         propSpec == "Get" ? IAMAccessorKind::Getter : IAMAccessorKind::Setter;
     assert(kind == IAMAccessorKind::Getter || pairedAccessor && "no set-only");
 
-    return {formDeclName(name, /*isInitializer=*/false),
-            kind, selfIdx, effectiveDC};
+    return {formDeclName(name), kind, selfIdx, effectiveDC};
   }
 
   // Instance method
@@ -270,15 +268,14 @@ private:
                          ArrayRef<const clang::ParmVarDecl *> nonSelfParams,
                          EffectiveClangContext effectiveDC) {
     ++SuccessImportAsInstanceMethod;
-    return {formDeclName(name, /*isInitializer=*/false, nonSelfParams),
-            selfIdx, effectiveDC};
+    return {formDeclName(name, nonSelfParams), selfIdx, effectiveDC};
   }
 
   // Static stored property
   IAMResult importAsStaticProperty(StringRef name,
                                    EffectiveClangContext effectiveDC) {
     ++SuccessImportAsStaticProperty;
-    return {formDeclName(name, /*isInitializer=*/false), effectiveDC};
+    return {formDeclName(name), effectiveDC};
   }
 
   // Static computed property
@@ -292,8 +289,7 @@ private:
         propSpec == "Get" ? IAMAccessorKind::Getter : IAMAccessorKind::Setter;
     assert(kind == IAMAccessorKind::Getter || pairedAccessor && "no set-only");
 
-    return {formDeclName(name, /*isInitializer=*/false),
-            kind, effectiveDC};
+    return {formDeclName(name), kind, effectiveDC};
   }
 
   // Static method
@@ -302,8 +298,7 @@ private:
                        ArrayRef<const clang::ParmVarDecl *> nonSelfParams,
                        EffectiveClangContext effectiveDC) {
     ++SuccessImportAsStaticMethod;
-    return {formDeclName(name, /*isInitializer=*/false, nonSelfParams),
-            effectiveDC};
+    return {formDeclName(name, nonSelfParams), effectiveDC};
   }
 
   Identifier getIdentifier(StringRef str) {
@@ -384,20 +379,18 @@ private:
     return clangLookupFunction(pairName);
   }
 
-  DeclBaseName getHumbleBaseName(StringRef name, bool isInitializer) {
+  Identifier getHumbleIdentifier(StringRef name) {
     // Lower-camel-case the incoming name
     NameBuffer buf;
     formHumbleCamelName(name, buf);
-    if (isInitializer && buf == "init")
-      return DeclBaseName::createConstructor();
     return getIdentifier(buf);
   }
 
-  DeclName formDeclName(StringRef baseName, bool isInitializer) {
-    return {getHumbleBaseName(baseName, isInitializer)};
+  DeclName formDeclName(StringRef baseName) {
+    return {getHumbleIdentifier(baseName)};
   }
 
-  DeclName formDeclName(StringRef baseName, bool isInitializer,
+  DeclName formDeclName(StringRef baseName,
                         ArrayRef<const clang::ParmVarDecl *> params,
                         StringRef firstPrefix = "") {
 
@@ -409,7 +402,7 @@ private:
       // We need to form an argument label, despite there being no argument
       NameBuffer paramName;
       formHumbleCamelName(firstPrefix, paramName);
-      return {context, getHumbleBaseName(baseName, isInitializer),
+      return {context, getHumbleIdentifier(baseName),
               getIdentifier(paramName)};
     }
 
@@ -433,9 +426,7 @@ private:
       SmallVector<Identifier, 8> argLabels;
       for (auto str : argStrs)
         argLabels.push_back(getIdentifier(str));
-      LLVM_DEBUG((beforeOmit = {context,
-                                getHumbleBaseName(baseName, isInitializer),
-                                argLabels}));
+      DEBUG((beforeOmit = {context, getHumbleIdentifier(baseName), argLabels}));
     }
 
     SmallVector<OmissionTypeName, 8> paramTypeNames;
@@ -444,8 +435,8 @@ private:
           clangSema.getASTContext(), param->getType()));
     }
 
-    auto humbleBaseName = getHumbleBaseName(baseName, isInitializer);
-    baseName = humbleBaseName.userFacingName();
+    auto humbleBaseName = getHumbleIdentifier(baseName);
+    baseName = humbleBaseName.str();
     bool didOmit =
         omitNeedlessWords(baseName, argStrs, "", "", "", paramTypeNames, false,
                           false, nullptr, scratch);
@@ -453,14 +444,12 @@ private:
     for (auto str : argStrs)
       argLabels.push_back(getIdentifier(str));
 
-    DeclName ret(context,
-                 getHumbleBaseName(baseName, isInitializer),
-                 argLabels);
+    DeclName ret = {context, getHumbleIdentifier(baseName), argLabels};
 
     if (didOmit) {
       ++OmitNumTimes;
-      LLVM_DEBUG(llvm::dbgs() << "omission detected: " << beforeOmit << " ==> "
-                              << ret << "\n");
+      DEBUG(llvm::dbgs() << "omission detected: " << beforeOmit << " ==> "
+                         << ret << "\n");
     }
 
     return ret;
@@ -688,10 +677,9 @@ bool IAMInference::validToImportAsProperty(
 
 IAMResult IAMInference::inferVar(const clang::VarDecl *varDecl) {
   auto fail = [varDecl]() -> IAMResult {
-    LLVM_DEBUG(llvm::dbgs() << "failed to infer variable: ");
-    LLVM_DEBUG(varDecl->print(llvm::dbgs()));
-    (void)varDecl;
-    LLVM_DEBUG(llvm::dbgs() << "\n");
+    DEBUG(llvm::dbgs() << "failed to infer variable: ");
+    DEBUG(varDecl->print(llvm::dbgs()));
+    DEBUG(llvm::dbgs() << "\n");
     ++FailInferVar;
     return {};
   };
@@ -732,10 +720,9 @@ IAMResult IAMInference::infer(const clang::NamedDecl *clangDecl) {
   }
 
   auto fail = [funcDecl]() -> IAMResult {
-    LLVM_DEBUG(llvm::dbgs() << "failed to infer function: ");
-    LLVM_DEBUG(funcDecl->print(llvm::dbgs()));
-    (void)funcDecl;
-    LLVM_DEBUG(llvm::dbgs() << "\n");
+    DEBUG(llvm::dbgs() << "failed to infer function: ");
+    DEBUG(funcDecl->print(llvm::dbgs()));
+    DEBUG(llvm::dbgs() << "\n");
     ++FailInferFunction;
     return {};
   };

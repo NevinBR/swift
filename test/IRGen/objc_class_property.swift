@@ -1,6 +1,7 @@
-// RUN: %target-swift-frontend %s -emit-ir -enable-objc-interop -disable-objc-attr-requires-foundation-module | %FileCheck %s
+// RUN: %target-swift-frontend -assume-parsing-unqualified-ownership-sil %s -emit-ir -disable-objc-attr-requires-foundation-module | %FileCheck %s
 
 // REQUIRES: CPU=x86_64
+// REQUIRES: objc_interop
 
 // Class properties get reflected to ObjC as class methods. ObjC does not have
 // class properties, so no ObjC property is reflected.
@@ -14,11 +15,9 @@
 // CHECK-NOT: @_PROPERTIES__TtC19objc_class_property7Smashed
 
 @objc class Smashed {
-  @objc class var sharedSmashed: Smashed {
+  class var sharedSmashed: Smashed {
     return Smashed()
   }
-
-  @objc init() {}
 }
 
 let s = Smashed.sharedSmashed

@@ -555,23 +555,20 @@ TEST(StaticReadWriteLockTest, ScopedWriteUnlockThreaded) {
 template <typename RW> void readLockWhileReadLockedThreaded(RW &lock) {
   lock.readLock();
 
-  const int threadCount = 10;
-
-  std::atomic<bool> results[threadCount] = {};
+  std::vector<bool> results;
+  results.assign(10, false);
 
   std::atomic<bool> done(false);
-  threadedExecute(threadCount,
+  threadedExecute(10,
                   [&](int index) {
-                    // Always perform at least one iteration of this loop to
-                    // avoid spurious failures if this thread is slow to run.
-                    do {
+                    while (!done) {
                       lock.withReadLock([&] {
                         results[index] = true;
                         std::this_thread::sleep_for(
                             std::chrono::milliseconds(5));
                       });
                       std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                    } while (!done);
+                    }
                   },
                   [&] {
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -580,7 +577,7 @@ template <typename RW> void readLockWhileReadLockedThreaded(RW &lock) {
 
   lock.readUnlock();
 
-  for (auto &result : results) {
+  for (auto result : results) {
     ASSERT_TRUE(result);
   }
 }
@@ -598,23 +595,20 @@ TEST(StaticReadWriteLockTest, ReadLockWhileReadLockedThreaded) {
 template <typename RW> void readLockWhileWriteLockedThreaded(RW &lock) {
   lock.writeLock();
 
-  const int threadCount = 10;
-
-  std::atomic<int> results[threadCount] = {};
+  std::vector<int> results;
+  results.assign(10, 0);
 
   std::atomic<bool> done(false);
-  threadedExecute(threadCount,
+  threadedExecute(10,
                   [&](int index) {
-                    // Always perform at least one iteration of this loop to
-                    // avoid spurious failures if this thread is slow to run.
-                    do {
+                    while (!done) {
                       lock.withReadLock([&] {
                         results[index] += 1;
                         std::this_thread::sleep_for(
                             std::chrono::milliseconds(5));
                       });
                       std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                    } while (!done);
+                    }
                   },
                   [&] {
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -622,7 +616,7 @@ template <typename RW> void readLockWhileWriteLockedThreaded(RW &lock) {
                     lock.writeUnlock();
                   });
 
-  for (auto &result : results) {
+  for (auto result : results) {
     ASSERT_EQ(result, 1);
   }
 }
@@ -642,21 +636,20 @@ template <typename RW> void writeLockWhileReadLockedThreaded(RW &lock) {
 
   const int threadCount = 10;
 
-  std::atomic<int> results[threadCount] = {};
+  std::vector<int> results;
+  results.assign(threadCount, 0);
 
   std::atomic<bool> done(false);
   threadedExecute(threadCount,
                   [&](int index) {
-                    // Always perform at least one iteration of this loop to
-                    // avoid spurious failures if this thread is slow to run.
-                    do {
+                    while (!done) {
                       lock.withWriteLock([&] {
                         results[index] += 1;
                         std::this_thread::sleep_for(
                             std::chrono::milliseconds(5));
                       });
                       std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                    } while (!done);
+                    }
                   },
                   [&] {
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -664,7 +657,7 @@ template <typename RW> void writeLockWhileReadLockedThreaded(RW &lock) {
                     lock.readUnlock();
                   });
 
-  for (auto &result : results) {
+  for (auto result : results) {
     ASSERT_EQ(result, 1);
   }
 }
@@ -684,21 +677,20 @@ template <typename RW> void writeLockWhileWriteLockedThreaded(RW &lock) {
 
   const int threadCount = 10;
 
-  std::atomic<int> results[threadCount] = {};
+  std::vector<int> results;
+  results.assign(threadCount, 0);
 
   std::atomic<bool> done(false);
   threadedExecute(threadCount,
                   [&](int index) {
-                    // Always perform at least one iteration of this loop to
-                    // avoid spurious failures if this thread is slow to run.
-                    do {
+                    while (!done) {
                       lock.withWriteLock([&] {
                         results[index] += 1;
                         std::this_thread::sleep_for(
                             std::chrono::milliseconds(5));
                       });
                       std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                    } while (!done);
+                    }
                   },
                   [&] {
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -706,7 +698,7 @@ template <typename RW> void writeLockWhileWriteLockedThreaded(RW &lock) {
                     lock.writeUnlock();
                   });
 
-  for (auto &result : results) {
+  for (auto result : results) {
     ASSERT_EQ(result, 1);
   }
 }
@@ -727,12 +719,10 @@ template <typename RW> void tryReadLockWhileWriteLockedThreaded(RW &lock) {
   std::atomic<bool> done(false);
   threadedExecute(10,
                   [&](int) {
-                    // Always perform at least one iteration of this loop to
-                    // avoid spurious failures if this thread is slow to run.
-                    do {
+                    while (!done) {
                       ASSERT_FALSE(lock.try_readLock());
                       std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                    } while (!done);
+                    }
                   },
                   [&] {
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -757,20 +747,19 @@ template <typename RW> void tryReadLockWhileReadLockedThreaded(RW &lock) {
 
   const int threadCount = 10;
 
-  std::atomic<bool> results[threadCount] = {};
+  std::vector<bool> results;
+  results.assign(threadCount, false);
 
   std::atomic<bool> done(false);
   threadedExecute(threadCount,
                   [&](int index) {
-                    // Always perform at least one iteration of this loop to
-                    // avoid spurious failures if this thread is slow to run.
-                    do {
+                    while (!done) {
                       ASSERT_TRUE(lock.try_readLock());
                       results[index] = true;
                       std::this_thread::sleep_for(std::chrono::milliseconds(5));
                       lock.readUnlock();
                       std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                    } while (!done);
+                    }
                   },
                   [&] {
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -779,7 +768,7 @@ template <typename RW> void tryReadLockWhileReadLockedThreaded(RW &lock) {
 
   lock.readUnlock();
 
-  for (auto &result : results) {
+  for (auto result : results) {
     ASSERT_TRUE(result);
   }
 }
@@ -800,12 +789,10 @@ template <typename RW> void tryWriteLockWhileWriteLockedThreaded(RW &lock) {
   std::atomic<bool> done(false);
   threadedExecute(10,
                   [&](int) {
-                    // Always perform at least one iteration of this loop to
-                    // avoid spurious failures if this thread is slow to run.
-                    do {
+                    while (!done) {
                       ASSERT_FALSE(lock.try_writeLock());
                       std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                    } while (!done);
+                    }
                   },
                   [&] {
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -831,12 +818,10 @@ template <typename RW> void tryWriteLockWhileReadLockedThreaded(RW &lock) {
   std::atomic<bool> done(false);
   threadedExecute(10,
                   [&](int) {
-                    // Always perform at least one iteration of this loop to
-                    // avoid spurious failures if this thread is slow to run.
-                    do {
+                    while (!done) {
                       ASSERT_FALSE(lock.try_writeLock());
                       std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                    } while (!done);
+                    }
                   },
                   [&] {
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));

@@ -181,11 +181,42 @@ let ducetExtractData: [CollationTableEntry] = [
   CollationTableEntry([0xE01EF], [0x0000_0000_0000], "VARIATION SELECTOR-256"),
 ]
 
-let ducetExtract: [[Unicode.Scalar]: CollationTableEntry] = {
+public struct HashableArray<Element : Hashable> : Hashable {
+  internal var _elements: [Element]
+
+  public init(_ elements: [Element]) {
+    _elements = elements
+  }
+
+  public var hashValue: Int {
+    // FIXME: this is a bad approach to combining hash values.
+    var result = 0
+    for x in _elements {
+      result ^= x.hashValue
+      result = result &* 997
+    }
+    return result
+  }
+}
+
+public func == <Element>(
+  lhs: HashableArray<Element>,
+  rhs: HashableArray<Element>
+) -> Bool {
+  return lhs._elements.elementsEqual(rhs._elements)
+}
+
+extension HashableArray : ExpressibleByArrayLiteral {
+  public init(arrayLiteral elements: Element...) {
+    self._elements = elements
+  }
+}
+
+let ducetExtract: [HashableArray<Unicode.Scalar> : CollationTableEntry] = {
   () in
-  var result: [[Unicode.Scalar]: CollationTableEntry] = [:]
+  var result: [HashableArray<Unicode.Scalar> : CollationTableEntry] = [:]
   for entry in ducetExtractData {
-    result[entry.scalars] = entry
+    result[HashableArray(entry.scalars)] = entry
   }
   return result
 }()
@@ -201,7 +232,7 @@ extension String {
   internal var _collationElements: [UInt64] {
     var result: [UInt64] = []
     for us in self.unicodeScalars {
-      let scalars: [Unicode.Scalar] = [us]
+      let scalars: HashableArray<Unicode.Scalar> = [us]
       let collationElements = ducetExtract[scalars]!.collationElements
       if collationElements[0] != 0 {
         result += collationElements

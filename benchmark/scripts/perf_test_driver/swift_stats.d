@@ -12,22 +12,12 @@
 
 pid$target:*:swift_retain:entry
 {
-        @counts["rr-opts"] = count();
+        @counts[probefunc] = count();
 }
 
 pid$target:*:swift_release:entry
 {
-        @counts["rr-opts"] = count();
-}
-
-pid$target:*:swift_retain_n:entry
-{
-        @counts["rr-opts"] = count();
-}
-
-pid$target:*:swift_release_n:entry
-{
-        @counts["rr-opts"] = count();
+        @counts[probefunc] = count();
 }
 
 END

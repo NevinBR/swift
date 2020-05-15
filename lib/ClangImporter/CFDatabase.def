@@ -18,12 +18,12 @@
 #  error "Must define NON_CF_TYPE(NAME) before including this file."
 #endif
 
-// MARK: Accelerate/vImage
+// Accelerate/vImage
 CF_TYPE(vImageCVImageFormatRef)
 CF_TYPE(vImageConstCVImageFormatRef)
 CF_TYPE(vImageConverterRef)
 
-// MARK: AddressBook
+// AddressBook
 CF_TYPE(ABAddressBookRef)
 CF_TYPE(ABGroupRef)
 CF_TYPE(ABMultiValueRef)
@@ -33,7 +33,7 @@ CF_TYPE(ABPickerRef)
 CF_TYPE(ABRecordRef)
 CF_TYPE(ABSearchElementRef)
 
-// MARK: ApplicationServices/ATS
+// ApplicationServices/ATS
 NON_CF_TYPE(ATSFontContainerRef)
 NON_CF_TYPE(ATSFontFamilyRef)
 NON_CF_TYPE(ATSFontNotificationInfoRef)
@@ -42,13 +42,13 @@ NON_CF_TYPE(ATSFontRef)
 NON_CF_TYPE(ATSGlyphRef)
 NON_CF_TYPE(ATSULineRef)
 
-// MARK: ApplicationServices/ColorSync
+// ApplicationServices/ColorSync
 CF_TYPE(ColorSyncCMMRef)
 CF_TYPE(ColorSyncMutableProfileRef)
 CF_TYPE(ColorSyncProfileRef)
 CF_TYPE(ColorSyncTransformRef)
 
-// MARK: ApplicationServices/HIServices
+// ApplicationServices/HIServices
 CF_TYPE(AXObserverRef)
 CF_TYPE(AXUIElementRef)
 CF_TYPE(AXValueRef)
@@ -59,18 +59,18 @@ NON_CF_TYPE(IconSuiteRef)
 CF_TYPE(PasteboardRef)
 CF_TYPE(TranslationRef)
 
-// MARK: ApplicationServices/LangAnalysis
+// ApplicationServices/LangAnalysis
 NON_CF_TYPE(DCMDictionaryRef)
 NON_CF_TYPE(DCMDictionaryStreamRef)
 NON_CF_TYPE(DCMObjectRef)
 NON_CF_TYPE(LAContextRef)
 NON_CF_TYPE(LAEnvironmentRef)
 
-// MARK: ApplicationServices/QD
+// ApplicationServices/QD
 NON_CF_TYPE(ATSUStyleSettingRef)
 NON_CF_TYPE(WindowRef)
 
-// MARK: AudioToolbox
+// AudioToolbox
 NON_CF_TYPE(AUEventListenerRef)
 NON_CF_TYPE(AUMIDIControllerRef)
 NON_CF_TYPE(AUParameterListenerRef) // CFExclusions.def
@@ -82,7 +82,7 @@ NON_CF_TYPE(AudioQueueTimelineRef) // CFExclusions.def
 NON_CF_TYPE(CAClockRef) // CFExclusions.def
 NON_CF_TYPE(ExtAudioFileRef) // CFExclusions.def
 
-// MARK: CFNetwork
+// CFNetwork
 CF_TYPE(CFHTTPAuthenticationRef)
 CF_TYPE(CFHTTPMessageRef)
 CF_TYPE(CFHostRef)
@@ -91,13 +91,13 @@ CF_TYPE(CFNetServiceBrowserRef)
 CF_TYPE(CFNetServiceMonitorRef)
 CF_TYPE(CFNetServiceRef)
 
-// MARK: Carbon/CarbonSound
+// Carbon/CarbonSound
 NON_CF_TYPE(ModRef)
 
-// MARK: Carbon/CommonPanels
+// Carbon/CommonPanels
 CF_TYPE(FCFontDescriptorRef)
 
-// MARK: Carbon/HIToolbox
+// Carbon/HIToolbox
 CF_TYPE(ControlRef)
 NON_CF_TYPE(DataBrowserItemDataRef)
 NON_CF_TYPE(DialogRef)
@@ -129,22 +129,22 @@ CF_TYPE(TISInputSourceRef)
 NON_CF_TYPE(ToolboxObjectClassRef)
 NON_CF_TYPE(WindowGroupRef)
 
-// MARK: Carbon/Ink
+// Carbon/Ink
 CF_TYPE(InkStrokeRef)
 CF_TYPE(InkTextRef)
 
-// MARK: Carbon/NavigationServices
+// Carbon/NavigationServices
 CF_TYPE(NavDialogRef)
 
-// MARK: CommonCrypto
+// CommonCrypto
 NON_CF_TYPE(CCCryptorRef) // CFExclusions.def
 
-// MARK: CoreAudio
+// CoreAudio
 NON_CF_TYPE(AudioHardwarePlugInRef) // CFExclusions.def
 NON_CF_TYPE(AudioServerPlugInDriverRef)
 NON_CF_TYPE(AudioServerPlugInHostRef)
 
-// MARK: CoreFoundation
+// CoreFoundation
 CF_TYPE(CFAllocatorRef)
 CF_TYPE(CFArrayRef)
 CF_TYPE(CFAttributedStringRef)
@@ -202,7 +202,7 @@ CF_TYPE(CFXMLNodeRef)
 CF_TYPE(CFXMLParserRef)
 CF_TYPE(CFXMLTreeRef)
 
-// MARK: CoreGraphics
+// CoreGraphics
 CF_TYPE(CGColorRef)
 CF_TYPE(CGColorSpaceRef)
 CF_TYPE(CGContextRef)
@@ -235,13 +235,13 @@ CF_TYPE(CGPathRef)
 CF_TYPE(CGPatternRef)
 CF_TYPE(CGShadingRef)
 
-// MARK: CoreGraphics private
+// CoreGraphics private
 CF_TYPE(QLPreviewBubbleRef)
 CF_TYPE(CGRegionRef)
 CF_TYPE(CGRegionEnumeratorRef)
 CF_TYPE(CGSWindowBackdropRef)
 
-// MARK: CoreMIDI
+// CoreMIDI
 NON_CF_TYPE(MIDIClientRef) // CFExclusions.def
 NON_CF_TYPE(MIDIDeviceListRef) // CFExclusions.def
 NON_CF_TYPE(MIDIDeviceRef) // CFExclusions.def
@@ -253,7 +253,7 @@ NON_CF_TYPE(MIDIPortRef) // CFExclusions.def
 NON_CF_TYPE(MIDISetupRef) // CFExclusions.def
 NON_CF_TYPE(MIDIThruConnectionRef) // CFExclusions.def
 
-// MARK: CoreMedia
+// CoreMedia
 CF_TYPE(CMAttachmentBearerRef)
 CF_TYPE(CMAudioFormatDescriptionRef)
 CF_TYPE(CMBlockBufferRef)
@@ -273,14 +273,14 @@ CF_TYPE(CMTimeCodeFormatDescriptionRef)
 CF_TYPE(CMTimebaseRef)
 CF_TYPE(CMVideoFormatDescriptionRef)
 
-// MARK: CoreMediaIO
+// CoreMediaIO
 NON_CF_TYPE(CMIOHardwarePlugInRef)
 
-// MARK: CoreServices/AE
+// CoreServices/AE
 NON_CF_TYPE(AERemoteProcessResolverRef)
 NON_CF_TYPE(AEStreamRef)
 
-// MARK: CoreServices/CarbonCore
+// CoreServices/CarbonCore
 NON_CF_TYPE(CollatorRef)
 NON_CF_TYPE(FNSubscriptionRef)
 CF_TYPE(FSFileOperationRef)
@@ -293,24 +293,24 @@ NON_CF_TYPE(TextBreakLocatorRef)
 NON_CF_TYPE(ThreadTaskRef)
 NON_CF_TYPE(UCTypeSelectRef)
 
-// MARK: CoreServices/DictionaryServices
+// CoreServices/DictionaryServices
 CF_TYPE(DCSDictionaryRef)
 
-// MARK: CoreServices/FSEvents
+// CoreServices/FSEvents
 NON_CF_TYPE(ConstFSEventStreamRef) // CFExclusions.def
 NON_CF_TYPE(FSEventStreamRef) // CFExclusions.def
 
-// MARK: CoreServices/LaunchServices
+// CoreServices/LaunchServices
 NON_CF_TYPE(IconRef)
 CF_TYPE(LSSharedFileListItemRef)
 CF_TYPE(LSSharedFileListRef)
 
-// MARK: CoreServices/Metadata
+// CoreServices/Metadata
 CF_TYPE(MDItemRef)
 CF_TYPE(MDLabelRef)
 CF_TYPE(MDQueryRef)
 
-// MARK: CoreServices/OSServices
+// CoreServices/OSServices
 CF_TYPE(CSIdentityAuthorityRef)
 CF_TYPE(CSIdentityQueryRef)
 CF_TYPE(CSIdentityRef)
@@ -320,7 +320,7 @@ CF_TYPE(KCSearchRef)
 CF_TYPE(WSMethodInvocationRef)
 CF_TYPE(WSProtocolHandlerRef)
 
-// MARK: CoreServices/SearchKit
+// CoreServices/SearchKit
 CF_TYPE(SKDocumentRef)
 CF_TYPE(SKIndexDocumentIteratorRef)
 CF_TYPE(SKIndexRef)
@@ -329,7 +329,7 @@ CF_TYPE(SKSearchRef)
 CF_TYPE(SKSearchResultsRef)
 CF_TYPE(SKSummaryRef)
 
-// MARK: CoreText
+// CoreText
 CF_TYPE(CTFontCollectionRef)
 CF_TYPE(CTFontDescriptorRef)
 CF_TYPE(CTFontRef)
@@ -345,7 +345,7 @@ CF_TYPE(CTRunRef)
 CF_TYPE(CTTextTabRef)
 CF_TYPE(CTTypesetterRef)
 
-// MARK: CoreVideo
+// CoreVideo
 CF_TYPE(CVBufferRef)
 CF_TYPE(CVDisplayLinkRef)
 CF_TYPE(CVImageBufferRef)
@@ -360,10 +360,10 @@ CF_TYPE(CVOpenGLTextureRef)
 CF_TYPE(CVPixelBufferPoolRef)
 CF_TYPE(CVPixelBufferRef)
 
-// MARK: DVDPlayback
+// DVDPlayback
 NON_CF_TYPE(DVDEventCallBackRef)
 
-// MARK: DiscRecording
+// DiscRecording
 CF_TYPE(DRAudioTrackRef)
 CF_TYPE(DRBurnRef)
 CF_TYPE(DRCDTextBlockRef)
@@ -377,17 +377,17 @@ CF_TYPE(DRNotificationCenterRef)
 CF_TYPE(DRTrackRef)
 CF_TYPE(DRTypeRef)
 
-// MARK: DiscRecordingUI
+// DiscRecordingUI
 CF_TYPE(DRBurnSessionRef)
 CF_TYPE(DREraseSessionRef)
 
-// MARK: DiskArbitration
+// DiskArbitration
 CF_TYPE(DAApprovalSessionRef)
 CF_TYPE(DADiskRef)
 CF_TYPE(DADissenterRef)
 CF_TYPE(DASessionRef)
 
-// MARK: FWAUserLib
+// FWAUserLib
 NON_CF_TYPE(FWAAudioPlugRef)
 NON_CF_TYPE(FWAAudioStreamRef)
 NON_CF_TYPE(FWADeviceRef)
@@ -398,10 +398,10 @@ NON_CF_TYPE(FWAMIDIPlugRef)
 NON_CF_TYPE(FWAMIDIStreamRef)
 NON_CF_TYPE(FWARef)
 
-// MARK: GLKit
+// GLKit
 CF_TYPE(GLKMatrixStackRef)
 
-// MARK: IOBluetooth
+// IOBluetooth
 CF_TYPE(IOBluetoothDeviceRef)
 CF_TYPE(IOBluetoothL2CAPChannelRef)
 CF_TYPE(IOBluetoothObjectRef)
@@ -413,12 +413,12 @@ CF_TYPE(IOBluetoothUserNotificationRef)
 NON_CF_TYPE(OBEXSessionRef)
 NON_CF_TYPE(PrivOBEXSessionDataRef)
 
-// MARK: IOBluetoothUI
+// IOBluetoothUI
 CF_TYPE(IOBluetoothDeviceSelectorControllerRef)
 CF_TYPE(IOBluetoothPairingControllerRef)
 CF_TYPE(IOBluetoothServiceBrowserControllerRef)
 
-// MARK: IOKit
+// IOKit
 NON_CF_TYPE(IOBlitMemoryRef)
 NON_CF_TYPE(IOFWAsyncStreamListenerInterfaceRef)
 NON_CF_TYPE(IOFireWireLibAsyncStreamCommandRef)
@@ -436,17 +436,17 @@ NON_CF_TYPE(IONotificationPortRef)
 NON_CF_TYPE(IOStreamRef)
 NON_CF_TYPE(IOVideoDeviceRef)
 
-// MARK: IOSurface
+// IOSurface
 CF_TYPE(IOSurfaceRef)
 
-// MARK: ImageIO
+// ImageIO
 CF_TYPE(CGImageDestinationRef)
 CF_TYPE(CGImageMetadataRef)
 CF_TYPE(CGImageMetadataTagRef)
 CF_TYPE(CGImageSourceRef)
 CF_TYPE(CGMutableImageMetadataRef)
 
-// MARK: JavaScriptCore
+// JavaScriptCore
 NON_CF_TYPE(JSClassRef)
 NON_CF_TYPE(JSContextGroupRef)
 NON_CF_TYPE(JSContextRef)
@@ -457,38 +457,38 @@ NON_CF_TYPE(JSPropertyNameArrayRef)
 NON_CF_TYPE(JSStringRef)
 NON_CF_TYPE(JSValueRef)
 
-// MARK: JavaVM/JavaRuntimeSupport
+// JavaVM/JavaRuntimeSupport
 CF_TYPE(JRSUIControlRef)
 CF_TYPE(JRSUIRendererRef)
 
-// MARK: Kernel
+// Kernel
 NON_CF_TYPE(HIDPreparsedDataRef)
 NON_CF_TYPE(IOFBCursorRef)
 NON_CF_TYPE(IONotificationRef)
 NON_CF_TYPE(UNDReplyRef)
 NON_CF_TYPE(UNDServerRef)
 
-// MARK: LatentSemanticMapping
+// LatentSemanticMapping
 CF_TYPE(LSMMapRef)
 CF_TYPE(LSMResultRef)
 CF_TYPE(LSMTextRef)
 
-// MARK: MediaToolbox
+// MediaToolbox
 CF_TYPE(MTAudioProcessingTapRef)
 
-// MARK: OpenDirectory/CFOpenDirectory
+// OpenDirectory/CFOpenDirectory
 CF_TYPE(ODContextRef)
 CF_TYPE(ODNodeRef)
 CF_TYPE(ODQueryRef)
 CF_TYPE(ODRecordRef)
 CF_TYPE(ODSessionRef)
 
-// MARK: QuickLook
+// QuickLook
 CF_TYPE(QLPreviewRequestRef)
 CF_TYPE(QLThumbnailRef)
 CF_TYPE(QLThumbnailRequestRef)
 
-// MARK: QuickTime
+// QuickTime
 NON_CF_TYPE(HandleDataRef)
 NON_CF_TYPE(ICMCompressionFrameOptionsRef)
 NON_CF_TYPE(ICMCompressionSessionOptionsRef)
@@ -516,7 +516,7 @@ NON_CF_TYPE(RTPPacketGroupRef)
 NON_CF_TYPE(RTPPacketRef)
 NON_CF_TYPE(RTPPacketRepeatedDataRef)
 
-// MARK: Security
+// Security
 NON_CF_TYPE(AuthorizationEngineRef) // CFExclusions.def
 NON_CF_TYPE(AuthorizationMechanismRef)
 NON_CF_TYPE(AuthorizationPluginRef)
@@ -554,7 +554,7 @@ CF_TYPE(SecTrustRef)
 CF_TYPE(SecTrustedApplicationRef)
 NON_CF_TYPE(SecureDownloadRef) // CFExclusions.def
 
-// MARK: SystemConfiguration
+// SystemConfiguration
 CF_TYPE(SCBondInterfaceRef)
 CF_TYPE(SCBondStatusRef)
 CF_TYPE(SCDynamicStoreRef)
@@ -567,7 +567,7 @@ CF_TYPE(SCNetworkSetRef)
 CF_TYPE(SCPreferencesRef)
 CF_TYPE(SCVLANInterfaceRef)
 
-// MARK: VideoToolbox
+// VideoToolbox
 CF_TYPE(VTCompressionSessionRef)
 CF_TYPE(VTDecompressionSessionRef)
 CF_TYPE(VTFrameSiloRef)
@@ -575,10 +575,10 @@ CF_TYPE(VTMultiPassStorageRef)
 CF_TYPE(VTPixelTransferSessionRef)
 CF_TYPE(VTSessionRef)
 
-// MARK: WebKit
+// WebKit
 NON_CF_TYPE(JRIGlobalRef)
 
-// MARK: dns_sd
+// dns_sd
 NON_CF_TYPE(DNSRecordRef)
 NON_CF_TYPE(DNSServiceRef)
 NON_CF_TYPE(TXTRecordRef)

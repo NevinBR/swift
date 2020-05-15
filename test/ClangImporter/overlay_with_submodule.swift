@@ -1,4 +1,6 @@
-// RUN: %target-swift-frontend -enable-objc-interop -emit-module %s -sdk %S/Inputs -module-name HasSubmodule -I %S/Inputs/custom-modules -o %t
+// RUN: %target-swift-frontend -emit-module %s -sdk %S/Inputs -module-name HasSubmodule  -I %S/Inputs/custom-modules -o %t
+
+// REQUIRES: objc_interop
 
 @_exported import HasSubmodule
 @_exported import HasSubmodule.Submodule

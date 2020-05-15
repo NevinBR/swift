@@ -1,3 +1,3 @@
-// Used by emit-objc-header.swift and others.
+// Used by multiple_input.swift and emit-objc-header.swift tests.
 
 func libraryFunction() {}

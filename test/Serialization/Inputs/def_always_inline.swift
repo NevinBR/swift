@@ -1,13 +1,12 @@
-@inline(__always) @inlinable public func testAlwaysInline(x: Bool) -> Bool {
+@inline(__always) public func testAlwaysInline(x: Bool) -> Bool {
   return x
 }
 
-@frozen
 public struct AlwaysInlineInitStruct {
-  @usableFromInline
+  @_versioned
   var x: Bool
 
-  @inline(__always) @inlinable
+  @inline(__always)
   public init(x x2: Bool) {
     self.x = x2
   }

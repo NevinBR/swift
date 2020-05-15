@@ -17,17 +17,15 @@ idLover.takesId(ArbitraryThing())
 var x: AnyObject = NSObject()
 idLover.takesArray(ofId: &x)
 var xAsAny = x as Any
-idLover.takesArray(ofId: &xAsAny)  // expected-error{{cannot convert value of type 'UnsafePointer<Any>' to expected argument type 'UnsafePointer<AnyObject>'}}
-// expected-note@-1 {{arguments to generic parameter 'Pointee' ('Any' and 'AnyObject') are expected to be equal}}
+idLover.takesArray(ofId: &xAsAny)  // expected-error{{argument type 'Any' does not conform to expected type 'AnyObject'}}
 
 var y: Any = NSObject()
-idLover.takesArray(ofId: &y) // expected-error{{cannot convert value of type 'UnsafePointer<Any>' to expected argument type 'UnsafePointer<AnyObject>'}}
-// expected-note@-1 {{arguments to generic parameter 'Pointee' ('Any' and 'AnyObject') are expected to be equal}}
+idLover.takesArray(ofId: &y) // expected-error{{argument type 'Any' does not conform to expected type 'AnyObject'}}
 
 idLover.takesId(x)
 idLover.takesId(y)
 
-install_global_event_handler(idLover) // expected-error {{cannot convert value of type 'NSIdLover' to expected argument type 'event_handler?' (aka 'Optional<@convention(c) (Any) -> ()>')}}
+install_global_event_handler(idLover) // expected-error {{cannot convert value of type 'NSIdLover' to expected argument type 'event_handler?' (aka 'Optional<@convention(c) (AnyObject) -> ()>')}}
 
 // FIXME: this should not type-check!
 // Function conversions are not legal when converting to a thin function type.

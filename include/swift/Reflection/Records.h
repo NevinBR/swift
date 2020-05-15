@@ -18,13 +18,10 @@
 #define SWIFT_REFLECTION_RECORDS_H
 
 #include "swift/Basic/RelativePointer.h"
-#include "swift/Demangling/Demangle.h"
-#include "llvm/ADT/ArrayRef.h"
-
-namespace swift {
 
 const uint16_t SWIFT_REFLECTION_METADATA_VERSION = 3; // superclass field
 
+namespace swift {
 namespace reflection {
 
 // Field records describe the type of a single stored property or case member
@@ -33,20 +30,13 @@ class FieldRecordFlags {
   using int_type = uint32_t;
   enum : int_type {
     // Is this an indirect enum case?
-    IsIndirectCase = 0x1,
-    
-    // Is this a mutable `var` property?
-    IsVar = 0x2,
+    IsIndirectCase = 0x1
   };
   int_type Data = 0;
 
 public:
   bool isIndirectCase() const {
     return (Data & IsIndirectCase) == IsIndirectCase;
-  }
-
-  bool isVar() const {
-    return (Data & IsVar) == IsVar;
   }
 
   void setIsIndirectCase(bool IndirectCase=true) {
@@ -56,13 +46,6 @@ public:
       Data &= ~IsIndirectCase;
   }
 
-  void setIsVar(bool Var=true) {
-    if (Var)
-      Data |= IsVar;
-    else
-      Data &= ~IsVar;
-  }
-
   int_type getRawValue() const {
     return Data;
   }
@@ -70,23 +53,24 @@ public:
 
 class FieldRecord {
   const FieldRecordFlags Flags;
-
-public:
   const RelativeDirectPointer<const char> MangledTypeName;
   const RelativeDirectPointer<const char> FieldName;
 
+public:
   FieldRecord() = delete;
 
   bool hasMangledTypeName() const {
     return MangledTypeName;
   }
 
-  StringRef getMangledTypeName() const {
-    return Demangle::makeSymbolicMangledNameStringRef(MangledTypeName.get());
+  std::string getMangledTypeName() const {
+    return MangledTypeName.get();
   }
 
-  StringRef getFieldName() const {
-    return FieldName.get();
+  std::string getFieldName()  const {
+    if (FieldName)
+      return FieldName.get();
+    return "";
   }
 
   bool isIndirectCase() const {
@@ -160,10 +144,10 @@ class FieldDescriptor {
     return reinterpret_cast<const FieldRecord *>(this + 1);
   }
 
-public:
   const RelativeDirectPointer<const char> MangledTypeName;
   const RelativeDirectPointer<const char> Superclass;
 
+public:
   FieldDescriptor() = delete;
 
   const FieldDescriptorKind Kind;
@@ -188,10 +172,6 @@ public:
             Kind == FieldDescriptorKind::ObjCProtocol);
   }
 
-  bool isStruct() const {
-    return Kind == FieldDescriptorKind::Struct;
-  }
-
   const_iterator begin() const {
     auto Begin = getFieldRecordBuffer();
     auto End = Begin + NumFields;
@@ -204,41 +184,69 @@ public:
     return const_iterator { End, End };
   }
 
-  llvm::ArrayRef<FieldRecord> getFields() const {
-    return {getFieldRecordBuffer(), NumFields};
-  }
-
   bool hasMangledTypeName() const {
     return MangledTypeName;
   }
 
-  StringRef getMangledTypeName() const {
-    return Demangle::makeSymbolicMangledNameStringRef(MangledTypeName.get());
+  std::string getMangledTypeName() const {
+    return MangledTypeName.get();
   }
 
   bool hasSuperclass() const {
     return Superclass;
   }
 
-  StringRef getSuperclass() const {
-    return Demangle::makeSymbolicMangledNameStringRef(Superclass.get());
+  std::string getSuperclass() const {
+    return Superclass.get();
+  }
+};
+
+class FieldDescriptorIterator
+  : public std::iterator<std::forward_iterator_tag, FieldDescriptor> {
+public:
+  const void *Cur;
+  const void * const End;
+  FieldDescriptorIterator(const void *Cur, const void * const End)
+    : Cur(Cur), End(End) {}
+
+  const FieldDescriptor &operator*() const {
+    return *reinterpret_cast<const FieldDescriptor *>(Cur);
+  }
+
+  const FieldDescriptor *operator->() const {
+    return reinterpret_cast<const FieldDescriptor *>(Cur);
+  }
+
+  FieldDescriptorIterator &operator++() {
+    const auto &FR = this->operator*();
+    const void *Next = reinterpret_cast<const char *>(Cur)
+      + sizeof(FieldDescriptor) + FR.NumFields * FR.FieldRecordSize;
+    Cur = Next;
+    return *this;
+  }
+
+  bool operator==(FieldDescriptorIterator const &other) const {
+    return Cur == other.Cur && End == other.End;
+  }
+
+  bool operator!=(FieldDescriptorIterator const &other) const {
+    return !(*this == other);
   }
 };
 
 // Associated type records describe the mapping from an associated
 // type to the type witness of a conformance.
 class AssociatedTypeRecord {
-public:
   const RelativeDirectPointer<const char> Name;
   const RelativeDirectPointer<const char> SubstitutedTypeName;
 
-  StringRef getName() const {
+public:
+  std::string getName() const {
     return Name.get();
   }
 
-  StringRef getMangledSubstitutedTypeName() const {
-    return Demangle::makeSymbolicMangledNameStringRef(
-                                                    SubstitutedTypeName.get());
+  std::string getMangledSubstitutedTypeName() const {
+    return SubstitutedTypeName.get();
   }
 };
 
@@ -266,8 +274,6 @@ struct AssociatedTypeRecordIterator {
     return *this;
   }
 
-  AssociatedTypeRecordIterator(const AssociatedTypeRecordIterator &Other)
-      : Cur(Other.Cur), End(Other.End) {}
   AssociatedTypeRecordIterator
   operator=(const AssociatedTypeRecordIterator &Other) {
     return { Other.Cur, Other.End };
@@ -289,10 +295,8 @@ struct AssociatedTypeRecordIterator {
 // An associated type descriptor contains a collection of associated
 // type records for a conformance.
 struct AssociatedTypeDescriptor {
-public:
   const RelativeDirectPointer<const char> ConformingTypeName;
   const RelativeDirectPointer<const char> ProtocolTypeName;
-
   uint32_t NumAssociatedTypes;
   uint32_t AssociatedTypeRecordSize;
 
@@ -300,6 +304,7 @@ public:
     return reinterpret_cast<const AssociatedTypeRecord *>(this + 1);
   }
 
+public:
   using const_iterator = AssociatedTypeRecordIterator;
 
   const_iterator begin() const {
@@ -314,60 +319,113 @@ public:
     return const_iterator { End, End };
   }
 
-  StringRef getMangledProtocolTypeName() const {
-    return Demangle::makeSymbolicMangledNameStringRef(ProtocolTypeName.get());
+  std::string getMangledProtocolTypeName() const {
+    return ProtocolTypeName.get();
   }
 
-  StringRef getMangledConformingTypeName() const {
-    return Demangle::makeSymbolicMangledNameStringRef(ConformingTypeName.get());
+  std::string getMangledConformingTypeName() const {
+    return ConformingTypeName.get();
+  }
+};
+
+class AssociatedTypeIterator
+  : public std::iterator<std::forward_iterator_tag, AssociatedTypeDescriptor> {
+public:
+  const void *Cur;
+  const void * const End;
+  AssociatedTypeIterator(const void *Cur, const void * const End)
+    : Cur(Cur), End(End) {}
+
+  const AssociatedTypeDescriptor &operator*() const {
+    return *reinterpret_cast<const AssociatedTypeDescriptor *>(Cur);
+  }
+
+  const AssociatedTypeDescriptor *operator->() const {
+    return reinterpret_cast<const AssociatedTypeDescriptor *>(Cur);
+  }
+
+  AssociatedTypeIterator &operator++() {
+    const auto &ATR = this->operator*();
+    size_t Size = sizeof(AssociatedTypeDescriptor) +
+      ATR.NumAssociatedTypes * ATR.AssociatedTypeRecordSize;
+    const void *Next = reinterpret_cast<const char *>(Cur) + Size;
+    Cur = Next;
+    return *this;
+  }
+
+  bool operator==(AssociatedTypeIterator const &other) const {
+    return Cur == other.Cur && End == other.End;
+  }
+
+  bool operator!=(AssociatedTypeIterator const &other) const {
+    return !(*this == other);
   }
 };
 
 // Builtin type records describe basic layout information about
 // any builtin types referenced from the other sections.
 class BuiltinTypeDescriptor {
-public:
   const RelativeDirectPointer<const char> TypeName;
 
+public:
   uint32_t Size;
-
-  // - Least significant 16 bits are the alignment.
-  // - Bit 16 is 'bitwise takable'.
-  // - Remaining bits are reserved.
-  uint32_t AlignmentAndFlags;
-
+  uint32_t Alignment;
   uint32_t Stride;
   uint32_t NumExtraInhabitants;
-
-  bool isBitwiseTakable() const {
-    return (AlignmentAndFlags >> 16) & 1;
-  }
-
-  uint32_t getAlignment() const {
-    return AlignmentAndFlags & 0xffff;
-  }
 
   bool hasMangledTypeName() const {
     return TypeName;
   }
 
-  StringRef getMangledTypeName() const {
-    return Demangle::makeSymbolicMangledNameStringRef(TypeName.get());
+  std::string getMangledTypeName() const {
+    return TypeName.get();
+  }
+};
+
+class BuiltinTypeDescriptorIterator
+  : public std::iterator<std::forward_iterator_tag, BuiltinTypeDescriptor> {
+public:
+  const void *Cur;
+  const void * const End;
+  BuiltinTypeDescriptorIterator(const void *Cur, const void * const End)
+    : Cur(Cur), End(End) {}
+
+  const BuiltinTypeDescriptor &operator*() const {
+    return *reinterpret_cast<const BuiltinTypeDescriptor *>(Cur);
+  }
+
+  const BuiltinTypeDescriptor *operator->() const {
+    return reinterpret_cast<const BuiltinTypeDescriptor *>(Cur);;
+  }
+
+  BuiltinTypeDescriptorIterator &operator++() {
+    const void *Next = reinterpret_cast<const char *>(Cur)
+      + sizeof(BuiltinTypeDescriptor);
+    Cur = Next;
+    return *this;
+  }
+
+  bool operator==(BuiltinTypeDescriptorIterator const &other) const {
+    return Cur == other.Cur && End == other.End;
+  }
+
+  bool operator!=(BuiltinTypeDescriptorIterator const &other) const {
+    return !(*this == other);
   }
 };
 
 class CaptureTypeRecord {
-public:
   const RelativeDirectPointer<const char> MangledTypeName;
 
+public:
   CaptureTypeRecord() = delete;
 
   bool hasMangledTypeName() const {
     return MangledTypeName;
   }
 
-  StringRef getMangledTypeName() const {
-    return Demangle::makeSymbolicMangledNameStringRef(MangledTypeName.get());
+  std::string getMangledTypeName() const {
+    return MangledTypeName.get();
   }
 };
 
@@ -402,27 +460,26 @@ struct CaptureTypeRecordIterator {
 };
 
 class MetadataSourceRecord {
-public:
   const RelativeDirectPointer<const char> MangledTypeName;
   const RelativeDirectPointer<const char> MangledMetadataSource;
 
+public:
   MetadataSourceRecord() = delete;
 
   bool hasMangledTypeName() const {
     return MangledTypeName;
   }
 
-  StringRef getMangledTypeName() const {
-    return Demangle::makeSymbolicMangledNameStringRef(MangledTypeName.get());
+  std::string getMangledTypeName() const {
+    return MangledTypeName.get();
   }
 
   bool hasMangledMetadataSource() const {
     return MangledMetadataSource;
   }
 
-  StringRef getMangledMetadataSource() const {
-    return Demangle::makeSymbolicMangledNameStringRef(
-                                                   MangledMetadataSource.get());
+  std::string getMangledMetadataSource() const {
+    return MangledMetadataSource.get();
   }
 };
 
@@ -505,6 +562,41 @@ public:
     auto Begin = getMetadataSourceRecordBuffer();
     auto End = Begin + NumMetadataSources;
     return { End, End };
+  }
+};
+
+class CaptureDescriptorIterator
+  : public std::iterator<std::forward_iterator_tag, CaptureDescriptor> {
+public:
+  const void *Cur;
+  const void * const End;
+  CaptureDescriptorIterator(const void *Cur, const void * const End)
+    : Cur(Cur), End(End) {}
+
+  const CaptureDescriptor &operator*() const {
+    return *reinterpret_cast<const CaptureDescriptor *>(Cur);
+  }
+
+  const CaptureDescriptor *operator->() const {
+    return reinterpret_cast<const CaptureDescriptor *>(Cur);
+  }
+
+  CaptureDescriptorIterator &operator++() {
+    const auto &CR = this->operator*();
+    const void *Next = reinterpret_cast<const char *>(Cur)
+      + sizeof(CaptureDescriptor)
+      + CR.NumCaptureTypes * sizeof(CaptureTypeRecord)
+      + CR.NumMetadataSources * sizeof(MetadataSourceRecord);
+    Cur = Next;
+    return *this;
+  }
+
+  bool operator==(CaptureDescriptorIterator const &other) const {
+    return Cur == other.Cur && End == other.End;
+  }
+
+  bool operator!=(CaptureDescriptorIterator const &other) const {
+    return !(*this == other);
   }
 };
 

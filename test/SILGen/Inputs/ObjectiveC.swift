@@ -33,9 +33,3 @@ public struct Selector : ExpressibleByStringLiteral {
     self = sel_registerName(value)
   }
 }
-
-extension NSObject : Hashable {
-  public func hash(into hasher: inout Hasher) {}
-  public static func == (x: NSObject, y: NSObject) -> Bool { return true }
-}
-

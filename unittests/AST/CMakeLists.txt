@@ -1,7 +1,4 @@
 add_swift_unittest(SwiftASTTests
-  ArithmeticEvaluator.cpp
-  IndexSubsetTests.cpp
-  DiagnosticConsumerTests.cpp
   SourceLocTests.cpp
   TestContext.cpp
   TypeMatchTests.cpp
@@ -9,7 +6,6 @@ add_swift_unittest(SwiftASTTests
 )
 
 target_link_libraries(SwiftASTTests
-   PRIVATE
    swiftAST
    # FIXME: Circular dependencies.
    swiftParse

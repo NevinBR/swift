@@ -22,10 +22,9 @@ DataTestSuite.test("Data.Iterator semantics") {
   checkSequence(1...33, Data(bytes: Array(1...33)))
 
   // Large data
-  let count = 65535
-  var data = Data(count: count)
+  var data = Data(count: 65535)
   data.withUnsafeMutableBytes { (ptr: UnsafeMutablePointer<UInt8>) -> () in
-    for i in 0..<count {
+    for i in 0..<data.count {
       ptr[i] = UInt8(i % 23)
     }
   }
@@ -39,6 +38,7 @@ DataTestSuite.test("associated types") {
     iteratorType: Data.Iterator.self,
     subSequenceType: Subject.self,
     indexType: Int.self,
+    indexDistanceType: Int.self,
     indicesType: CountableRange<Int>.self)
 }
 

@@ -60,7 +60,6 @@ public:
   LineList getLineList(swift::RawComment RC);
 };
 
-Document *parseDocument(MarkupContext &MC, StringRef String);
 Document *parseDocument(MarkupContext &MC, LineList &LL);
 
 } // namespace markup

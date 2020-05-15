@@ -18,15 +18,25 @@
 #ifndef SWIFT_BASIC_DEFER_H
 #define SWIFT_BASIC_DEFER_H
 
-#include "llvm/ADT/ScopeExit.h"
+#include <type_traits>
 
 namespace swift {
+  template <typename F>
+  class DoAtScopeExit {
+    F Fn;
+    void operator=(DoAtScopeExit&) = delete;
+  public:
+    DoAtScopeExit(F &&Fn) : Fn(std::move(Fn)) {}
+    ~DoAtScopeExit() {
+      Fn();
+    }
+  };
+
   namespace detail {
     struct DeferTask {};
     template<typename F>
-    auto operator+(DeferTask, F &&fn) ->
-        decltype(llvm::make_scope_exit(std::forward<F>(fn))) {
-      return llvm::make_scope_exit(std::forward<F>(fn));
+    DoAtScopeExit<typename std::decay<F>::type> operator+(DeferTask, F&& fn) {
+      return DoAtScopeExit<typename std::decay<F>::type>(std::move(fn));
     }
   }
 } // end namespace swift

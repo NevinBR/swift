@@ -32,19 +32,14 @@ namespace irgen {
 /// path from the given source.
 struct Fulfillment {
   Fulfillment() = default;
-  Fulfillment(unsigned sourceIndex, MetadataPath &&path, MetadataState state)
-    : SourceIndex(sourceIndex), State(unsigned(state)), Path(std::move(path)) {}
+  Fulfillment(unsigned sourceIndex, MetadataPath &&path)
+    : SourceIndex(sourceIndex), Path(std::move(path)) {}
 
   /// The source index.
-  unsigned SourceIndex : 30;
-
-  /// The state of the metadata at the fulfillment.
-  unsigned State : 2;
+  unsigned SourceIndex;
 
   /// The path from the source metadata.
   MetadataPath Path;
-
-  MetadataState getState() const { return MetadataState(State); }
 };
 
 class FulfillmentMap {
@@ -71,10 +66,17 @@ public:
     virtual GenericSignature::ConformsToArray
       getInterestingConformances(CanType type) const = 0;
 
-    /// Return the limited interesting conformances for an interesting type.
-    virtual CanType getSuperclassBound(CanType type) const = 0;
-
     virtual ~InterestingKeysCallback() = default;
+  };
+
+  /// An implementation of InterestingKeysCallback that returns everything
+  /// fulfillable.
+  struct Everything : InterestingKeysCallback {
+    bool isInterestingType(CanType type) const override;
+    bool hasInterestingType(CanType type) const override;
+    bool hasLimitedInterestingConformances(CanType type) const override;
+    GenericSignature::ConformsToArray
+      getInterestingConformances(CanType type) const override;
   };
 
   FulfillmentMap() = default;
@@ -95,14 +97,8 @@ public:
   ///
   /// \return true if any fulfillments were added by this search.
   bool searchTypeMetadata(IRGenModule &IGM, CanType type, IsExact_t isExact,
-                          MetadataState metadataState,
                           unsigned sourceIndex, MetadataPath &&path,
                           const InterestingKeysCallback &interestingKeys);
-
-  bool searchConformance(IRGenModule &IGM,
-                         const ProtocolConformance *conformance,
-                         unsigned sourceIndex, MetadataPath &&path,
-                         const InterestingKeysCallback &interestingKeys);
 
   /// Search the given witness table for useful fulfillments.
   ///
@@ -115,8 +111,7 @@ public:
   ///
   /// \return true if the fulfillment was added, which won't happen if there's
   ///   already a fulfillment that was at least as good
-  bool addFulfillment(FulfillmentKey key, unsigned source,
-                      MetadataPath &&path, MetadataState state);
+  bool addFulfillment(FulfillmentKey key, unsigned source, MetadataPath &&path);
 
   const Fulfillment *getTypeMetadata(CanType type) const {
     auto it = Fulfillments.find({type, nullptr});
@@ -145,21 +140,33 @@ public:
   }
 
 private:
-  bool searchNominalTypeMetadata(IRGenModule &IGM, CanType type,
-                                 MetadataState metadataState, unsigned source,
-                                 MetadataPath &&path,
+  bool searchParentTypeMetadata(IRGenModule &IGM, NominalTypeDecl *typeDecl,
+                                CanType parent,
+                                unsigned source, MetadataPath &&path,
+                                const InterestingKeysCallback &keys);
+
+  bool searchNominalTypeMetadata(IRGenModule &IGM, CanNominalType type,
+                                 unsigned source, MetadataPath &&path,
                                  const InterestingKeysCallback &keys);
+
+  bool searchBoundGenericTypeMetadata(IRGenModule &IGM, CanBoundGenericType type,
+                                      unsigned source, MetadataPath &&path,
+                                      const InterestingKeysCallback &keys);
 
   /// Search the given witness table for useful fulfillments.
   ///
   /// \return true if any fulfillments were added by this search.
-  bool searchWitnessTable(
-      IRGenModule &IGM, CanType type, ProtocolDecl *protocol, unsigned source,
-      MetadataPath &&path, const InterestingKeysCallback &keys,
-      llvm::SmallPtrSetImpl<ProtocolDecl *> *interestingConformances);
+  bool searchWitnessTable(IRGenModule &IGM, CanType type, ProtocolDecl *protocol,
+                          unsigned sourceIndex, MetadataPath &&path,
+                          const InterestingKeysCallback &interestingKeys,
+                          const llvm::SmallPtrSetImpl<ProtocolDecl*> *
+                            interestingConformances);
+
 };
 
 }
 }
 
 #endif
+
+

@@ -18,12 +18,11 @@
 
 using namespace swift;
 
-std::unique_ptr<SILLoopInfo>
-SILLoopAnalysis::newFunctionAnalysis(SILFunction *F) {
+SILLoopInfo *SILLoopAnalysis::newFunctionAnalysis(SILFunction *F) {
   assert(DA != nullptr && "Expect a valid dominance analysis");
   DominanceInfo *DT = DA->get(F);
   assert(DT != nullptr && "Expect a valid dominance information");
-  return std::make_unique<SILLoopInfo>(F, DT);
+  return new SILLoopInfo(F, DT);
 }
 
 void SILLoopAnalysis::initialize(SILPassManager *PM) {

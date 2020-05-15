@@ -10,12 +10,20 @@
 //
 //===----------------------------------------------------------------------===//
 
-@usableFromInline
+@_versioned
 internal protocol _ArrayProtocol
-  : RangeReplaceableCollection, ExpressibleByArrayLiteral
-where Indices == Range<Int> {
+  : RangeReplaceableCollection,
+    ExpressibleByArrayLiteral
+{
+  //===--- public interface -----------------------------------------------===//
+  /// The number of elements the Array stores.
+  var count: Int { get }
+
   /// The number of elements the Array can store without reallocation.
   var capacity: Int { get }
+
+  /// `true` if and only if the Array is empty.
+  var isEmpty: Bool { get }
 
   /// An object that guarantees the lifetime of this array's elements.
   var _owner: AnyObject? { get }
@@ -23,6 +31,8 @@ where Indices == Range<Int> {
   /// If the elements are stored contiguously, a pointer to the first
   /// element. Otherwise, `nil`.
   var _baseAddressIfContiguous: UnsafeMutablePointer<Element>? { get }
+
+  subscript(index: Int) -> Element { get set }
 
   //===--- basic mutations ------------------------------------------------===//
 
@@ -32,7 +42,7 @@ where Indices == Range<Int> {
   ///   mutable contiguous storage.
   ///
   /// - Complexity: O(`self.count`).
-  override mutating func reserveCapacity(_ minimumCapacity: Int)
+  mutating func reserveCapacity(_ minimumCapacity: Int)
 
   /// Insert `newElement` at index `i`.
   ///
@@ -41,7 +51,7 @@ where Indices == Range<Int> {
   /// - Complexity: O(`self.count`).
   ///
   /// - Precondition: `startIndex <= i`, `i <= endIndex`.
-  override mutating func insert(_ newElement: __owned Element, at i: Int)
+  mutating func insert(_ newElement: Element, at i: Int)
 
   /// Remove and return the element at the given index.
   ///
@@ -51,11 +61,11 @@ where Indices == Range<Int> {
   ///
   /// - Precondition: `count > index`.
   @discardableResult
-  override mutating func remove(at index: Int) -> Element
+  mutating func remove(at index: Int) -> Element
 
   //===--- implementation detail  -----------------------------------------===//
 
-  associatedtype _Buffer: _ArrayBufferProtocol where _Buffer.Element == Element
+  associatedtype _Buffer : _ArrayBufferProtocol
   init(_ buffer: _Buffer)
 
   // For testing.
@@ -66,8 +76,8 @@ extension _ArrayProtocol {
   // Since RangeReplaceableCollection now has a version of filter that is less
   // efficient, we should make the default implementation coming from Sequence
   // preferred.
-  @inlinable
-  public __consuming func filter(
+  @_inlineable
+  public func filter(
     _ isIncluded: (Element) throws -> Bool
   ) rethrows -> [Element] {
     return try _filter(isIncluded)

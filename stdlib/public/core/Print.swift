@@ -49,6 +49,8 @@
 ///     space (`" "`).
 ///   - terminator: The string to print after all items have been printed. The
 ///     default is a newline (`"\n"`).
+@inline(never)
+@_semantics("stdlib_binary_only")
 public func print(
   _ items: Any...,
   separator: String = " ",
@@ -56,12 +58,14 @@ public func print(
 ) {
   if let hook = _playgroundPrintHook {
     var output = _TeeStream(left: "", right: _Stdout())
-    _print(items, separator: separator, terminator: terminator, to: &output)
+    _print(
+      items, separator: separator, terminator: terminator, to: &output)
     hook(output.left)
   }
   else {
     var output = _Stdout()
-    _print(items, separator: separator, terminator: terminator, to: &output)
+    _print(
+      items, separator: separator, terminator: terminator, to: &output)
   }
 }
 
@@ -79,7 +83,7 @@ public func print(
 ///     // Prints "One two three four five"
 ///
 ///     debugPrint(1...5)
-///     // Prints "ClosedRange(1...5)"
+///     // Prints "CountableClosedRange(1...5)"
 ///
 ///     debugPrint(1.0, 2.0, 3.0, 4.0, 5.0)
 ///     // Prints "1.0 2.0 3.0 4.0 5.0"
@@ -105,19 +109,22 @@ public func print(
 ///     space (`" "`).
 ///   - terminator: The string to print after all items have been printed. The
 ///     default is a newline (`"\n"`).
+@inline(never)
+@_semantics("stdlib_binary_only")
 public func debugPrint(
   _ items: Any...,
   separator: String = " ",
-  terminator: String = "\n"
-) {
+  terminator: String = "\n") {
   if let hook = _playgroundPrintHook {
     var output = _TeeStream(left: "", right: _Stdout())
-    _debugPrint(items, separator: separator, terminator: terminator, to: &output)
+    _debugPrint(
+      items, separator: separator, terminator: terminator, to: &output)
     hook(output.left)
   }
   else {
     var output = _Stdout()
-    _debugPrint(items, separator: separator, terminator: terminator, to: &output)
+    _debugPrint(
+      items, separator: separator, terminator: terminator, to: &output)
   }
 }
 
@@ -158,7 +165,8 @@ public func debugPrint(
 ///     default is a newline (`"\n"`).
 ///   - output: An output stream to receive the text representation of each
 ///     item.
-public func print<Target: TextOutputStream>(
+@inline(__always)
+public func print<Target : TextOutputStream>(
   _ items: Any...,
   separator: String = " ",
   terminator: String = "\n",
@@ -178,7 +186,7 @@ public func print<Target: TextOutputStream>(
 ///
 ///     var range = "My range: "
 ///     debugPrint(1...5, to: &range)
-///     // range == "My range: ClosedRange(1...5)\n"
+///     // range == "My range: CountableClosedRange(1...5)\n"
 ///
 /// To print the items separated by something other than a space, pass a string
 /// as `separator`.
@@ -205,16 +213,21 @@ public func print<Target: TextOutputStream>(
 ///     default is a newline (`"\n"`).
 ///   - output: An output stream to receive the text representation of each
 ///     item.
-public func debugPrint<Target: TextOutputStream>(
+@inline(__always)
+public func debugPrint<Target : TextOutputStream>(
   _ items: Any...,
   separator: String = " ",
   terminator: String = "\n",
   to output: inout Target
 ) {
-  _debugPrint(items, separator: separator, terminator: terminator, to: &output)
+  _debugPrint(
+    items, separator: separator, terminator: terminator, to: &output)
 }
 
-internal func _print<Target: TextOutputStream>(
+@_versioned
+@inline(never)
+@_semantics("stdlib_binary_only")
+internal func _print<Target : TextOutputStream>(
   _ items: [Any],
   separator: String = " ",
   terminator: String = "\n",
@@ -231,7 +244,10 @@ internal func _print<Target: TextOutputStream>(
   output.write(terminator)
 }
 
-internal func _debugPrint<Target: TextOutputStream>(
+@_versioned
+@inline(never)
+@_semantics("stdlib_binary_only")
+internal func _debugPrint<Target : TextOutputStream>(
   _ items: [Any],
   separator: String = " ",
   terminator: String = "\n",
@@ -247,3 +263,41 @@ internal func _debugPrint<Target: TextOutputStream>(
   }
   output.write(terminator)
 }
+
+//===----------------------------------------------------------------------===//
+//===--- Migration Aids ---------------------------------------------------===//
+
+@available(*, unavailable, renamed: "print(_:separator:terminator:to:)")
+public func print<Target : TextOutputStream>(
+  _ items: Any...,
+  separator: String = "",
+  terminator: String = "",
+  toStream output: inout Target
+) {}
+
+@available(*, unavailable, renamed: "debugPrint(_:separator:terminator:to:)")
+public func debugPrint<Target : TextOutputStream>(
+  _ items: Any...,
+  separator: String = "",
+  terminator: String = "",
+  toStream output: inout Target
+) {}
+
+@available(*, unavailable, message: "Please use 'terminator: \"\"' instead of 'appendNewline: false': 'print((...), terminator: \"\")'")
+public func print<T>(_: T, appendNewline: Bool = true) {}
+@available(*, unavailable, message: "Please use 'terminator: \"\"' instead of 'appendNewline: false': 'debugPrint((...), terminator: \"\")'")
+public func debugPrint<T>(_: T, appendNewline: Bool = true) {}
+
+@available(*, unavailable, message: "Please use the 'to' label for the target stream: 'print((...), to: &...)'")
+public func print<T>(_: T, _: inout TextOutputStream) {}
+@available(*, unavailable, message: "Please use the 'to' label for the target stream: 'debugPrint((...), to: &...))'")
+public func debugPrint<T>(_: T, _: inout TextOutputStream) {}
+
+@available(*, unavailable, message: "Please use 'terminator: \"\"' instead of 'appendNewline: false' and use the 'to' label for the target stream: 'print((...), terminator: \"\", to: &...)'")
+public func print<T>(_: T, _: inout TextOutputStream, appendNewline: Bool = true) {}
+@available(*, unavailable, message: "Please use 'terminator: \"\"' instead of 'appendNewline: false' and use the 'to' label for the target stream: 'debugPrint((...), terminator: \"\", to: &...)'")
+public func debugPrint<T>(
+  _: T, _: inout TextOutputStream, appendNewline: Bool = true
+) {}
+//===----------------------------------------------------------------------===//
+//===----------------------------------------------------------------------===//

@@ -19,7 +19,6 @@
 
 #include "swift/Basic/SourceLoc.h"
 #include "swift/AST/Type.h"
-#include "swift/AST/TypeAlignments.h"
 #include "llvm/ADT/PointerIntPair.h"
 
 namespace swift {
@@ -29,9 +28,14 @@ class TypeRepr;
 
 /// TypeLoc - Provides source location information for a parsed type.
 /// A TypeLoc is stored in AST nodes which use an explicitly written type.
-class alignas(1 << TypeLocAlignInBits) TypeLoc {
-  Type Ty;
+struct TypeLoc {
+private:
+  /// \brief The resolved type and a bit indicating if it was validated, which
+  /// means it went through possible generic substitutions.
+  llvm::PointerIntPair<Type, 1, bool> TAndValidBit;
   TypeRepr *TyR = nullptr;
+
+  TypeLoc(Type T, TypeRepr *TyR) : TAndValidBit(T, false), TyR(TyR) {}
 
 public:
   TypeLoc() {}
@@ -40,14 +44,12 @@ public:
     setType(Ty);
   }
 
-  bool wasValidated() const { return !Ty.isNull(); }
+  bool wasValidated() const { return TAndValidBit.getInt(); }
   bool isError() const;
 
   // FIXME: We generally shouldn't need to build TypeLocs without a location.
   static TypeLoc withoutLoc(Type T) {
-    TypeLoc result;
-    result.Ty = T;
-    return result;
+    return TypeLoc(T, nullptr);
   }
 
   /// Get the representative location of this type, for diagnostic
@@ -58,29 +60,16 @@ public:
 
   bool hasLocation() const { return TyR != nullptr; }
   TypeRepr *getTypeRepr() const { return TyR; }
-  Type getType() const { return Ty; }
+  Type getType() const { return TAndValidBit.getPointer(); }
 
   bool isNull() const { return getType().isNull() && TyR == nullptr; }
 
   void setInvalidType(ASTContext &C);
-  void setType(Type Ty);
+  void setType(Type Ty, bool validated = false) {
+    TAndValidBit.setPointerAndInt(Ty, validated);
+  }
 
   TypeLoc clone(ASTContext &ctx) const;
-  
-  friend llvm::hash_code hash_value(const TypeLoc &owner) {
-    return llvm::hash_combine(owner.Ty.getPointer(), owner.TyR);
-  }
-
-  friend bool operator==(const TypeLoc &lhs,
-                         const TypeLoc &rhs) {
-    return lhs.Ty.getPointer() == rhs.Ty.getPointer()
-        && lhs.TyR == rhs.TyR;
-  }
-
-  friend bool operator!=(const TypeLoc &lhs,
-                         const TypeLoc &rhs) {
-    return !(lhs == rhs);
-  }
 };
 
 } // end namespace llvm

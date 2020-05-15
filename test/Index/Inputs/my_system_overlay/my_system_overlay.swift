@@ -3,10 +3,9 @@
 public func some_func() {}
 
 public class BaseCls {
-  public func theMeth() {}
-  internal func SECRET() {}
+  func theMeth() {}
 }
 
 public class SubCls : BaseCls {
-  public override func theMeth() {}
+  override func theMeth() {}
 }

@@ -1,4 +1,6 @@
-// RUN: %target-swift-frontend -sdk "" -emit-sil %s -enable-objc-interop -import-objc-header %S/Inputs/inherited-protocols-sil.h -O
+// RUN: %target-swift-frontend -sdk "" -emit-sil %s -import-objc-header %S/Inputs/inherited-protocols-sil.h -O
+
+// REQUIRES: objc_interop
 
 // <rdar://problem/24547884> Protocol Extensions May Crash Swift Compiler when Whole-Module Optimization is Enabled
 

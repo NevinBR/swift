@@ -16,7 +16,6 @@
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/IdentifierTable.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
-#include "llvm/Support/MemoryBuffer.h"
 
 namespace swift {
 
@@ -55,6 +54,18 @@ private:
 
   ClangImporter::Implementation &ImporterImpl;
 
+  /// Keeps alive the Clang source managers where diagnostics have been
+  /// reported.
+  ///
+  /// This is a bit of a hack, but LLVM's source manager (and by extension
+  /// Swift's) does not support buffers going away.
+  //
+  // This is not using SmallPtrSet or similar because we need the
+  // IntrusiveRefCntPtr to stay a ref-counting pointer.
+  SmallVector<llvm::IntrusiveRefCntPtr<const clang::SourceManager>, 4>
+    sourceManagersWithDiagnostics;
+  llvm::DenseMap<const llvm::MemoryBuffer *, unsigned> mirroredBuffers;
+
   const clang::IdentifierInfo *CurrentImport = nullptr;
   SourceLoc DiagLoc;
   const bool DumpToStderr;
@@ -69,6 +80,12 @@ public:
     DiagLoc = diagLoc;
     return LoadModuleRAII(*this, name);
   }
+
+  /// Returns a Swift source location that points into a Clang buffer.
+  ///
+  /// This will keep the Clang buffer alive as long as this diagnostic consumer.
+  SourceLoc resolveSourceLocation(const clang::SourceManager &clangSrcMgr,
+                                  clang::SourceLocation clangLoc);
 
   void HandleDiagnostic(clang::DiagnosticsEngine::Level diagLevel,
                         const clang::Diagnostic &info) override;

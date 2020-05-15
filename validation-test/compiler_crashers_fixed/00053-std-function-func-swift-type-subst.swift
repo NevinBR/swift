@@ -10,5 +10,6 @@
 
 // Issue found by https://github.com/julasamer (julasamer)
 
-struct c<d, e: b> where d.c == e { // expected-error {{cannot find type 'b' in scope}} expected-error {{'c' is not a member type of 'd'}}
+struct c<d, e: b where d.c == e> { // expected-error {{use of undeclared type 'b'}} expected-error {{'c' is not a member type of 'd'}}
+  // expected-warning@-1 {{'where' clause next to generic parameters is deprecated}}
 }

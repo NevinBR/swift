@@ -15,13 +15,13 @@ struct PiecewiseTransformedIteratorOf<
                                         SourceIterator: IteratorProtocol,
                                         TransformerIterator: IteratorProtocol,
                                         Transformable: SourceTargetTransformable
+                                      where
+                                        Transformable.Source == Source,
+                                        Transformable.Target == Target,
+                                        SourceIterator.Element == Source,
+                                        TransformerIterator.Element == Transformable.Transformer
                                       >
-       : IteratorProtocol
-      where
-	Transformable.Source == Source,
-	Transformable.Target == Target,
-	SourceIterator.Element == Source,
-	TransformerIterator.Element == Transformable.Transformer {
+       : IteratorProtocol {
     typealias Element = Target
     
     var sourceIterator: SourceIterator
@@ -46,10 +46,10 @@ struct PiecewiseTransformedSequenceOf<
         SourceSequence: Sequence,
         TransformerSequence: Sequence,
         Transformable: SourceTargetTransformable
-        >: Sequence
     where
         SourceSequence.Iterator.Element == Transformable.Source,
-        TransformerSequence.Iterator.Element == Transformable.Transformer {
+        TransformerSequence.Iterator.Element == Transformable.Transformer
+        >: Sequence {
     
     typealias Source = SourceSequence.Iterator.Element
     typealias Target = Transformable.Target

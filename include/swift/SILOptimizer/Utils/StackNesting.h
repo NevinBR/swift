@@ -48,7 +48,7 @@ namespace swift {
 ///
 class StackNesting {
 
-  typedef SmallBitVector BitVector;
+  typedef llvm::SmallBitVector BitVector;
 
   /// Data stored for each block (actually for each block which is not dead).
   struct BlockInfo {
@@ -65,8 +65,12 @@ class StackNesting {
     /// The bit-set of alive stack locations at the block entry.
     BitVector AliveStackLocsAtEntry;
 
-    /// The bit-set of alive stack locations at the block exit.
-    BitVector AliveStackLocsAtExit;
+    /// True if there is a path from this block to a function-exit.
+    ///
+    /// In other words: this block does not end in an unreachable-instruction.
+    /// This flag is only used for verifying that the lifetime of a stack
+    /// location does not end at the end of a block.
+    bool ExitReachable = false;
 
     BlockInfo(SILBasicBlock *Block) : Block(Block) { }
   };
@@ -75,10 +79,10 @@ class StackNesting {
   ///
   /// Each stack location is allocated by a single allocation instruction.
   struct StackLoc {
-    StackLoc(SingleValueInstruction *Alloc) : Alloc(Alloc) { }
+    StackLoc(SILInstruction *Alloc) : Alloc(Alloc) { }
 
     /// Back-link to the allocation instruction.
-    SingleValueInstruction *Alloc;
+    SILInstruction *Alloc;
 
     /// Bit-set which represents all alive locations at this allocation.
     /// It obviously includes this location itself. And it includes all "outer"
@@ -87,7 +91,7 @@ class StackNesting {
   };
 
   /// Mapping from stack allocations (= locations) to bit numbers.
-  llvm::DenseMap<SingleValueInstruction *, unsigned> StackLoc2BitNumbers;
+  llvm::DenseMap<SILInstruction *, unsigned> StackLoc2BitNumbers;
 
   /// The list of stack locations. The index into this array is also the bit
   /// number in the bit-sets.
@@ -142,26 +146,10 @@ private:
                       SILInstruction *InsertionPoint,
                       Optional<SILLocation> Location);
 
-  /// Reeturns the location bit number for a stack allocation instruction.
-  int bitNumberForAlloc(SILInstruction *AllocInst) {
-    assert(AllocInst->isAllocatingStack());
-    return StackLoc2BitNumbers[cast<SingleValueInstruction>(AllocInst)];
-  }
-
-  /// Reeturns the location bit number for a stack deallocation instruction.
-  int bitNumberForDealloc(SILInstruction *DeallocInst) {
-    assert(DeallocInst->isDeallocatingStack());
-    auto *AllocInst = cast<SingleValueInstruction>(DeallocInst->getOperand(0));
-    return bitNumberForAlloc(AllocInst);
-  }
-
-  /// Insert deallocations at block boundaries.
-  Changes insertDeallocsAtBlockBoundaries();
-
   /// Modifies the SIL to end up with a correct stack nesting.
   ///
   /// Returns the status of what changes were made.
-  bool adaptDeallocs();
+  Changes adaptDeallocs();
 };
 
 } // end namespace swift

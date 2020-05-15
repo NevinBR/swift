@@ -12,18 +12,18 @@
 
 #define DEBUG_TYPE "sil-aa"
 #include "swift/SILOptimizer/Analysis/AliasAnalysis.h"
-#include "swift/SIL/InstructionUtils.h"
+#include "swift/SILOptimizer/Analysis/ValueTracking.h"
+#include "swift/SILOptimizer/Analysis/SideEffectAnalysis.h"
+#include "swift/SILOptimizer/Analysis/EscapeAnalysis.h"
+#include "swift/SILOptimizer/Utils/Local.h"
+#include "swift/SILOptimizer/PassManager/PassManager.h"
 #include "swift/SIL/Projection.h"
+#include "swift/SIL/SILValue.h"
+#include "swift/SIL/SILInstruction.h"
 #include "swift/SIL/SILArgument.h"
 #include "swift/SIL/SILFunction.h"
-#include "swift/SIL/SILInstruction.h"
 #include "swift/SIL/SILModule.h"
-#include "swift/SIL/SILValue.h"
-#include "swift/SILOptimizer/Analysis/EscapeAnalysis.h"
-#include "swift/SILOptimizer/Analysis/SideEffectAnalysis.h"
-#include "swift/SILOptimizer/Analysis/ValueTracking.h"
-#include "swift/SILOptimizer/PassManager/PassManager.h"
-#include "swift/SILOptimizer/Utils/InstOptUtils.h"
+#include "swift/SIL/InstructionUtils.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
@@ -101,10 +101,7 @@ llvm::raw_ostream &swift::operator<<(llvm::raw_ostream &OS, AliasResult R) {
   llvm_unreachable("Unhandled AliasResult in switch.");
 }
 
-// Return the address of the directly accessed memory. If either the address is
-// unknown, or any other memory is accessed via indirection, return an invalid
-// SILValue.
-SILValue getDirectlyAccessedMemory(SILInstruction *User) {
+SILValue getAccessedMemory(SILInstruction *User) {
   if (auto *LI = dyn_cast<LoadInst>(User)) {
     return LI->getOperand();
   }
@@ -131,7 +128,7 @@ static bool isFunctionArgument(SILValue V) {
 static bool isIdentifiableObject(SILValue V) {
   if (isa<AllocationInst>(V) || isa<LiteralInst>(V))
     return true;
-  if (isExclusiveArgument(V))
+  if (isNotAliasingArgument(V))
     return true;
   return false;
 }
@@ -181,7 +178,8 @@ static bool isLocalLiteral(SILValue V) {
 /// Is this a value that can be unambiguously identified as being defined at the
 /// function level.
 static bool isIdentifiedFunctionLocal(SILValue V) {
-  return isa<AllocationInst>(*V) || isExclusiveArgument(V) || isLocalLiteral(V);
+  return isa<AllocationInst>(*V) || isNotAliasingArgument(V) ||
+         isLocalLiteral(V);
 }
 
 /// Returns true if we can prove that the two input SILValues which do not equal
@@ -192,8 +190,8 @@ static bool aliasUnequalObjects(SILValue O1, SILValue O2) {
   // If O1 and O2 do not equal and they are both values that can be statically
   // and uniquely identified, they cannot alias.
   if (areDistinctIdentifiableObjects(O1, O2)) {
-    LLVM_DEBUG(llvm::dbgs() << "            Found two unequal identified "
-               "objects.\n");
+    DEBUG(llvm::dbgs() << "            Found two unequal identified "
+          "objects.\n");
     return true;
   }
 
@@ -206,8 +204,8 @@ static bool aliasUnequalObjects(SILValue O1, SILValue O2) {
   // @owned object.
   if ((isFunctionArgument(O1) && isIdentifiedFunctionLocal(O2)) ||
       (isFunctionArgument(O2) && isIdentifiedFunctionLocal(O1))) {
-    LLVM_DEBUG(llvm::dbgs() << "            Found unequal function arg and "
-               "identified function local!\n");
+    DEBUG(llvm::dbgs() << "            Found unequal function arg and "
+          "identified function local!\n");
     return true;
   }
 
@@ -304,18 +302,18 @@ AliasResult AliasAnalysis::aliasAddressProjection(SILValue V1, SILValue V2,
 /// TBAA to know what the real types associated with the SILInstruction are.
 static bool isTypedAccessOracle(SILInstruction *I) {
   switch (I->getKind()) {
-  case SILInstructionKind::RefElementAddrInst:
-  case SILInstructionKind::RefTailAddrInst:
-  case SILInstructionKind::StructElementAddrInst:
-  case SILInstructionKind::TupleElementAddrInst:
-  case SILInstructionKind::UncheckedTakeEnumDataAddrInst:
-  case SILInstructionKind::LoadInst:
-  case SILInstructionKind::StoreInst:
-  case SILInstructionKind::AllocStackInst:
-  case SILInstructionKind::AllocBoxInst:
-  case SILInstructionKind::ProjectBoxInst:
-  case SILInstructionKind::DeallocStackInst:
-  case SILInstructionKind::DeallocBoxInst:
+  case ValueKind::RefElementAddrInst:
+  case ValueKind::RefTailAddrInst:
+  case ValueKind::StructElementAddrInst:
+  case ValueKind::TupleElementAddrInst:
+  case ValueKind::UncheckedTakeEnumDataAddrInst:
+  case ValueKind::LoadInst:
+  case ValueKind::StoreInst:
+  case ValueKind::AllocStackInst:
+  case ValueKind::AllocBoxInst:
+  case ValueKind::ProjectBoxInst:
+  case ValueKind::DeallocStackInst:
+  case ValueKind::DeallocBoxInst:
     return true;
   default:
     return false;
@@ -330,18 +328,14 @@ static bool isTypedAccessOracle(SILInstruction *I) {
 /// given value is directly derived from a memory location, it cannot
 /// alias. Call arguments also cannot alias because they must follow \@in, @out,
 /// @inout, or \@in_guaranteed conventions.
-static bool isAccessedAddressTBAASafe(SILValue V) {
-  if (!V->getType().isAddress())
-    return false;
-
-  SILValue accessedAddress = getAccessedAddress(V);
-  if (isa<SILFunctionArgument>(accessedAddress))
+static bool isAddressRootTBAASafe(SILValue V) {
+  if (isa<SILFunctionArgument>(V))
     return true;
 
-  if (auto *PtrToAddr = dyn_cast<PointerToAddressInst>(accessedAddress))
+  if (auto *PtrToAddr = dyn_cast<PointerToAddressInst>(V))
     return PtrToAddr->isStrict();
 
-  switch (accessedAddress->getKind()) {
+  switch (V->getKind()) {
   default:
     return false;
   case ValueKind::AllocStackInst:
@@ -356,12 +350,9 @@ static bool isAccessedAddressTBAASafe(SILValue V) {
 /// TypedAccessOracle which enable one to ascertain via undefined behavior the
 /// "true" type of the instruction.
 static SILType findTypedAccessType(SILValue V) {
-  assert(V->getType().isAddress());
-
   // First look at the origin of V and see if we have any instruction that is a
   // typed oracle.
-  // TODO: MultiValueInstruction
-  if (auto *I = dyn_cast<SingleValueInstruction>(V))
+  if (auto *I = dyn_cast<SILInstruction>(V))
     if (isTypedAccessOracle(I))
       return V->getType();
 
@@ -376,7 +367,7 @@ static SILType findTypedAccessType(SILValue V) {
 }
 
 SILType swift::computeTBAAType(SILValue V) {
-  if (isAccessedAddressTBAASafe(V))
+  if (isAddressRootTBAASafe(getUnderlyingAddressRoot(V)))
     return findTypedAccessType(V);
 
   // FIXME: add ref_element_addr check here. TBAA says that objects cannot be
@@ -385,7 +376,8 @@ SILType swift::computeTBAAType(SILValue V) {
   return SILType();
 }
 
-static bool typedAccessTBAABuiltinTypesMayAlias(SILType LTy, SILType RTy) {
+static bool typedAccessTBAABuiltinTypesMayAlias(SILType LTy, SILType RTy,
+                                                SILModule &Mod) {
   assert(LTy != RTy && "LTy should have already been shown to not equal RTy to "
          "call this function.");
 
@@ -414,12 +406,11 @@ static bool typedAccessTBAABuiltinTypesMayAlias(SILType LTy, SILType RTy) {
   return false;
 }
 
-/// return True if the types \p LTy and \p RTy may alias.
+/// \brief return True if the types \p LTy and \p RTy may alias.
 ///
 /// Currently this only implements typed access based TBAA. See the TBAA section
 /// in the SIL reference manual.
-static bool typedAccessTBAAMayAlias(SILType LTy, SILType RTy,
-                                    const SILFunction &F) {
+static bool typedAccessTBAAMayAlias(SILType LTy, SILType RTy, SILModule &Mod) {
 #ifndef NDEBUG
   if (!shouldRunTypedAccessTBAA())
     return true;
@@ -451,12 +442,12 @@ static bool typedAccessTBAAMayAlias(SILType LTy, SILType RTy,
     return true;
 
   // If either type is an address only type, bail so we are conservative.
-  if (LTy.isAddressOnly(F) || RTy.isAddressOnly(F))
+  if (LTy.isAddressOnly(Mod) || RTy.isAddressOnly(Mod))
     return true;
 
   // If both types are builtin types, handle them separately.
   if (LTy.is<BuiltinType>() && RTy.is<BuiltinType>())
-    return typedAccessTBAABuiltinTypesMayAlias(LTy, RTy);
+    return typedAccessTBAABuiltinTypesMayAlias(LTy, RTy, Mod);
 
   // Otherwise, we know that at least one of our types is not a builtin
   // type. If we have a builtin type, canonicalize it on the right.
@@ -471,18 +462,17 @@ static bool typedAccessTBAAMayAlias(SILType LTy, SILType RTy,
 
   // The Builtin reference types can alias any class instance.
   if (LTyClass) {
-    if (RTy.is<BuiltinNativeObjectType>()  ||
+    if (RTy.is<BuiltinUnknownObjectType>() ||
+        RTy.is<BuiltinNativeObjectType>()  ||
         RTy.is<BuiltinBridgeObjectType>()) {
       return true;
     }
   }
 
-  auto &Mod = F.getModule();
-
   // If one type is an aggregate and it contains the other type then the record
   // reference may alias the aggregate reference.
-  if (LTy.aggregateContainsRecord(RTy, Mod, F.getTypeExpansionContext()) ||
-      RTy.aggregateContainsRecord(LTy, Mod, F.getTypeExpansionContext()))
+  if (LTy.aggregateContainsRecord(RTy, Mod) ||
+      RTy.aggregateContainsRecord(LTy, Mod))
     return true;
 
   // FIXME: All the code following could be made significantly more aggressive
@@ -520,8 +510,7 @@ static bool typedAccessTBAAMayAlias(SILType LTy, SILType RTy,
   return true;
 }
 
-bool AliasAnalysis::typesMayAlias(SILType T1, SILType T2,
-                                  const SILFunction &F) {
+bool AliasAnalysis::typesMayAlias(SILType T1, SILType T2) {
   // Both types need to be valid.
   if (!T2 || !T1)
     return true;
@@ -533,7 +522,7 @@ bool AliasAnalysis::typesMayAlias(SILType T1, SILType T2,
     return Res->second;
   }
 
-  bool MA = typedAccessTBAAMayAlias(T1, T2, F);
+  bool MA = typedAccessTBAAMayAlias(T1, T2, *Mod);
   TypesMayAliasCache[Key] = MA;
   return MA;
 }
@@ -584,16 +573,12 @@ AliasResult AliasAnalysis::aliasInner(SILValue V1, SILValue V2,
   if (isSameValueOrGlobal(V1, V2))
     return AliasResult::MustAlias;
 
-  LLVM_DEBUG(llvm::dbgs() << "ALIAS ANALYSIS:\n    V1: " << *V1
-             << "    V2: " << *V2);
-
-  // If this is SILUndef, return may alias.
-  if (!V1->getFunction())
-    return AliasResult::MayAlias;
+  DEBUG(llvm::dbgs() << "ALIAS ANALYSIS:\n    V1: " << *V1
+        << "    V2: " << *V2);
 
   // Pass in both the TBAA types so we can perform typed access TBAA and the
   // actual types of V1, V2 so we can perform class based TBAA.
-  if (!typesMayAlias(TBAAType1, TBAAType2, *V1->getFunction()))
+  if (!typesMayAlias(TBAAType1, TBAAType2))
     return AliasResult::NoAlias;
 
 #ifndef NDEBUG
@@ -604,15 +589,15 @@ AliasResult AliasAnalysis::aliasInner(SILValue V1, SILValue V2,
   // Strip off any casts on V1, V2.
   V1 = stripCasts(V1);
   V2 = stripCasts(V2);
-  LLVM_DEBUG(llvm::dbgs() << "        After Cast Stripping V1:" << *V1);
-  LLVM_DEBUG(llvm::dbgs() << "        After Cast Stripping V2:" << *V2);
+  DEBUG(llvm::dbgs() << "        After Cast Stripping V1:" << *V1);
+  DEBUG(llvm::dbgs() << "        After Cast Stripping V2:" << *V2);
 
   // Ok, we need to actually compute an Alias Analysis result for V1, V2. Begin
   // by finding the "base" of V1, V2 by stripping off all casts and GEPs.
   SILValue O1 = getUnderlyingObject(V1);
   SILValue O2 = getUnderlyingObject(V2);
-  LLVM_DEBUG(llvm::dbgs() << "        Underlying V1:" << *O1);
-  LLVM_DEBUG(llvm::dbgs() << "        Underlying V2:" << *O2);
+  DEBUG(llvm::dbgs() << "        Underlying V1:" << *O1);
+  DEBUG(llvm::dbgs() << "        Underlying V2:" << *O2);
 
   // If O1 and O2 do not equal, see if we can prove that they cannot be the
   // same object. If we can, return No Alias.
@@ -625,15 +610,11 @@ AliasResult AliasAnalysis::aliasInner(SILValue V1, SILValue V2,
   // non-escaping pointer with another (maybe escaping) pointer. Escape analysis
   // uses the connection graph to check if the pointers may point to the same
   // content.
-  //
-  // canPointToSameMemory must take the original pointers used for memory
-  // access, not the underlying object, because objects projections can be
-  // modeled by escape analysis as different content, and canPointToSameMemory
-  // assumes that only the pointer itself may be accessed here, not any other
-  // address that can be derived from this pointer.
+  // Note that escape analysis must work with the original pointers and not the
+  // underlying objects because it treats projections differently.
   if (!EA->canPointToSameMemory(V1, V2)) {
-    LLVM_DEBUG(llvm::dbgs() << "            Found not-aliased objects based on "
-                               "escape analysis\n");
+    DEBUG(llvm::dbgs() << "            Found not-aliased objects based on"
+                                      "escape analysis\n");
     return AliasResult::NoAlias;
   }
 
@@ -661,16 +642,6 @@ AliasResult AliasAnalysis::aliasInner(SILValue V1, SILValue V2,
 }
 
 bool AliasAnalysis::canApplyDecrementRefCount(FullApplySite FAS, SILValue Ptr) {
-  // If the connection graph is invalid due to a very large function, we also
-  // skip all other tests, which might take significant time for a very large
-  // function.
-  // This is a workaround for some quadratic complexity in ARCSequenceOpt.
-  // TODO: remove this check once ARCSequenceOpt is retired or the quadratic
-  // behavior is fixed.
-  auto *conGraph = EA->getConnectionGraph(FAS.getFunction());
-  if (!conGraph->isValid())
-    return true;
-
   // Treat applications of no-return functions as decrementing ref counts. This
   // causes the apply to become a sink barrier for ref count increments.
   if (FAS.isCalleeNoReturn())
@@ -680,8 +651,8 @@ bool AliasAnalysis::canApplyDecrementRefCount(FullApplySite FAS, SILValue Ptr) {
   if (!EA->canEscapeTo(Ptr, FAS))
     return false;
 
-  FunctionSideEffects ApplyEffects;
-  SEA->getCalleeEffects(ApplyEffects, FAS);
+  SideEffectAnalysis::FunctionEffects ApplyEffects;
+  SEA->getEffects(ApplyEffects, FAS);
 
   auto &GlobalEffects = ApplyEffects.getGlobalEffects();
   if (ApplyEffects.mayReadRC() || GlobalEffects.mayRelease())
@@ -694,7 +665,7 @@ bool AliasAnalysis::canApplyDecrementRefCount(FullApplySite FAS, SILValue Ptr) {
     if (ArgEffect.mayRelease()) {
       // The function may release this argument, so check if the pointer can
       // escape to it.
-      if (EA->mayReleaseContent(FAS.getArgument(Idx), Ptr))
+      if (EA->canEscapeToValue(Ptr, FAS.getArgument(Idx)))
         return true;
     }
   }
@@ -711,55 +682,76 @@ bool AliasAnalysis::canBuiltinDecrementRefCount(BuiltinInst *BI, SILValue Ptr) {
       continue;
 
     // A builtin can only release an object if it can escape to one of the
-    // builtin's arguments. 'EscapeAnalysis::mayReleaseContent()' expects 'Arg'
-    // to be an owned reference and disallows addresses. Conservatively handle
-    // address type arguments as and conservatively treat all other values
-    // potential owned references.
-    if (Arg->getType().isAddress() || EA->mayReleaseContent(Arg, Ptr))
+    // builtin's arguments.
+    if (EA->canEscapeToValue(Ptr, Arg))
       return true;
   }
   return false;
 }
 
-// If the deinit for releasedReference can release any values used by User, then
-// this is an interference. (The retains that originally forced liveness of
-// those values may have already been eliminated). Note that we only care about
-// avoiding a dangling pointer. The memory side affects of Release are
-// unordered.
-//
-// \p releasedReference must be a value that directly contains the references
-// being released. It cannot be an address or other kind of pointer that
-// indirectly releases a reference. Otherwise, the escape analysis query is
-// invalid.
-bool AliasAnalysis::mayValueReleaseInterfereWithInstruction(
-    SILInstruction *User, SILValue releasedReference) {
-  assert(!releasedReference->getType().isAddress()
-         && "an address is never a reference");
 
+bool AliasAnalysis::mayValueReleaseInterfereWithInstruction(SILInstruction *User,
+                                                            SILValue Ptr) {
+  // TODO: Its important to make this as precise as possible.
+  //
+  // TODO: Eventually we can plug in some analysis on the what the release of
+  // the Ptr can do, i.e. be more precise about Ptr's deinit.
+  //
+  // TODO: If we know the specific release instruction, we can potentially do
+  // more.
+  //
   // If this instruction can not read or write any memory. Its OK.
   if (!User->mayReadOrWriteMemory())
     return false;
 
-  // Get a pointer to the memory directly accessed by 'Users' (either via an
-  // address or heap reference operand). If additional memory may be indirectly
-  // accessed by 'User', such as via an inout argument, then stop here because
-  // mayReleaseContent can only reason about one level of memory access.
-  //
-  // TODO: Handle @inout arguments by iterating over the apply arguments. For
-  // each argument find out if any reachable content can be released. This is
-  // slightly more involved than mayReleaseContent because it needs to check all
-  // connection graph nodes reachable from accessedPointer that don't pass
-  // through another stored reference.
-  SILValue accessedPointer = getDirectlyAccessedMemory(User);
-  if (!accessedPointer)
+  // These instructions do read or write memory, get memory accessed.
+  SILValue V = getAccessedMemory(User);
+  if (!V)
     return true;
 
-  // If releasedReference can reach the first refcounted object reachable from
-  // accessedPointer, then releasing it early may destroy the object accessed by
-  // accessedPointer. Access to any objects beyond the first released refcounted
-  // object are irrelevant--they must already have sufficient refcount that they
-  // won't be released when releasing Ptr.
-  return EA->mayReleaseContent(releasedReference, accessedPointer);
+  // Is this a local allocation ?
+  if (!pointsToLocalObject(V))
+    return true;
+
+  // This is a local allocation.
+  // The most important check: does the object escape the current function?
+  auto LO = getUnderlyingObject(V);
+  auto *ConGraph = EA->getConnectionGraph(User->getFunction());
+  auto *Node = ConGraph->getNodeOrNull(LO, EA);
+  if (Node && !Node->escapes())
+    return false;
+
+  // This is either a non-local allocation or a local allocation that escapes.
+  // We failed to prove anything, it could be read or written by the deinit.
+  return true;
+}
+
+bool swift::isLetPointer(SILValue V) {
+  // Traverse the "access" path for V and check that it starts with "let"
+  // and everything along this path is a value-type (i.e. struct or tuple).
+
+  // Is this an address of a "let" class member?
+  if (auto *REA = dyn_cast<RefElementAddrInst>(V))
+    return REA->getField()->isLet();
+
+  // Is this an address of a global "let"?
+  if (auto *GAI = dyn_cast<GlobalAddrInst>(V)) {
+    auto *GlobalDecl = GAI->getReferencedGlobal()->getDecl();
+    return GlobalDecl && GlobalDecl->isLet();
+  }
+
+  // Is this an address of a struct "let" member?
+  if (auto *SEA = dyn_cast<StructElementAddrInst>(V))
+    // Check if it is a "let" in the parent struct.
+    // Check if its parent is a "let".
+    return isLetPointer(SEA->getOperand());
+
+
+  // Check if a parent of a tuple is a "let"
+  if (auto *TEA = dyn_cast<TupleElementAddrInst>(V))
+    return isLetPointer(TEA->getOperand());
+
+  return false;
 }
 
 void AliasAnalysis::initialize(SILPassManager *PM) {

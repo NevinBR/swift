@@ -1,14 +1,9 @@
 set(datafiles
-  macos4.json
-  ios4.json
-  tvos4.json
-  watchos4.json
-  overlay4.json
-  macos42.json
-  ios42.json
-  tvos42.json
-  watchos42.json
-  overlay42.json
+  macos.json
+  ios.json
+  tvos.json
+  watchos.json
+  overlay.json
 )
 set(SWIFTLIB_DIR
     "${CMAKE_BINARY_DIR}/${CMAKE_CFG_INTDIR}/lib/swift")
@@ -21,20 +16,13 @@ add_custom_command(
 set(outputs)
 
 foreach(input ${datafiles})
-  set(source "${CMAKE_CURRENT_SOURCE_DIR}/${input}")
-  set(dest "${output_dir}/${input}")
-  if(CMAKE_SYSTEM_NAME STREQUAL Windows)
-    set(CMAKE_SYMLINK_COMMAND copy)
-  else()
-    set(CMAKE_SYMLINK_COMMAND create_symlink)
-  endif()
-
-  add_custom_command(OUTPUT
-                       "${output_dir}/${input}"
-                     DEPENDS
-                       "${CMAKE_CURRENT_SOURCE_DIR}/${input}"
-                     COMMAND
-                       "${CMAKE_COMMAND}" "-E" "${CMAKE_SYMLINK_COMMAND}" "${source}" "${dest}")
+  add_custom_command(
+      OUTPUT "${output_dir}/${input}"
+      DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${input}"
+      COMMAND
+        "${CMAKE_COMMAND}" "-E" "create_symlink"
+        "${CMAKE_CURRENT_SOURCE_DIR}/${input}"
+        "${output_dir}/${input}")
   list(APPEND outputs "${output_dir}/${input}")
 endforeach()
 list(APPEND outputs "${output_dir}")
@@ -43,21 +31,20 @@ add_custom_target("symlink_migrator_data"
     DEPENDS "${output_dir}" "${outputs}"
     COMMENT "Symlinking migrator data to ${output_dir}")
 
-swift_install_in_component(FILES ${datafiles}
-                           DESTINATION "lib/swift/migrator"
-                           COMPONENT compiler)
+swift_install_in_component(compiler
+  FILES ${datafiles}
+DESTINATION "lib/swift/migrator")
 
-add_swift_host_library(swiftMigrator STATIC
+add_swift_library(swiftMigrator STATIC
   APIDiffMigratorPass.cpp
   EditorAdapter.cpp
   FixitApplyDiagnosticConsumer.cpp
   Migrator.cpp
   MigrationState.cpp
-  OptionalTryMigratorPass.cpp
-  RewriteBufferEditsReceiver.cpp)
-target_link_libraries(swiftMigrator PRIVATE
-  swiftIDE
-  swiftSyntax)
+  RewriteBufferEditsReceiver.cpp
+  TupleSplatMigratorPass.cpp
+  TypeOfMigratorPass.cpp
+  LINK_LIBRARIES swiftSyntax swiftIDE)
 
 add_dependencies(swiftMigrator
   "symlink_migrator_data")

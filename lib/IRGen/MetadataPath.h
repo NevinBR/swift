@@ -31,13 +31,11 @@ namespace swift {
   class ProtocolDecl;
   class CanType;
   class Decl;
-  enum class MetadataState : size_t;
 
 namespace irgen {
-  class DynamicMetadataRequest;
   class IRGenFunction;
   class LocalTypeDataKey;
-  class MetadataResponse;
+
 
 /// A path from one source metadata --- either Swift type metadata or a Swift
 /// protocol conformance --- to another.
@@ -59,13 +57,12 @@ class MetadataPath {
 
       /// Type metadata at requirement index P of a generic nominal type.
       NominalTypeArgument,
-
-      /// Conditional conformance at index P (i.e. the P'th element) of a
-      /// conformance.
-      ConditionalConformance,
-      LastWithPrimaryIndex = ConditionalConformance,
+      LastWithPrimaryIndex = NominalTypeArgument,
 
       // Everything past this point has no index.
+
+      /// The parent metadata of a nominal type.
+      NominalParent,
 
       /// An impossible path.
       Impossible,
@@ -105,7 +102,7 @@ class MetadataPath {
       case Kind::OutOfLineBaseProtocol:
       case Kind::NominalTypeArgumentConformance:
       case Kind::NominalTypeArgument:
-      case Kind::ConditionalConformance:
+      case Kind::NominalParent:
         return OperationCost::Load;
 
       case Kind::AssociatedConformance:
@@ -147,6 +144,11 @@ public:
     Path.push_back(Component(Component::Kind::Impossible));
   }
 
+  /// Add a step to this path which gets the parent metadata.
+  void addNominalParentComponent() {
+    Path.push_back(Component(Component::Kind::NominalParent));
+  }
+
   /// Add a step to this path which gets the type metadata stored at
   /// requirement index n in a generic type metadata.
   void addNominalTypeArgumentComponent(unsigned index) {
@@ -176,32 +178,26 @@ public:
                              index.getValue()));
   }
 
-  void addConditionalConformanceComponent(unsigned index) {
-    Path.push_back(Component(Component::Kind::ConditionalConformance, index));
-  }
-
   /// Return an abstract measurement of the cost of this path.
   OperationCost cost() const {
     auto cost = OperationCost::Free;
-    for (const Component component : Path)
+    for (const Component &component : Path)
       cost += component.cost();
     return cost;
   }
 
   /// Given a pointer to type metadata, follow a path from it.
-  MetadataResponse followFromTypeMetadata(IRGenFunction &IGF,
-                                          CanType sourceType,
-                                          MetadataResponse source,
-                                          DynamicMetadataRequest request,
-                                          Map<MetadataResponse> *cache) const;
+  llvm::Value *followFromTypeMetadata(IRGenFunction &IGF,
+                                      CanType sourceType,
+                                      llvm::Value *source,
+                                      Map<llvm::Value*> *cache) const;
 
   /// Given a pointer to a protocol witness table, follow a path from it.
-  MetadataResponse followFromWitnessTable(IRGenFunction &IGF,
-                                          CanType conformingType,
-                                          ProtocolConformanceRef conformance,
-                                          MetadataResponse source,
-                                          DynamicMetadataRequest request,
-                                          Map<MetadataResponse> *cache) const;
+  llvm::Value *followFromWitnessTable(IRGenFunction &IGF,
+                                      CanType conformingType,
+                                      ProtocolConformanceRef conformance,
+                                      llvm::Value *source,
+                                      Map<llvm::Value*> *cache) const;
 
   template <typename Allocator>
   const reflection::MetadataSource *
@@ -212,6 +208,9 @@ public:
 
     for (auto C : Path) {
       switch (C.getKind()) {
+      case Component::Kind::NominalParent:
+        Root = A.createParent(Root);
+        continue;
       case Component::Kind::NominalTypeArgument:
         Root = A.createGenericArgument(C.getPrimaryIndex(), Root);
         continue;
@@ -231,20 +230,18 @@ public:
   }
 
 private:
-  static MetadataResponse follow(IRGenFunction &IGF,
-                                 LocalTypeDataKey key,
-                                 MetadataResponse source,
-                                 MetadataPath::iterator begin,
-                                 MetadataPath::iterator end,
-                                 DynamicMetadataRequest request,
-                                 Map<MetadataResponse> *cache);
+  static llvm::Value *follow(IRGenFunction &IGF,
+                             LocalTypeDataKey key,
+                             llvm::Value *source,
+                             MetadataPath::iterator begin,
+                             MetadataPath::iterator end,
+                             Map<llvm::Value*> *cache);
 
   /// Follow a single component of a metadata path.
-  static MetadataResponse followComponent(IRGenFunction &IGF,
-                                          LocalTypeDataKey &key,
-                                          MetadataResponse source,
-                                          Component component,
-                                          DynamicMetadataRequest request);
+  static llvm::Value *followComponent(IRGenFunction &IGF,
+                                      LocalTypeDataKey &key,
+                                      llvm::Value *source,
+                                      Component component);
 };
 
 } // end namespace irgen

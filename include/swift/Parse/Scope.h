@@ -19,7 +19,6 @@
 #define SWIFT_SEMA_SCOPE_H
 
 #include "swift/AST/Identifier.h"
-#include "swift/Basic/Debug.h"
 #include "swift/Basic/TreeScopedHashTable.h"
 #include "llvm/ADT/SmallVector.h"
 
@@ -34,11 +33,11 @@ namespace swift {
 class ScopeInfo {
   friend class Scope;
 public:
-  using ValueScopeEntry = std::pair<unsigned, ValueDecl *>;
-
-  using ScopedHTTy = TreeScopedHashTable<DeclName, ValueScopeEntry>;
-  using ScopedHTScopeTy = ScopedHTTy::ScopeTy;
-  using ScopedHTDetachedScopeTy = ScopedHTTy::DetachedScopeTy;
+  typedef std::pair<unsigned, ValueDecl*> ValueScopeEntry;
+  
+  typedef TreeScopedHashTable<DeclName, ValueScopeEntry> ScopedHTTy;
+  typedef ScopedHTTy::ScopeTy ScopedHTScopeTy;
+  typedef ScopedHTTy::DetachedScopeTy ScopedHTDetachedScopeTy;
 
 private:
   ScopedHTTy HT;
@@ -47,20 +46,17 @@ private:
   unsigned ResolvableDepth = 0;
 
 public:
-  ValueDecl *lookupValueName(DeclNameRef Name);
+  ValueDecl *lookupValueName(DeclName Name);
 
   Scope *getCurrentScope() const { return CurScope; }
 
   /// addToScope - Register the specified decl as being in the current lexical
   /// scope.
-  void addToScope(ValueDecl *D, Parser &TheParser,
-                  bool diagnoseRedefinitions = true);
+  void addToScope(ValueDecl *D, Parser &TheParser);
 
   bool isInactiveConfigBlock() const;
   
   SavedScope saveCurrentScope();
-
-  SWIFT_DEBUG_DUMP;
 };
 
 enum class ScopeKind {
@@ -71,10 +67,13 @@ enum class ScopeKind {
   StructBody,
   ClassBody,
   ProtocolBody,
+  ConstructorBody,
+  DestructorBody,
   InheritanceClause,
 
   Brace,
   TopLevel,
+  ForVars,
   ForeachVars,
   CaseVars,
   CatchVars,
@@ -84,7 +83,7 @@ enum class ScopeKind {
   ClosureParams,
 };
 
-/// An opaque object that owns the scope frame.  The scope frame can be
+/// \brief An opaque object that owns the scope frame.  The scope frame can be
 /// re-entered later.
 class SavedScope {
   friend class Scope;
@@ -128,7 +127,7 @@ class Scope {
   ScopeKind Kind;
   bool IsInactiveConfigBlock;
 
-  /// Save this scope so that it can be re-entered later.  Transfers the
+  /// \brief Save this scope so that it can be re-entered later.  Transfers the
   /// ownership of the scope frame to returned object.
   SavedScope saveScope() {
     return SavedScope(HTScope.detach(), Depth, Kind, IsInactiveConfigBlock);
@@ -141,12 +140,10 @@ class Scope {
   bool isResolvable() const;
 
 public:
-  Scope(ScopeInfo &SI, ScopeKind SC, bool isInactiveConfigBlock = false);
-
-  /// Create a lexical scope of the specified kind.
+  /// \brief Create a lexical scope of the specified kind.
   Scope(Parser *P, ScopeKind SC, bool isInactiveConfigBlock = false);
 
-  /// Re-enter the specified scope, transferring the ownership of the
+  /// \brief Re-enter the specified scope, transferring the ownership of the
   /// scope frame to the new object.
   Scope(Parser *P, SavedScope &&SS);
 
@@ -161,7 +158,7 @@ public:
   }
 };
 
-inline ValueDecl *ScopeInfo::lookupValueName(DeclNameRef Name) {
+inline ValueDecl *ScopeInfo::lookupValueName(DeclName Name) {
   // FIXME: this check can go away when SIL parser parses everything in
   // a toplevel scope.
   if (!CurScope)
@@ -170,9 +167,8 @@ inline ValueDecl *ScopeInfo::lookupValueName(DeclNameRef Name) {
   assert(CurScope && "no scope");
   // If we found nothing, or we found a decl at the top-level, return nothing.
   // We ignore results at the top-level because we may have overloading that
-  // will be resolved properly by name lookup.
-  std::pair<unsigned, ValueDecl *> Res = HT.lookup(CurScope->HTScope,
-                                                   Name.getFullName());
+  // will be resolved properly by name binding.
+  std::pair<unsigned, ValueDecl *> Res = HT.lookup(CurScope->HTScope, Name);
   if (Res.first < ResolvableDepth)
     return 0;
   return Res.second;

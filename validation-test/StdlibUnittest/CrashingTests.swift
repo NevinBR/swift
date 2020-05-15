@@ -5,29 +5,9 @@
 
 import StdlibUnittest
 
-#if os(Windows)
-// HACK: It seems that other platforms might be lucky and the stdout and stderr
-// are being sent to the parent process in the order they are used. However, in
-// Windows the result of a print followed by a fatalError is not always ordered
-// the same in the parent. To avoid a random order, we add Sleep(1) before the
-// fatalError calls, which yields enough time to other threads so the output is
-// ordered like in other platforms.
-  import WinSDK
-#endif
-
 
 _setOverrideOSVersion(.osx(major: 10, minor: 9, bugFix: 3))
 _setTestSuiteFailedCallback() { print("abort()") }
-
-private func fatalErrorWithDelayIfNeeded(
-  _ message: @autoclosure () -> String = String(),
-  file: StaticString = #file, line: UInt = #line
-) -> Never {
-  #if os(Windows)
-    Sleep(1)
-  #endif
-  fatalError(message, file: file, line: line)
-}
 
 //
 // Test that harness aborts when a test crashes during a test run.
@@ -37,10 +17,10 @@ var TestSuiteCrashes = TestSuite("TestSuiteCrashes")
 
 TestSuiteCrashes.test("crashesUnexpectedly1") {
   print("crashesUnexpectedly1")
-  fatalErrorWithDelayIfNeeded("This should crash")
+  fatalError("this should crash")
 }
 // CHECK: stdout>>> crashesUnexpectedly1
-// CHECK: stderr>>> Fatal error: This should crash:
+// CHECK: stderr>>> fatal error: this should crash:
 // CHECK: stderr>>> CRASHED: SIG
 // CHECK: [     FAIL ] TestSuiteCrashes.crashesUnexpectedly1
 
@@ -61,10 +41,10 @@ TestSuiteCrashes.test("fails1") {
 
 TestSuiteCrashes.test("crashesUnexpectedly2") {
   print("crashesUnexpectedly2")
-  fatalErrorWithDelayIfNeeded("This should crash")
+  fatalError("this should crash")
 }
 // CHECK: stdout>>> crashesUnexpectedly2
-// CHECK: stderr>>> Fatal error: This should crash:
+// CHECK: stderr>>> fatal error: this should crash:
 // CHECK: stderr>>> CRASHED: SIG
 // CHECK: [     FAIL ] TestSuiteCrashes.crashesUnexpectedly2
 
@@ -86,10 +66,10 @@ TestSuiteCrashes.test("fails2") {
 TestSuiteCrashes.test("crashesAsExpected1") {
   print("crashesAsExpected1")
   expectCrashLater()
-  fatalErrorWithDelayIfNeeded("This should crash")
+  fatalError("this should crash")
 }
 // CHECK: stdout>>> crashesAsExpected1
-// CHECK: stderr>>> Fatal error: This should crash:
+// CHECK: stderr>>> fatal error: this should crash:
 // CHECK: stderr>>> OK: saw expected "crashed: sig
 // CHECK: [       OK ] TestSuiteCrashes.crashesAsExpected1
 
@@ -111,10 +91,10 @@ TestSuiteCrashes.test("fails3") {
 TestSuiteCrashes.test("crashesUnexpectedlyXfail")
   .xfail(.osxBugFix(10, 9, 3, reason: "")).code {
   print("crashesUnexpectedlyXfail")
-  fatalErrorWithDelayIfNeeded("This should crash")
+  fatalError("this should crash")
 }
 // CHECK: stdout>>> crashesUnexpectedlyXfail
-// CHECK: stderr>>> Fatal error: This should crash:
+// CHECK: stderr>>> fatal error: this should crash:
 // CHECK: stderr>>> CRASHED: SIG
 // CHECK: [    XFAIL ] TestSuiteCrashes.crashesUnexpectedlyXfail
 
@@ -122,64 +102,64 @@ TestSuiteCrashes.test("crashesAsExpectedXfail")
   .xfail(.osxBugFix(10, 9, 3, reason: "")).code {
   print("crashesAsExpectedXfail")
   expectCrashLater()
-  fatalErrorWithDelayIfNeeded("This should crash")
+  fatalError("this should crash")
 }
 // CHECK: stdout>>> crashesAsExpectedXfail
-// CHECK: stderr>>> Fatal error: This should crash:
+// CHECK: stderr>>> fatal error: this should crash:
 // CHECK: stderr>>> OK: saw expected "crashed: sig
 // CHECK: [   UXPASS ] TestSuiteCrashes.crashesAsExpectedXfail
 
 TestSuiteCrashes.test("crashesWithMessagePasses")
-  .crashOutputMatches("This should crash").code {
+  .crashOutputMatches("this should crash").code {
   print("abcd")
   expectCrashLater()
-  fatalErrorWithDelayIfNeeded("This should crash")
+  fatalError("this should crash")
 }
 // CHECK: stdout>>> abcd
-// CHECK: stderr>>> Fatal error: This should crash:
+// CHECK: stderr>>> fatal error: this should crash:
 // CHECK: stderr>>> OK: saw expected "crashed: sig
 // CHECK: [       OK ] TestSuiteCrashes.crashesWithMessagePasses
 
 TestSuiteCrashes.test("crashesWithMessageFails")
-  .crashOutputMatches("This should crash").code {
-  print("This should crash")
+  .crashOutputMatches("this should crash").code {
+  print("this should crash")
   expectCrashLater()
-  fatalErrorWithDelayIfNeeded("unexpected message")
+  fatalError("unexpected message")
 }
-// CHECK: stdout>>> This should crash
-// CHECK: stderr>>> Fatal error: unexpected message:
+// CHECK: stdout>>> this should crash
+// CHECK: stderr>>> fatal error: unexpected message:
 // CHECK: stderr>>> OK: saw expected "crashed: sig
-// CHECK: did not find expected string after crash: "This should crash"
+// CHECK: did not find expected string after crash: "this should crash"
 // CHECK: [     FAIL ] TestSuiteCrashes.crashesWithMessageFails
 
 TestSuiteCrashes.test("crashesWithMultipleMessagesPasses")
   .crashOutputMatches("little dog")
-  .crashOutputMatches("This should crash")
+  .crashOutputMatches("this should crash")
   .crashOutputMatches("too")
   .code {
   print("abcd")
   expectCrashLater()
-  fatalErrorWithDelayIfNeeded("This should crash and your little dog too")
+  fatalError("this should crash and your little dog too")
 }
 // CHECK: stdout>>> abcd
-// CHECK: stderr>>> Fatal error: This should crash and your little dog too:
+// CHECK: stderr>>> fatal error: this should crash and your little dog too:
 // CHECK: stderr>>> OK: saw expected "crashed: sig
 // CHECK: [       OK ] TestSuiteCrashes.crashesWithMultipleMessagesPasses
 
 TestSuiteCrashes.test("crashesWithMultipleMessagesFails")
   .crashOutputMatches("unexpected message")
-  .crashOutputMatches("This should crash")
+  .crashOutputMatches("this should crash")
   .crashOutputMatches("big dog")
   .crashOutputMatches("and your little dog too")
 .code {
-  print("This should crash")
+  print("this should crash")
   expectCrashLater()
-  fatalErrorWithDelayIfNeeded("unexpected message and your little dog too")
+  fatalError("unexpected message and your little dog too")
 }
-// CHECK: stdout>>> This should crash
-// CHECK: stderr>>> Fatal error: unexpected message and your little dog too:
+// CHECK: stdout>>> this should crash
+// CHECK: stderr>>> fatal error: unexpected message and your little dog too:
 // CHECK: stderr>>> OK: saw expected "crashed: sig
-// CHECK: did not find expected string after crash: "This should crash"
+// CHECK: did not find expected string after crash: "this should crash"
 // CHECK: did not find expected string after crash: "big dog"
 // CHECK: [     FAIL ] TestSuiteCrashes.crashesWithMultipleMessagesFails
 

@@ -89,8 +89,8 @@ public struct ResettableWrapper<T : Resettable> : AnotherAssociated {
 
 public func cacheViaWrappers<
   T : HasAssociatedType, U : AnotherAssociated
->(_ computable : T, _ resettable : U)
-  where T.ComputableType == U.ResettableType {}
+    where T.ComputableType == U.ResettableType
+>(_ computable : T, _ resettable : U) {}
 
 
 // Subscripts

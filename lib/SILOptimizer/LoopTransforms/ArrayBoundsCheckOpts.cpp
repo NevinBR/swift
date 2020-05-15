@@ -12,15 +12,8 @@
 
 #define DEBUG_TYPE "sil-abcopts"
 
-#include "swift/AST/Builtins.h"
 #include "swift/Basic/STLExtras.h"
-#include "swift/SIL/Dominance.h"
-#include "swift/SIL/InstructionUtils.h"
-#include "swift/SIL/PatternMatch.h"
-#include "swift/SIL/SILArgument.h"
-#include "swift/SIL/SILBuilder.h"
-#include "swift/SIL/SILFunction.h"
-#include "swift/SIL/SILInstruction.h"
+#include "swift/AST/Builtins.h"
 #include "swift/SILOptimizer/Analysis/AliasAnalysis.h"
 #include "swift/SILOptimizer/Analysis/Analysis.h"
 #include "swift/SILOptimizer/Analysis/ArraySemantic.h"
@@ -31,9 +24,16 @@
 #include "swift/SILOptimizer/Analysis/RCIdentityAnalysis.h"
 #include "swift/SILOptimizer/PassManager/Passes.h"
 #include "swift/SILOptimizer/PassManager/Transforms.h"
-#include "swift/SILOptimizer/Utils/CFGOptUtils.h"
-#include "swift/SILOptimizer/Utils/InstOptUtils.h"
+#include "swift/SILOptimizer/Utils/CFG.h"
+#include "swift/SILOptimizer/Utils/Local.h"
 #include "swift/SILOptimizer/Utils/SILSSAUpdater.h"
+#include "swift/SIL/Dominance.h"
+#include "swift/SIL/PatternMatch.h"
+#include "swift/SIL/SILArgument.h"
+#include "swift/SIL/SILBuilder.h"
+#include "swift/SIL/SILFunction.h"
+#include "swift/SIL/SILInstruction.h"
+#include "swift/SIL/InstructionUtils.h"
 
 #include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/PointerIntPair.h"
@@ -85,6 +85,42 @@ static SILValue getArrayStructPointer(ArrayCallKind K, SILValue Array) {
     return LI->getOperand();
   }
   return Array;
+}
+
+/// Check whether the store is to the address obtained from a getElementAddress
+/// semantic call.
+///  %40 = function_ref @getElementAddress
+///  %42 = apply %40(%28, %37)
+///  %43 = struct_extract %42
+///  %44 = pointer_to_address strict %43
+///  store %1 to %44 : $*Int
+static bool isArrayEltStore(StoreInst *SI) {
+  // Strip the MarkDependenceInst (new array implementation) where the above
+  // pattern looks like the following.
+  // %40 = function_ref @getElementAddress
+  // %41 = apply %40(%21, %35)
+  // %42 = struct_element_addr %0 : $*Array<Int>, #Array._buffer
+  // %43 = struct_element_addr %42 : $*_ArrayBuffer<Int>, #_ArrayBuffer._storage
+  // %44 = struct_element_addr %43 : $*_BridgeStorage
+  // %45 = load %44 : $*Builtin.BridgeObject
+  // %46 = unchecked_ref_cast %45 : $... to $_ContiguousArrayStorageBase
+  // %47 = unchecked_ref_cast %46 : $... to $Builtin.NativeObject
+  // %48 = struct_extract %41 : $..., #UnsafeMutablePointer._rawValue
+  // %49 = pointer_to_address %48 : $Builtin.RawPointer to strict $*Int
+  // %50 = mark_dependence %49 : $*Int on %47 : $Builtin.NativeObject
+  // store %1 to %50 : $*Int
+  SILValue Dest = SI->getDest();
+  if (auto *MD = dyn_cast<MarkDependenceInst>(Dest))
+    Dest = MD->getOperand(0);
+
+  if (auto *PtrToAddr =
+          dyn_cast<PointerToAddressInst>(stripAddressProjections(Dest)))
+    if (auto *SEI = dyn_cast<StructExtractInst>(PtrToAddr->getOperand())) {
+      ArraySemanticsCall Call(SEI->getOperand());
+      if (Call && Call.getKind() == ArrayCallKind::kGetElementAddress)
+        return true;
+    }
+  return false;
 }
 
 static bool isReleaseSafeArrayReference(SILValue Ref,
@@ -149,7 +185,7 @@ mayChangeArraySize(SILInstruction *I, ArrayCallKind &Kind, SILValue &Array,
   // stored in a runtime allocated object sub field of an alloca.
   if (auto *SI = dyn_cast<StoreInst>(I)) {
     auto Ptr = SI->getDest();
-    return isa<AllocStackInst>(Ptr) || isAddressOfArrayElement(SI->getDest())
+    return isa<AllocStackInst>(Ptr) || isArrayEltStore(SI)
                ? ArrayBoundsEffect::kNone
                : ArrayBoundsEffect::kMayChangeAny;
   }
@@ -260,7 +296,7 @@ private:
         mayChangeArraySize(Inst, K, Array, ReleaseSafeArrayReferences, RCIA);
 
     if (BoundsEffect == ArrayBoundsEffect::kMayChangeAny) {
-      LLVM_DEBUG(llvm::dbgs() << " no safe because kMayChangeAny " << *Inst);
+      DEBUG(llvm::dbgs() << " no safe because kMayChangeAny " << *Inst);
       allArraysInMemoryAreUnsafe = true;
       // No need to store specific arrays in this case.
       UnsafeArrays.clear();
@@ -274,9 +310,9 @@ private:
     // We need to make sure that the array container is not aliased in ways
     // that we don't understand.
     if (Array && !isIdentifiedUnderlyingArrayObject(Array)) {
-      LLVM_DEBUG(llvm::dbgs()
-                 << " not safe because of not identified underlying object "
-                 << *Array << " in " << *Inst);
+      DEBUG(llvm::dbgs()
+            << " not safe because of not identified underlying object "
+            << *Array << " in " << *Inst);
       allArraysInMemoryAreUnsafe = true;
       // No need to store specific arrays in this case.
       UnsafeArrays.clear();
@@ -313,8 +349,8 @@ static bool removeRedundantChecksInBlock(SILBasicBlock &BB, ArraySet &Arrays,
   IndexedArraySet RedundantChecks;
   bool Changed = false;
 
-  LLVM_DEBUG(llvm::dbgs() << "Removing in BB\n");
-  LLVM_DEBUG(BB.dump());
+  DEBUG(llvm::dbgs() << "Removing in BB\n");
+  DEBUG(BB.dump());
 
   // Process all instructions in the current block.
   for (auto Iter = BB.begin(); Iter != BB.end();) {
@@ -335,7 +371,7 @@ static bool removeRedundantChecksInBlock(SILBasicBlock &BB, ArraySet &Arrays,
     auto Kind = ArrayCall.getKind();
     if (Kind != ArrayCallKind::kCheckSubscript &&
         Kind != ArrayCallKind::kCheckIndex) {
-      LLVM_DEBUG(llvm::dbgs() << " not a check_bounds call " << *Inst);
+      DEBUG(llvm::dbgs() << " not a check_bounds call " << *Inst);
       continue;
     }
     auto Array = ArrayCall.getSelf();
@@ -345,7 +381,7 @@ static bool removeRedundantChecksInBlock(SILBasicBlock &BB, ArraySet &Arrays,
 
     // Is this an unsafe array whose size could have been changed?
     if (ABC.isUnsafe(Array)) {
-      LLVM_DEBUG(llvm::dbgs() << " not a safe array argument " << *Array);
+      DEBUG(llvm::dbgs() << " not a safe array argument " << *Array);
       continue;
     }
 
@@ -356,13 +392,13 @@ static bool removeRedundantChecksInBlock(SILBasicBlock &BB, ArraySet &Arrays,
 
     auto IndexedArray =
         getArrayIndexPair(Array, ArrayIndex, Kind);
-    LLVM_DEBUG(llvm::dbgs() << " IndexedArray: " << *Array << " and "
-                            << *ArrayIndex);
+    DEBUG(llvm::dbgs() << " IndexedArray: " << *Array << " and "
+                       << *ArrayIndex);
 
     // Saw a check for the first time.
     if (!RedundantChecks.count(IndexedArray)) {
-      LLVM_DEBUG(llvm::dbgs() << " first time: " << *Inst
-                              << "  with array argument: " << *Array);
+      DEBUG(llvm::dbgs() << " first time: " << *Inst
+                         << "  with array argument: " << *Array);
       RedundantChecks.insert(IndexedArray);
       continue;
     }
@@ -398,7 +434,7 @@ static bool removeRedundantChecks(DominanceInfoNode *CurBB,
     auto Kind = ArrayCall.getKind();
     if (Kind != ArrayCallKind::kCheckSubscript &&
         Kind != ArrayCallKind::kCheckIndex) {
-      LLVM_DEBUG(llvm::dbgs() << " not a check_bounds call " << *Inst);
+      DEBUG(llvm::dbgs() << " not a check_bounds call " << *Inst);
       continue;
     }
     auto Array = ArrayCall.getSelf();
@@ -408,7 +444,7 @@ static bool removeRedundantChecks(DominanceInfoNode *CurBB,
 
     // Is this an unsafe array whose size could have been changed?
     if (ABC.isUnsafe(Array)) {
-      LLVM_DEBUG(llvm::dbgs() << " not a safe array argument " << *Array);
+      DEBUG(llvm::dbgs() << " not a safe array argument " << *Array);
       continue;
     }
 
@@ -421,8 +457,8 @@ static bool removeRedundantChecks(DominanceInfoNode *CurBB,
 
     // Saw a check for the first time.
     if (!DominatingSafeChecks.count(IndexedArray)) {
-      LLVM_DEBUG(llvm::dbgs() << " first time: " << *Inst
-                              << "  with array arg: " << *Array);
+      DEBUG(llvm::dbgs() << " first time: " << *Inst
+                         << "  with array arg: " << *Array);
       DominatingSafeChecks.insert(IndexedArray);
       SafeChecksToPop.push_back(IndexedArray);
       continue;
@@ -447,8 +483,8 @@ static bool removeRedundantChecks(DominanceInfoNode *CurBB,
   return Changed;
 }
 
-static CondFailInst *hasCondFailUse(SILValue V) {
-    for (auto *Op : V->getUses())
+static CondFailInst *hasCondFailUse(SILInstruction *I) {
+    for (auto *Op : I->getUses())
       if (auto C = dyn_cast<CondFailInst>(Op->getUser()))
         return C;
     return nullptr;
@@ -458,7 +494,7 @@ static CondFailInst *hasCondFailUse(SILValue V) {
 /// a cond_fail on the second result.
 static CondFailInst *isOverflowChecked(BuiltinInst *AI) {
   for (auto *Op : AI->getUses()) {
-    if (!match(Op->getUser(), m_TupleExtractOperation(m_ValueBase(), 1)))
+    if (!match(Op->getUser(), m_TupleExtractInst(m_ValueBase(), 1)))
       continue;
 
     TupleExtractInst *TEI = cast<TupleExtractInst>(Op->getUser());
@@ -474,10 +510,11 @@ static bool isSignedLessEqual(SILValue Start, SILValue End, SILBasicBlock &BB) {
   // If we have an inclusive range "low...up" the loop exit count will be
   // "up + 1" but the overflow check is on "up".
   SILValue PreInclusiveEnd;
-  if (!match(End, m_TupleExtractOperation(
-                      m_ApplyInst(BuiltinValueKind::SAddOver,
-                                  m_SILValue(PreInclusiveEnd), m_One()),
-                      0)))
+  if (!match(
+          End,
+          m_TupleExtractInst(m_ApplyInst(BuiltinValueKind::SAddOver,
+                                         m_SILValue(PreInclusiveEnd), m_One()),
+                             0)))
     PreInclusiveEnd = SILValue();
 
   bool IsPreInclusiveEndLEQ = false;
@@ -711,7 +748,7 @@ struct InductionInfo {
     auto ResultTy = SILType::getBuiltinIntegerType(1, Builder.getASTContext());
     auto *CmpSGE = Builder.createBuiltinBinaryFunction(
         Loc, "cmp_sge", Start->getType(), ResultTy, {Start, End});
-    Builder.createCondFail(Loc, CmpSGE, "loop induction variable overflowed");
+    Builder.createCondFail(Loc, CmpSGE);
     IsOverflowCheckInserted = true;
 
     // We can now remove the cond fail on the increment the above comparison
@@ -755,18 +792,17 @@ public:
       // Look for induction variables.
       IVInfo::IVDesc IV;
       if (!(IV = IVs.getInductionDesc(Arg))) {
-        LLVM_DEBUG(llvm::dbgs() << " not an induction variable: " << *Arg);
+        DEBUG(llvm::dbgs() << " not an induction variable: " << *Arg);
         continue;
       }
 
       InductionInfo *Info;
       if (!(Info = analyzeIndVar(Arg, IV.Inc, IV.IncVal))) {
-        LLVM_DEBUG(llvm::dbgs() << " could not analyze the induction on: "
-                                << *Arg);
+        DEBUG(llvm::dbgs() << " could not analyze the induction on: " << *Arg);
         continue;
       }
 
-      LLVM_DEBUG(llvm::dbgs() << " found an induction variable: " << *Arg);
+      DEBUG(llvm::dbgs() << " found an induction variable: " << *Arg);
       FoundIndVar = true;
       Map[Arg] = Info;
     }
@@ -810,12 +846,12 @@ private:
     // Look for a compare of induction variable + 1.
     // TODO: obviously we need to handle many more patterns.
     if (!match(Cond, m_ApplyInst(BuiltinValueKind::ICMP_EQ,
-                                 m_TupleExtractOperation(m_Specific(Inc), 0),
+                                 m_TupleExtractInst(m_Specific(Inc), 0),
                                  m_SILValue(End))) &&
         !match(Cond,
                m_ApplyInst(BuiltinValueKind::ICMP_EQ, m_SILValue(End),
-                           m_TupleExtractOperation(m_Specific(Inc), 0)))) {
-      LLVM_DEBUG(llvm::dbgs() << " found no exit condition\n");
+                           m_TupleExtractInst(m_Specific(Inc), 0)))) {
+      DEBUG(llvm::dbgs() << " found no exit condition\n");
       return nullptr;
     }
 
@@ -823,9 +859,9 @@ private:
     if (!dominates(DT, End, Preheader))
       return nullptr;
 
-    LLVM_DEBUG(llvm::dbgs() << " found an induction variable (ICMP_EQ): "
-                            << *HeaderVal << "  start: " << *Start
-                            << "  end: " << *End);
+    DEBUG(llvm::dbgs() << " found an induction variable (ICMP_EQ): "
+                       << *HeaderVal << "  start: " << *Start
+                       << "  end: " << *End);
 
     // Check whether the addition is overflow checked by a cond_fail or whether
     // code in the preheader's predecessor ensures that we won't overflow.
@@ -899,7 +935,7 @@ public:
     // Get the first induction value.
     auto FirstVal = Ind->getFirstValue();
     // Clone the struct for the start index.
-    auto Start = cast<SingleValueInstruction>(CheckToHoist.getIndex())
+    auto Start = cast<SILInstruction>(CheckToHoist.getIndex())
                      ->clone(Preheader->getTerminator());
     // Set the new start index to the first value of the induction.
     Start->setOperand(0, FirstVal);
@@ -911,7 +947,7 @@ public:
     // Get the last induction value.
     auto LastVal = Ind->getLastValue(Loc, Builder);
     // Clone the struct for the end index.
-    auto End = cast<SingleValueInstruction>(CheckToHoist.getIndex())
+    auto End = cast<SILInstruction>(CheckToHoist.getIndex())
                    ->clone(Preheader->getTerminator());
     // Set the new end index to the last value of the induction.
     End->setOperand(0, LastVal);
@@ -945,7 +981,7 @@ static bool hoistChecksInLoop(DominanceInfo *DT, DominanceInfoNode *DTNode,
     auto Kind = ArrayCall.getKind();
     if (Kind != ArrayCallKind::kCheckSubscript &&
         Kind != ArrayCallKind::kCheckIndex) {
-      LLVM_DEBUG(llvm::dbgs() << " not a check_bounds call " << *Inst);
+      DEBUG(llvm::dbgs() << " not a check_bounds call " << *Inst);
       continue;
     }
     auto ArrayVal = ArrayCall.getSelf();
@@ -955,7 +991,7 @@ static bool hoistChecksInLoop(DominanceInfo *DT, DominanceInfoNode *DTNode,
 
     // The array must strictly dominate the header.
     if (!dominates(DT, Array, Preheader)) {
-      LLVM_DEBUG(llvm::dbgs() << " does not dominated header" << *Array);
+      DEBUG(llvm::dbgs() << " does not dominated header" << *Array);
       continue;
     }
 
@@ -963,7 +999,7 @@ static bool hoistChecksInLoop(DominanceInfo *DT, DominanceInfoNode *DTNode,
     // This is either a SILValue which is defined outside the loop or it is an
     // array, which loaded from memory and the memory is not changed in the loop.
     if (!dominates(DT, ArrayVal, Preheader) && ABC.isUnsafe(Array)) {
-      LLVM_DEBUG(llvm::dbgs() << " not a safe array argument " << *Array);
+      DEBUG(llvm::dbgs() << " not a safe array argument " << *Array);
       continue;
     }
 
@@ -982,8 +1018,7 @@ static bool hoistChecksInLoop(DominanceInfo *DT, DominanceInfoNode *DTNode,
              "Must be able to hoist the instruction.");
       Changed = true;
       ArrayCall.hoist(Preheader->getTerminator(), DT);
-      LLVM_DEBUG(llvm::dbgs() << " could hoist invariant bounds check: "
-                              << *Inst);
+      DEBUG(llvm::dbgs() << " could hoist invariant bounds check: " << *Inst);
       continue;
     }
 
@@ -991,7 +1026,7 @@ static bool hoistChecksInLoop(DominanceInfo *DT, DominanceInfoNode *DTNode,
     // identity function.
     auto F = AccessFunction::getLinearFunction(ArrayIndex, IndVars);
     if (!F) {
-      LLVM_DEBUG(llvm::dbgs() << " not a linear function " << *Inst);
+      DEBUG(llvm::dbgs() << " not a linear function " << *Inst);
       continue;
     }
 
@@ -1003,7 +1038,7 @@ static bool hoistChecksInLoop(DominanceInfo *DT, DominanceInfoNode *DTNode,
       // dominate the loop exit block.
       Changed = true;
       ArrayCall.removeCall();
-      LLVM_DEBUG(llvm::dbgs() << "  Bounds check removed\n");
+      DEBUG(llvm::dbgs() << "  Bounds check removed\n");
       continue;
     }
     
@@ -1021,11 +1056,11 @@ static bool hoistChecksInLoop(DominanceInfo *DT, DominanceInfoNode *DTNode,
     // Remove the old check in the loop and the match the retain with a release.
     ArrayCall.removeCall();
   
-    LLVM_DEBUG(llvm::dbgs() << "  Bounds check hoisted\n");
+    DEBUG(llvm::dbgs() << "  Bounds check hoisted\n");
     Changed = true;
   }
 
-  LLVM_DEBUG(Preheader->getParent()->dump());
+  DEBUG(Preheader->getParent()->dump());
   // Traverse the children in the dominator tree.
   for (auto Child: *DTNode)
     Changed |= hoistChecksInLoop(DT, Child, ABC, IndVars, Preheader,
@@ -1038,7 +1073,7 @@ static bool hoistChecksInLoop(DominanceInfo *DT, DominanceInfoNode *DTNode,
 /// A dominating cond_fail on the same value ensures that this value is false.
 static bool isValueKnownFalseAt(SILValue Val, SILInstruction *At,
                                 DominanceInfo *DT) {
-  auto *Inst = Val->getDefiningInstruction();
+  auto *Inst = dyn_cast<SILInstruction>(Val);
   if (!Inst ||
       std::next(SILBasicBlock::iterator(Inst)) == Inst->getParent()->end())
     return false;
@@ -1074,7 +1109,7 @@ static bool isComparisonKnownFalse(BuiltinInst *Builtin,
   // Iteration count + 1 < 0 (start)
   // Iteration count + 1 == 0 (start)
   auto MatchIndVarHeader = m_Specific(IndVar.HeaderVal);
-  auto MatchIncrementIndVar = m_TupleExtractOperation(
+  auto MatchIncrementIndVar = m_TupleExtractInst(
       m_ApplyInst(BuiltinValueKind::SAddOver, MatchIndVarHeader, m_One()), 0);
   auto MatchIndVarStart = m_Specific(IndVar.Start);
 
@@ -1110,9 +1145,8 @@ static bool hoistBoundsChecks(SILLoop *Loop, DominanceInfo *DT, SILLoopInfo *LI,
   if (!Loop->getSubLoops().empty())
     return false;
 
-  LLVM_DEBUG(llvm::dbgs() << "Attempting to remove redundant checks in "
-                          << *Loop);
-  LLVM_DEBUG(Header->getParent()->dump());
+  DEBUG(llvm::dbgs() << "Attempting to remove redundant checks in " << *Loop);
+  DEBUG(Header->getParent()->dump());
 
   // Collect safe arrays. Arrays are safe if there is no function call that
   // could mutate their size in the loop.
@@ -1132,7 +1166,7 @@ static bool hoistBoundsChecks(SILLoop *Loop, DominanceInfo *DT, SILLoopInfo *LI,
   if (!EnableABCHoisting)
     return Changed;
 
-  LLVM_DEBUG(llvm::dbgs() << "Attempting to hoist checks in " << *Loop);
+  DEBUG(llvm::dbgs() << "Attempting to hoist checks in " << *Loop);
 
   // Find an exiting block.
   SILBasicBlock *SingleExitingBlk = Loop->getExitingBlock();
@@ -1140,7 +1174,8 @@ static bool hoistBoundsChecks(SILLoop *Loop, DominanceInfo *DT, SILLoopInfo *LI,
   SILBasicBlock *ExitBlk = Loop->getExitBlock();
   SILBasicBlock *Latch = Loop->getLoopLatch();
   if (!ExitingBlk || !Latch || !ExitBlk) {
-    LLVM_DEBUG(llvm::dbgs() << "No single exiting block or latch found\n");
+    DEBUG(llvm::dbgs()
+          << "No single exiting block or latch found\n");
     if (!Latch)
       return Changed;
 
@@ -1153,17 +1188,17 @@ static bool hoistBoundsChecks(SILLoop *Loop, DominanceInfo *DT, SILLoopInfo *LI,
       ExitBlk = Loop->contains(Latch->getSuccessors()[0])
                     ? Latch->getSuccessors()[1]
                     : Latch->getSuccessors()[0];
-      LLVM_DEBUG(llvm::dbgs() << "Found a latch ...\n");
+      DEBUG(llvm::dbgs() << "Found a latch ...\n");
     } else return Changed;
   }
 
-  LLVM_DEBUG(Preheader->getParent()->dump());
+  DEBUG(Preheader->getParent()->dump());
 
   // Find canonical induction variables.
   InductionAnalysis IndVars(DT, IVs, Preheader, Header, ExitingBlk, ExitBlk);
   bool IVarsFound = IndVars.analyze();
   if (!IVarsFound) {
-    LLVM_DEBUG(llvm::dbgs() << "No induction variables found\n");
+    DEBUG(llvm::dbgs() << "No induction variables found\n");
   }
 
   // Hoist the overflow check of induction variables out of the loop. This also
@@ -1229,7 +1264,7 @@ static bool hoistBoundsChecks(SILLoop *Loop, DominanceInfo *DT, SILLoopInfo *LI,
     }
   }
 
-  LLVM_DEBUG(Preheader->getParent()->dump());
+  DEBUG(Preheader->getParent()->dump());
 
   // Hoist bounds checks.
   Changed |= hoistChecksInLoop(DT, DT->getNode(Header), ABC, IndVars,
@@ -1287,9 +1322,6 @@ public:
 
     SILFunction *F = getFunction();
     assert(F);
-    // FIXME: Update for ownership.
-    if (F->hasOwnership())
-      return;
     SILLoopInfo *LI = LA->get(F);
     assert(LI);
     DominanceInfo *DT = DA->get(F);
@@ -1308,7 +1340,7 @@ public:
       for (auto &Inst : BB) {
         ArraySemanticsCall Call(&Inst);
         if (Call && Call.hasSelf()) {
-          LLVM_DEBUG(llvm::dbgs() << "Gathering " << *(ApplyInst*)Call);
+          DEBUG(llvm::dbgs() << "Gathering " << *(ApplyInst*)Call);
           auto rcRoot = RCIA->getRCIdentityRoot(Call.getSelf());
           // Check the type of the array. We need to have an array element type
           // that is not calling a deinit function.
@@ -1331,7 +1363,7 @@ public:
     bool ShouldVerify = getOptions().VerifyAll;
 
     if (LI->empty()) {
-      LLVM_DEBUG(llvm::dbgs() << "No loops in " << F->getName() << "\n");
+      DEBUG(llvm::dbgs() << "No loops in " << F->getName() << "\n");
     } else {
 
       // Remove redundant checks along the dominator tree in a loop and hoist

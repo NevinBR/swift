@@ -1,4 +1,5 @@
-// RUN: %target-swift-emit-silgen -enable-objc-interop -disable-objc-attr-requires-foundation-module -enable-library-evolution %s | %FileCheck %s --check-prefix=CHECK
+// RUN: %target-swift-frontend -emit-silgen -disable-objc-attr-requires-foundation-module -enable-resilience %s | %FileCheck %s --check-prefix=CHECK
+// REQUIRES: objc_interop
 
 // @objc protocols don't need default witness tables
 @objc public protocol ObjCProtocol {

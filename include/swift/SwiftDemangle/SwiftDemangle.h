@@ -19,8 +19,6 @@
 #ifndef SWIFT_DEMANGLE_SWIFT_DEMANGLE_H
 #define SWIFT_DEMANGLE_SWIFT_DEMANGLE_H
 
-#include <swift/SwiftDemangle/Platform.h>
-
 /// @{
 /// Version constants for libswiftDemangle library.
 
@@ -37,43 +35,30 @@
 extern "C" {
 #endif
 
-/// Demangle Swift function names.
+/// \brief Demangle Swift function names.
 ///
 /// \returns the length of the demangled function name (even if greater than the
 /// size of the output buffer) or 0 if the input is not a Swift-mangled function
 /// name (in which cases \p OutputBuffer is left untouched).
-SWIFT_DEMANGLE_LINKAGE
-size_t swift_demangle_getDemangledName(const char *MangledName,
-                                       char *OutputBuffer, size_t Length);
+size_t swift_demangle_getDemangledName(const char *MangledName, char *OutputBuffer,
+                                       size_t Length);
 
-/// Demangle Swift function names with module names and implicit self
+/// \brief Demangle Swift function names with module names and implicit self
 /// and metatype type names in function signatures stripped.
 ///
 /// \returns the length of the demangled function name (even if greater than the
 /// size of the output buffer) or 0 if the input is not a Swift-mangled function
 /// name (in which cases \p OutputBuffer is left untouched).
-SWIFT_DEMANGLE_LINKAGE
 size_t swift_demangle_getSimplifiedDemangledName(const char *MangledName,
                                                  char *OutputBuffer,
                                                  size_t Length);
 
-/// Demangle a Swift symbol and return the module name of the mangled entity.
-///
-/// \returns the length of the demangled module name (even if greater than the
-/// size of the output buffer) or 0 if the input is not a Swift-mangled name
-/// (in which cases \p OutputBuffer is left untouched).
-SWIFT_DEMANGLE_LINKAGE
-size_t swift_demangle_getModuleName(const char *MangledName,
-                                    char *OutputBuffer,
-                                    size_t Length);
-
-/// Demangles a Swift function name and returns true if the function
+/// \brief Demangles a Swift function name and returns true if the function
 /// conforms to the Swift calling convention.
 ///
 /// \returns true if the function conforms to the Swift calling convention.
 /// The return value is unspecified if the \p MangledName does not refer to a
 /// function symbol.
-SWIFT_DEMANGLE_LINKAGE
 int swift_demangle_hasSwiftCallingConvention(const char *MangledName);
 
 #ifdef __cplusplus
@@ -98,7 +83,7 @@ int swift_demangle_hasSwiftCallingConvention(const char *MangledName);
 extern "C" {
 #endif
 
-/// Demangle Swift function names.
+/// \brief Demangle Swift function names.
 ///
 /// Note that this function has a generic name because it is called from
 /// contexts where it is not appropriate to use code names.
@@ -106,7 +91,6 @@ extern "C" {
 /// \returns the length of the demangled function name (even if greater than the
 /// size of the output buffer) or 0 if the input is not a Swift-mangled function
 /// name (in which cases \p OutputBuffer is left untouched).
-SWIFT_DEMANGLE_LINKAGE
 size_t fnd_get_demangled_name(const char *MangledName, char *OutputBuffer,
                               size_t Length);
 

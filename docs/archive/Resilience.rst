@@ -1,5 +1,6 @@
 :orphan:
 
+.. @raise litre.TestsAreMissing
 .. _Resilience:
 
 Resilience

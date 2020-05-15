@@ -16,7 +16,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "swift/ASTSectionImporter/ASTSectionImporter.h"
-#include "../Serialization/ModuleFormat.h"
 #include "swift/Basic/Dwarf.h"
 #include "swift/Serialization/SerializedModuleLoader.h"
 #include "swift/Serialization/Validation.h"
@@ -25,8 +24,7 @@
 
 using namespace swift;
 
-bool swift::parseASTSection(MemoryBufferSerializedModuleLoader &Loader,
-                            StringRef buf,
+bool swift::parseASTSection(SerializedModuleLoader *SML, StringRef buf,
                             SmallVectorImpl<std::string> &foundModules) {
   if (!serialization::isSerializedAST(buf))
     return false;
@@ -46,13 +44,13 @@ bool swift::parseASTSection(MemoryBufferSerializedModuleLoader &Loader,
           llvm::MemoryBuffer::getMemBuffer(moduleData, info.name, false));
 
         // Register the memory buffer.
-        Loader.registerMemoryBuffer(info.name, std::move(bitstream));
-        foundModules.push_back(info.name.str());
+        SML->registerMemoryBuffer(info.name, std::move(bitstream));
+        foundModules.push_back(info.name);
       }
     } else {
       llvm::dbgs() << "Unable to load module";
       if (!info.name.empty())
-        llvm::dbgs() << " '" << info.name << '\'';
+        llvm::dbgs() << '\'' << info.name << '\'';
       llvm::dbgs() << ".\n";
     }
 
@@ -64,8 +62,7 @@ bool swift::parseASTSection(MemoryBufferSerializedModuleLoader &Loader,
       return false;
     }
 
-    buf = buf.substr(
-      llvm::alignTo(info.bytes, swift::serialization::SWIFTMODULE_ALIGNMENT));
+    buf = buf.substr(info.bytes);
   }
 
   return true;

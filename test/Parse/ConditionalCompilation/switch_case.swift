@@ -171,7 +171,7 @@ func foo(x: E, intVal: Int) {
 #if !ENABLE_C
       break
 #else
-    case .C: // expected-error {{'case' label can only appear inside a 'switch' statement}}
+    case .C: // expected-error {{'case' label can only appear inside a 'switch' statement}} expected-error {{extraneous '.' in enum 'case' declaration}}
       break
 #endif
   }
@@ -180,7 +180,7 @@ func foo(x: E, intVal: Int) {
   switch x {
     print() // expected-error {{all statements inside a switch must be covered by a 'case' or 'default'}}
 #if ENABLE_C
-    case .NOT_EXIST: // expected-error {{type 'E' has no member 'NOT_EXIST'}}
+    case .NOT_EXIST: // expected-error {{pattern cannot match values of type 'E'}}
       break
     case .C:
       break
@@ -206,10 +206,9 @@ func foo(x: E, intVal: Int) {
   // 'fallthrough' target.
   switch intVal {
     case 1:
-      fallthrough // expected-error {{'fallthrough' from a case which doesn't bind variable 'val'}}
+      fallthrough // expected-error {{'fallthrough' cannot transfer control to a case label that declares variables}}
 #if ENABLE_C
     case let val:
-      _ = val
       break
 #endif
     case 2:

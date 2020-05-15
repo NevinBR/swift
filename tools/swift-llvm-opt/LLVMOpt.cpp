@@ -24,6 +24,7 @@
 
 #include "swift/Subsystems.h"
 #include "swift/Basic/LLVMInitialize.h"
+#include "swift/Basic/LLVMContext.h"
 #include "swift/AST/IRGenOptions.h"
 #include "swift/LLVMPasses/PassesFwd.h"
 #include "swift/LLVMPasses/Passes.h"
@@ -36,7 +37,7 @@
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Bitcode/BitcodeWriterPass.h"
-#include "llvm/CodeGen/CommandFlags.inc"
+#include "llvm/CodeGen/CommandFlags.h"
 #include "llvm/CodeGen/TargetPassConfig.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DebugInfo.h"
@@ -135,7 +136,7 @@ getTargetMachine(llvm::Triple TheTriple, StringRef CPUStr,
 
   return TheTarget->createTargetMachine(
       TheTriple.getTriple(), CPUStr, FeaturesStr, Options,
-      Optional<Reloc::Model>(RelocModel), getCodeModel(), GetCodeGenOptLevel());
+      Optional<Reloc::Model>(RelocModel), CMModel, GetCodeGenOptLevel());
 }
 
 static void dumpOutput(llvm::Module &M, llvm::raw_ostream &os) {
@@ -211,8 +212,7 @@ static void runSpecificPasses(StringRef Binary, llvm::Module *M,
 //===----------------------------------------------------------------------===//
 
 int main(int argc, char **argv) {
-  PROGRAM_START(argc, argv);
-  INITIALIZE_LLVM();
+  INITIALIZE_LLVM(argc, argv);
 
   // Initialize passes
   PassRegistry &Registry = *PassRegistry::getPassRegistry();
@@ -251,9 +251,8 @@ int main(int argc, char **argv) {
   llvm::SMDiagnostic Err;
 
   // Load the input module...
-  auto LLVMContext = std::make_unique<llvm::LLVMContext>();
   std::unique_ptr<Module> M =
-      parseIRFile(InputFilename, Err, *LLVMContext.get());
+      parseIRFile(InputFilename, Err, getGlobalLLVMContext());
 
   if (!M) {
     Err.print(argv[0], errs());
@@ -271,14 +270,14 @@ int main(int argc, char **argv) {
     M->setTargetTriple(llvm::Triple::normalize(TargetTriple));
 
   // Figure out what stream we are supposed to write to...
-  std::unique_ptr<llvm::ToolOutputFile> Out;
+  std::unique_ptr<llvm::tool_output_file> Out;
   // Default to standard output.
   if (OutputFilename.empty())
     OutputFilename = "-";
 
   std::error_code EC;
   Out.reset(
-      new llvm::ToolOutputFile(OutputFilename, EC, llvm::sys::fs::F_None));
+      new llvm::tool_output_file(OutputFilename, EC, llvm::sys::fs::F_None));
   if (EC) {
     errs() << EC.message() << '\n';
     return 1;
@@ -303,7 +302,7 @@ int main(int argc, char **argv) {
 
   if (Optimized) {
     IRGenOptions Opts;
-    Opts.OptMode = OptimizationMode::ForSpeed;
+    Opts.Optimize = true;
 
     // Then perform the optimizations.
     performLLVMOptimizations(Opts, M.get(), TM.get());

@@ -21,6 +21,7 @@
 #include "swift/Basic/LLVM.h"
 #include "swift/Basic/OptionSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Allocator.h"
@@ -36,10 +37,16 @@ namespace swift {
   /// Determine whether the given string can be the name of a member.
   bool canBeMemberName(StringRef identifier);
 
-  /// Returns true if the given word is one of Swift's known prepositions.
-  ///
-  /// This can be faster than getPartOfSpeech(StringRef).
-  bool isPreposition(StringRef word);
+  /// Describes the kind of preposition a word is.
+  enum PrepositionKind {
+    PK_None = 0,
+    PK_Directional,
+    PK_Nondirectional
+  };
+
+  /// Determine what kind of preposition the given word is, if any,
+  /// ignoring case.
+  PrepositionKind getPrepositionKind(StringRef word);
 
   /// Describes the part of speech of a particular word.
   enum class PartOfSpeech {
@@ -58,8 +65,6 @@ namespace swift {
 
   public:
     StringRef copyString(StringRef string);
-
-    llvm::BumpPtrAllocator &getAllocator() { return Allocator; }
   };
 
   namespace camel_case {
@@ -95,11 +100,11 @@ namespace swift {
       };
 
     public:
-      using value_type = StringRef;
-      using reference = StringRef;
-      using pointer = ArrowProxy;
-      using difference_type = int;
-      using iterator_category = std::bidirectional_iterator_tag;
+      typedef StringRef value_type;
+      typedef StringRef reference;
+      typedef ArrowProxy pointer;
+      typedef int difference_type;
+      typedef std::bidirectional_iterator_tag iterator_category;
 
       WordIterator(StringRef string, unsigned position)
         : String(string), Position(position) 
@@ -204,11 +209,11 @@ namespace swift {
       StringRef String;
 
     public:
-      using iterator = WordIterator;
-      using const_iterator = WordIterator;
-      using reverse_iterator = std::reverse_iterator<WordIterator>;
-      using const_reverse_iterator = std::reverse_iterator<WordIterator>;
-
+      typedef WordIterator iterator;
+      typedef WordIterator const_iterator;
+      typedef std::reverse_iterator<WordIterator> reverse_iterator;
+      typedef std::reverse_iterator<WordIterator> const_reverse_iterator;
+      
       explicit Words(StringRef string) : String(string) { }
 
       bool empty() const { return String.empty(); }
@@ -309,6 +314,29 @@ namespace swift {
     size_t findWord(StringRef string, StringRef word);
   } // end namespace camel_case
 
+/// Describes the role that a particular name has within a
+/// signature, which can affect how we omit needless words.
+enum class NameRole {
+  /// The base name of a function or method.
+  BaseName,
+
+  /// The base name of a method where the omission type name is the
+  /// 'self' type.
+  BaseNameSelf,
+
+  /// The first parameter of a function or method.
+  FirstParameter,
+
+  // Subsequent parameters in a function or method.
+  SubsequentParameter,
+
+  // The name of a property.
+  Property,
+
+  // A partial name; used internally.
+  Partial,
+};
+
 /// Flags used by \c OmissionTypeName to describe the input type.
 enum class OmissionTypeFlags {
   /// Whether the parameter with this type has a default argument.
@@ -322,7 +350,7 @@ enum class OmissionTypeFlags {
 };
 
 /// Options that described omitted types.
-using OmissionTypeOptions = OptionSet<OmissionTypeFlags>;
+typedef OptionSet<OmissionTypeFlags> OmissionTypeOptions;
 
 /// Describes the name of a type as is used for omitting needless
 /// words.
@@ -402,13 +430,11 @@ StringRef matchLeadingTypeName(StringRef name, OmissionTypeName typeName);
 /// Describes a set of names with an inheritance relationship.
 class InheritedNameSet {
   const InheritedNameSet *Parent;
-  llvm::StringSet<llvm::BumpPtrAllocator &> Names;
+  llvm::StringSet<> Names;
 
 public:
   /// Construct a new inherited name set with the given parent.
-  InheritedNameSet(const InheritedNameSet *parent,
-                   llvm::BumpPtrAllocator &allocator)
-      : Parent(parent), Names(allocator) { }
+  explicit InheritedNameSet(const InheritedNameSet *parent) : Parent(parent) { }
 
   // Add a new name to the set.
   void add(StringRef name);

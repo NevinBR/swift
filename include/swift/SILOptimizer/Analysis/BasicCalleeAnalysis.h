@@ -16,7 +16,6 @@
 #include "swift/SILOptimizer/Analysis/Analysis.h"
 #include "swift/SIL/SILFunction.h"
 #include "swift/SIL/SILInstruction.h"
-#include "swift/SIL/ApplySite.h"
 #include "swift/SIL/SILModule.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
@@ -26,7 +25,6 @@
 #include "llvm/Support/Allocator.h"
 
 namespace swift {
-
 class ClassDecl;
 class SILFunction;
 class SILModule;
@@ -54,10 +52,6 @@ public:
       : CalleeFunctions(llvm::makeArrayRef(List.begin(), List.end())),
         IsIncomplete(IsIncomplete) {}
 
-  SWIFT_DEBUG_DUMP;
-
-  void print(llvm::raw_ostream &os) const;
-
   /// Return an iterator for the beginning of the list.
   ArrayRef<SILFunction *>::iterator begin() const {
     return CalleeFunctions.begin();
@@ -71,7 +65,7 @@ public:
   bool isIncomplete() const { return IsIncomplete; }
 
   /// Returns true if all callees are known and not external.
-  bool allCalleesVisible() const;
+  bool allCalleesVisible();
 };
 
 /// CalleeCache is a helper class that builds lists of potential
@@ -80,9 +74,10 @@ public:
 /// any function application site (including those that are simple
 /// function_ref, thin_to_thick, or partial_apply callees).
 class CalleeCache {
-  using Callees = llvm::SmallVector<SILFunction *, 16>;
-  using CalleesAndCanCallUnknown = llvm::PointerIntPair<Callees *, 1>;
-  using CacheType = llvm::DenseMap<SILDeclRef, CalleesAndCanCallUnknown>;
+  typedef llvm::SmallVector<SILFunction *, 16> Callees;
+  typedef llvm::PointerIntPair<Callees *, 1> CalleesAndCanCallUnknown;
+  typedef llvm::DenseMap<SILDeclRef, CalleesAndCanCallUnknown>
+      CacheType;
 
   SILModule &M;
 
@@ -110,16 +105,16 @@ public:
   /// given instruction. E.g. it could be destructors.
   CalleeList getCalleeList(SILInstruction *I) const;
 
-  CalleeList getCalleeList(SILDeclRef Decl) const;
-
 private:
   void enumerateFunctionsInModule();
   void sortAndUniqueCallees();
   CalleesAndCanCallUnknown &getOrCreateCalleesForMethod(SILDeclRef Decl);
-  void computeClassMethodCallees();
+  void computeClassMethodCalleesForClass(ClassDecl *CD);
+  void computeClassMethodCallees(ClassDecl *CD, SILDeclRef Method);
   void computeWitnessMethodCalleesForWitnessTable(SILWitnessTable &WT);
   void computeMethodCallees();
   SILFunction *getSingleCalleeForWitnessMethod(WitnessMethodInst *WMI) const;
+  CalleeList getCalleeList(SILDeclRef Decl) const;
   CalleeList getCalleeList(WitnessMethodInst *WMI) const;
   CalleeList getCalleeList(ClassMethodInst *CMI) const;
   CalleeList getCalleeListForCalleeKind(SILValue Callee) const;
@@ -131,10 +126,10 @@ class BasicCalleeAnalysis : public SILAnalysis {
 
 public:
   BasicCalleeAnalysis(SILModule *M)
-      : SILAnalysis(SILAnalysisKind::BasicCallee), M(*M), Cache(nullptr) {}
+      : SILAnalysis(AnalysisKind::BasicCallee), M(*M), Cache(nullptr) {}
 
   static bool classof(const SILAnalysis *S) {
-    return S->getKind() == SILAnalysisKind::BasicCallee;
+    return S->getKind() == AnalysisKind::BasicCallee;
   }
 
   /// Invalidate all information in this analysis.
@@ -149,39 +144,34 @@ public:
   }
 
   /// Notify the analysis about a newly created function.
-  virtual void notifyAddedOrModifiedFunction(SILFunction *F) override {
+  virtual void notifyAddFunction(SILFunction *F) override {
     // Nothing to be done because the analysis does not cache anything
     // per call-site in functions.
   }
 
   /// Notify the analysis about a function which will be deleted from the
   /// module.
-  virtual void notifyWillDeleteFunction(SILFunction *F) override {
-    // No invalidation needed because the analysis does not cache anything per
-    // call-site in functions.
-  }
+  virtual void notifyDeleteFunction(SILFunction *F) override {
+    // No invalidation needed because the analysis does not cache anything
+    // per call-site in functions.
+  };
 
   /// Notify the analysis about changed witness or vtables.
   virtual void invalidateFunctionTables() override {
     Cache.reset();
   }
 
-  SWIFT_DEBUG_DUMP;
-
-  void print(llvm::raw_ostream &os) const;
-
-  void updateCache() {
-    if (!Cache)
-      Cache = std::make_unique<CalleeCache>(M);
-  }
-
   CalleeList getCalleeList(FullApplySite FAS) {
-    updateCache();
+    if (!Cache)
+      Cache = llvm::make_unique<CalleeCache>(M);
+
     return Cache->getCalleeList(FAS);
   }
 
   CalleeList getCalleeList(SILInstruction *I) {
-    updateCache();
+    if (!Cache)
+      Cache = llvm::make_unique<CalleeCache>(M);
+
     return Cache->getCalleeList(I);
   }
 };

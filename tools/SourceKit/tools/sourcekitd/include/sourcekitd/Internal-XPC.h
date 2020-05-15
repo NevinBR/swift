@@ -27,6 +27,7 @@ enum class Message {
   Initialization,
   Notification,
   UIDSynchronization,
+  TraceMessage
 };
 
 } // namespace xpc

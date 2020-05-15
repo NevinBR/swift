@@ -11,7 +11,7 @@
 //===----------------------------------------------------------------------===//
 //
 /// \file
-/// This file defines diagnostics for SIL generation and analysis.
+/// \brief This file defines diagnostics for SIL generation and analysis.
 //
 //===----------------------------------------------------------------------===//
 

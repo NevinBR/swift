@@ -35,6 +35,11 @@ namespace irgen {
 /// implementing a type that has a statically known layout.
 class FixedTypeInfo : public TypeInfo {
 private:
+  /// The storage size of this type in bytes.  This may be zero even
+  /// for well-formed and complete types, such as a trivial enum or
+  /// tuple.
+  Size StorageSize;
+  
   /// The spare bit mask for this type. SpareBits[0] is the LSB of the first
   /// byte. This may be empty if the type has no spare bits.
   SpareBitVector SpareBits;
@@ -44,54 +49,47 @@ protected:
                 const SpareBitVector &spareBits,
                 Alignment align, IsPOD_t pod, IsBitwiseTakable_t bt,
                 IsFixedSize_t alwaysFixedSize,
-                SpecialTypeInfoKind stik = SpecialTypeInfoKind::Fixed)
-      : TypeInfo(type, align, pod, bt, alwaysFixedSize, IsABIAccessible, stik),
-        SpareBits(spareBits) {
+                SpecialTypeInfoKind stik = STIK_Fixed)
+      : TypeInfo(type, align, pod, bt, alwaysFixedSize, stik),
+        StorageSize(size), SpareBits(spareBits) {
     assert(SpareBits.size() == size.getValueInBits());
     assert(isFixedSize());
-    Bits.FixedTypeInfo.Size = size.getValue();
-    assert(Bits.FixedTypeInfo.Size == size.getValue() && "truncation");
   }
 
   FixedTypeInfo(llvm::Type *type, Size size,
                 SpareBitVector &&spareBits,
                 Alignment align, IsPOD_t pod, IsBitwiseTakable_t bt,
                 IsFixedSize_t alwaysFixedSize,
-                SpecialTypeInfoKind stik = SpecialTypeInfoKind::Fixed)
-      : TypeInfo(type, align, pod, bt, alwaysFixedSize, IsABIAccessible, stik),
-        SpareBits(std::move(spareBits)) {
+                SpecialTypeInfoKind stik = STIK_Fixed)
+      : TypeInfo(type, align, pod, bt, alwaysFixedSize, stik),
+        StorageSize(size), SpareBits(std::move(spareBits)) {
     assert(SpareBits.size() == size.getValueInBits());
     assert(isFixedSize());
-    Bits.FixedTypeInfo.Size = size.getValue();
-    assert(Bits.FixedTypeInfo.Size == size.getValue() && "truncation");
   }
 
 public:
   // This is useful for metaprogramming.
   static bool isFixed() { return true; }
-  static IsABIAccessible_t isABIAccessible() { return IsABIAccessible; }
 
   /// Whether this type is known to be empty.
   bool isKnownEmpty(ResilienceExpansion expansion) const {
-    return (isFixedSize(expansion) && getFixedSize().isZero());
+    return (isFixedSize(expansion) && StorageSize.isZero());
   }
 
-  StackAddress allocateStack(IRGenFunction &IGF, SILType T,
+  StackAddress allocateStack(IRGenFunction &IGF, SILType T, bool isEntryBlock,
                              const llvm::Twine &name) const override;
   void deallocateStack(IRGenFunction &IGF, StackAddress addr, SILType T) const override;
-  void destroyStack(IRGenFunction &IGF, StackAddress addr, SILType T,
-                    bool isOutlined) const override;
+  void destroyStack(IRGenFunction &IGF, StackAddress addr, SILType T) const override;
 
   // We can give these reasonable default implementations.
 
-  void initializeWithTake(IRGenFunction &IGF, Address destAddr, Address srcAddr,
-                          SILType T, bool isOutlined) const override;
+  void initializeWithTake(IRGenFunction &IGF, Address destAddr,
+                          Address srcAddr, SILType T) const override;
 
   llvm::Value *getSize(IRGenFunction &IGF, SILType T) const override;
   llvm::Value *getAlignmentMask(IRGenFunction &IGF, SILType T) const override;
   llvm::Value *getStride(IRGenFunction &IGF, SILType T) const override;
   llvm::Value *getIsPOD(IRGenFunction &IGF, SILType T) const override;
-  llvm::Value *getIsBitwiseTakable(IRGenFunction &IGF, SILType T) const override;
   llvm::Value *isDynamicallyPackedInline(IRGenFunction &IGF,
                                          SILType T) const override;
 
@@ -100,8 +98,7 @@ public:
   llvm::Constant *getStaticStride(IRGenModule &IGM) const override;
 
   void completeFixed(Size size, Alignment alignment) {
-    Bits.FixedTypeInfo.Size = size.getValue();
-    assert(Bits.FixedTypeInfo.Size == size.getValue() && "truncation");
+    StorageSize = size;
     setStorageAlignment(alignment);
   }
 
@@ -112,7 +109,7 @@ public:
 
   /// Returns the known, fixed size required to store a value of this type.
   Size getFixedSize() const {
-    return Size(Bits.FixedTypeInfo.Size);
+    return StorageSize;
   }
 
   /// Returns the (assumed fixed) stride of the storage for this
@@ -122,7 +119,7 @@ public:
   /// The stride is at least one, even for zero-sized types, like the empty
   /// tuple.
   Size getFixedStride() const {
-    Size s = getFixedSize().roundUpToAlignment(getFixedAlignment());
+    Size s = StorageSize.roundUpToAlignment(getFixedAlignment());
     if (s.isZero())
       s = Size(1);
     return s;
@@ -167,9 +164,8 @@ public:
   
   /// Map an extra inhabitant representation in memory to a unique 31-bit
   /// identifier, and map a valid representation of the type to -1.
-  virtual llvm::Value *getExtraInhabitantIndex(IRGenFunction &IGF,
-                                               Address src, SILType T,
-                                               bool isOutlined) const {
+  llvm::Value *getExtraInhabitantIndex(IRGenFunction &IGF,
+                                       Address src, SILType T) const override {
     return getSpareBitExtraInhabitantIndex(IGF, src);
   }
   
@@ -180,10 +176,9 @@ public:
   
   /// Store the extra inhabitant representation indexed by a 31-bit identifier
   /// to memory.
-  virtual void storeExtraInhabitant(IRGenFunction &IGF,
-                                    llvm::Value *index,
-                                    Address dest, SILType T,
-                                    bool isOutlined) const {
+  void storeExtraInhabitant(IRGenFunction &IGF,
+                            llvm::Value *index,
+                            Address dest, SILType T) const override {
     storeSpareBitExtraInhabitant(IGF, index, dest);
   }
   
@@ -213,65 +208,29 @@ public:
   ///   SpareBitVector spareBits;
   ///   for (EnumElementDecl *elt : u->getAllElements())
   ///     getFragileTypeInfo(elt->getArgumentType())
-  ///       .applyFixedSpareBitsMask(IGM, spareBits);
+  ///       .applyFixedSpareBitsMask(spareBits, 0);
   ///
   /// and end up with a spare bits mask for the entire enum.
-  void applyFixedSpareBitsMask(const IRGenModule &IGM,
-                               SpareBitVector &mask) const;
-
-  void collectMetadataForOutlining(OutliningMetadataCollector &collector,
-                                   SILType T) const override {
-    // We assume that fixed type infos generally do not require type
-    // metadata in order to perform value operations.
-  }
-
-  llvm::Value *getEnumTagSinglePayload(IRGenFunction &IGF,
-                                       llvm::Value *numEmptyCases,
-                                       Address enumAddr,
-                                       SILType T,
-                                       bool isOutlined) const override;
-
-  void storeEnumTagSinglePayload(IRGenFunction &IGF, llvm::Value *whichCase,
-                                 llvm::Value *numEmptyCases, Address enumAddr,
-                                 SILType T, bool isOutlined) const override;
-
+  void applyFixedSpareBitsMask(SpareBitVector &mask) const;
+  
+  /// Applies a fixed spare bits mask to the given BitVector,
+  /// clearing any bits used by valid representations of the type.
+  ///
+  /// If the bitvector is empty or smaller than this type, it is grown and
+  /// filled with bits direct from the spare bits mask. If the bitvector is
+  /// larger than this type, the trailing bits are untouched.
+  static void applyFixedSpareBitsMask(SpareBitVector &mask,
+                                      const SpareBitVector &spareBits);
+  
+  /// Fixed-size types never need dynamic value witness table instantiation.
+  void initializeMetadata(IRGenFunction &IGF,
+                          llvm::Value *metadata,
+                          llvm::Value *vwtable,
+                          SILType T) const override {}
+  
   static bool classof(const FixedTypeInfo *type) { return true; }
   static bool classof(const TypeInfo *type) { return type->isFixedSize(); }
 };
-
-llvm::Value *getFixedTypeEnumTagSinglePayload(
-    IRGenFunction &IGF, llvm::Value *numEmptyCases, Address enumAddr,
-    llvm::Value *size, Size fixedSize, unsigned fixedExtraInhabitantCount,
-    llvm::function_ref<llvm::Value *(Address)> getExtraInhabitantIndex,
-    bool isOutlined);
-
-llvm::Value *getFixedTypeEnumTagSinglePayload(IRGenFunction &IGF,
-                                              const FixedTypeInfo &fixedTI,
-                                              llvm::Value *numEmptyCases,
-                                              Address enumAddr,
-                                              SILType T, bool isOutlined);
-void storeFixedTypeEnumTagSinglePayload(
-    IRGenFunction &IGF, llvm::Value *whichCase, llvm::Value *numEmptyCases,
-    Address enumAddr, llvm::Value *size, Size fixedSize,
-    unsigned fixedExtraInhabitantCount,
-    llvm::function_ref<void(llvm::Value *, Address)> storeExtraInhabitant,
-    bool isOutlined);
-
-llvm::Value *emitLoad1to4Bytes(IRGenFunction &IGF, Address from,
-                               llvm::Value *size);
-void emitStore1to4Bytes(IRGenFunction &IGF, Address to, llvm::Value *val,
-                        llvm::Value *size);
-
-llvm::Value *emitGetTag(IRGenFunction &IGF, Address from, llvm::Value *size);
-void emitSetTag(IRGenFunction &IGF, Address to, llvm::Value *val,
-                llvm::Value *size);
-
-void storeFixedTypeEnumTagSinglePayload(IRGenFunction &IGF,
-                                        const FixedTypeInfo &fixedTI,
-                                        llvm::Value *index,
-                                        llvm::Value *numEmptyCases,
-                                        Address enumAddr,
-                                        SILType T, bool isOutlined);
 
 }
 }

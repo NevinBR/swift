@@ -8,9 +8,9 @@ public final class RemoveStoredProperty {
     self.last = last
   }
 
-  var first: String
-  var middle: String
-  var last: String
+  public var first: String
+  public var middle: String
+  public var last: String
 
   public var name: String {
     return "\(first) \(middle) \(last)"

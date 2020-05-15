@@ -1,12 +1,9 @@
-// RUN: %target-swift-frontend(mock-sdk: %clang-importer-sdk) -I %S/Inputs/custom-modules -enable-objc-interop -import-objc-header %S/Inputs/macros_redef.h -emit-silgen %s | %FileCheck -check-prefix=NEGATIVE %s
-// RUN: %target-swift-frontend(mock-sdk: %clang-importer-sdk) -I %S/Inputs/custom-modules -enable-objc-interop -import-objc-header %S/Inputs/macros_redef.h -DCONFLICT -typecheck -verify %s
+// RUN: %target-swift-frontend(mock-sdk: %clang-importer-sdk) -I %S/Inputs/custom-modules -import-objc-header %S/Inputs/macros_redef.h -typecheck %s
 
-// NEGATIVE-NOT: OLDTAG
+// RUN: %target-swift-frontend(mock-sdk: %clang-importer-sdk) -I %S/Inputs/custom-modules -import-objc-header %S/Inputs/macros_redef.h -DCONFLICT -typecheck -verify %s
 
 import MacrosRedefA
 import MacrosRedefB
-import MacrosDeliberateRedefA
-import MacrosDeliberateRedefB
 
 #if CONFLICT
 import MacrosRedefWithSubmodules
@@ -45,20 +42,5 @@ func testParallelSubmodules() {
   s = MRWPS_REDEF_1
   s = MRWPS_REDEF_2 // expected-error{{ambiguous use of 'MRWPS_REDEF_2'}}
   _ = s
-}
-
-func testDeliberateRedef() {
-  var s: String
-  s = MacrosDeliberateRedefA.MDR_REDEF_1
-  s = MacrosDeliberateRedefB.MDR_REDEF_1
-  s = MDR_REDEF_1
-
-#if CONFLICT
-  // The first two lines ought to work even when SILGen-ing, but the two
-  // definitions of MDR_REDEF_2 end up getting the same mangled name.
-  s = MacrosDeliberateRedefA.MDR_REDEF_2 // ok
-  s = MacrosDeliberateRedefB.MDR_REDEF_2 // ok
-  s = MDR_REDEF_2 // expected-error{{ambiguous use of 'MDR_REDEF_2'}}
-#endif
 }
 

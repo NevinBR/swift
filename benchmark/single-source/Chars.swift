@@ -13,14 +13,10 @@
 // This test tests the performance of ASCII Character comparison.
 import TestsUtils
 
-public let Chars = BenchmarkInfo(
-  name: "Chars2",
-  runFunction: run_Chars,
-  tags: [.validation, .api, .String],
-  setUpFunction: { blackHole(alphabetInput) },
-  legacyFactor: 50)
-
-let alphabetInput: [Character] = [
+@inline(never)
+public func run_Chars(_ N: Int) {
+  // Permute some characters.
+  let alphabet: [Character] = [
     "A", "B", "C", "D", "E", "F", "G",
     "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R",
     "S", "T", "U",
@@ -29,19 +25,12 @@ let alphabetInput: [Character] = [
     "2", "a", "t", "i", "o", "e", "q", "n", "X", "Y", "Z", "?", "m", "Z", ","
     ]
 
-@inline(never)
-public func run_Chars(_ N: Int) {
-  // Permute some characters.
-  let alphabet: [Character] = alphabetInput
-
-  for _ in 0..<N {
+  for _ in 0...N {
     for firstChar in alphabet {
-      for lastChar in alphabet {
-        blackHole(firstChar < lastChar)
-        blackHole(firstChar == lastChar)
-        blackHole(firstChar > lastChar)
-        blackHole(firstChar <= lastChar)
-        blackHole(firstChar >= lastChar)
+      for middleChar in alphabet {
+        for lastChar in alphabet {
+          _ = ((firstChar == middleChar) != (middleChar < lastChar))
+        }
       }
     }
   }

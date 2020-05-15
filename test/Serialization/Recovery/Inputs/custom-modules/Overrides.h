@@ -8,13 +8,11 @@
 - (nullable id)nullabilityChangeMethod;
 - (nonnull id)typeChangeMethod;
 @property (readonly) long disappearingProperty;
-@property (readwrite) long disappearingPropertySetter;
 #else
 //- (void)disappearingMethod;
 - (nonnull id)nullabilityChangeMethod;
 - (nonnull Base *)typeChangeMethod;
 // @property (readonly) long disappearingProperty;
-@property (readonly) long disappearingPropertySetter;
 #endif
 @end
 
@@ -115,24 +113,5 @@
 - (nonnull instancetype)initWithValue:(long)value;
 #else
 //- (nonnull instancetype)initWithValue:(long)value;
-#endif
-@end
-
-
-#if !BAD
-struct BoxedInt {
-  int value;
-};
-#endif
-
-@interface MethodWithDisappearingType : Object
-#if !BAD
-- (struct BoxedInt)boxItUp;
-#endif
-@end
-
-@interface InitializerWithDisappearingType : Object
-#if !BAD
-- (nonnull instancetype)initWithBoxedInt:(struct BoxedInt)box;
 #endif
 @end

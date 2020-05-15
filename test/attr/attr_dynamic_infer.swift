@@ -1,28 +1,27 @@
 // RUN: %target-swift-ide-test -print-ast-typechecked -source-filename=%s -print-implicit-attrs -disable-objc-attr-requires-foundation-module | %FileCheck %s
-// REQUIRES: objc_interop
 
 @objc class Super {
-  @objc dynamic func baseFoo() {}
+  func baseFoo() {}
 }
 
 // CHECK: extension Super {
 extension Super {
   // CHECK:  @objc dynamic func foo
-  @objc func foo() { }
+  func foo() { }
 
   // CHECK: @objc dynamic var prop: Super
-  @objc var prop: Super {
-    // CHECK: @objc get
+  var prop: Super {
+    // CHECK: @objc dynamic get
     get { return Super() }
-    // CHECK: @objc set
+    // CHECK: @objc dynamic set
     set { }
   }
 
   // CHECK: @objc dynamic subscript(sup: Super) -> Super
-  @objc subscript(sup: Super) -> Super {
-    // CHECK: @objc get
+  subscript(sup: Super) -> Super {
+    // CHECK: @objc dynamic get
     get { return sup }
-    // CHECK: @objc set
+    // CHECK: @objc dynamic set
     set { }
   }
 }
@@ -37,17 +36,17 @@ extension Sub {
 
   // CHECK: @objc override dynamic var prop: Super
   override var prop: Super {
-    // CHECK: @objc get
+    // CHECK: @objc override dynamic get
     get { return Super() }
-    // CHECK: @objc set
+    // CHECK: @objc override dynamic set
     set { }
   }
 
   // CHECK: @objc override dynamic subscript(sup: Super) -> Super
   override subscript(sup: Super) -> Super {
-    // CHECK: @objc get
+    // CHECK: @objc override dynamic get
     get { return sup }
-    // CHECK: @objc set
+    // CHECK: @objc override dynamic set
     set { }
   }
 
@@ -61,28 +60,28 @@ extension Sub {
 
 extension FinalTests {
   // CHECK: @objc final func foo
-  @objc final func foo() { }
+  final func foo() { }
 
   // CHECK: @objc final var prop: Super
-  @objc final var prop: Super {
-    // CHECK: get
+  final var prop: Super {
+    // CHECK: @objc final get
     get { return Super() }
-    // CHECK: set
+    // CHECK: @objc final set
     set { }
   }
 
   // CHECK: @objc final subscript(sup: Super) -> Super
-  @objc final subscript(sup: Super) -> Super {
-    // CHECK: get
+  final subscript(sup: Super) -> Super {
+    // CHECK: @objc final get
     get { return sup }
-    // CHECK: set
+    // CHECK: @objc final set
     set { }
   }
 
-  // CHECK: @objc @_hasInitialValue static var x
-  @objc static var x: Int = 0
+  // CHECK: @objc static var x
+  static var x: Int = 0
 
   // CHECK: @objc static func bar
-  @objc static func bar() { }
+  static func bar() { }
 }
 

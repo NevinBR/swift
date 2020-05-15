@@ -128,10 +128,9 @@ struct OuterGenericStruct<A> {
 func genericFunction<T>(t: T) {
   class First : Second<T>.UnknownType { }
   // expected-error@-1 {{type 'First' cannot be nested in generic function 'genericFunction(t:)'}}
-  // expected-error@-2 {{'UnknownType' is not a member type of 'Second<T>'}}
-  class Second<T> : Second { } // expected-note{{'Second' declared here}}
+  class Second<T> : Second { }
   // expected-error@-1 {{type 'Second' cannot be nested in generic function 'genericFunction(t:)'}}
-  // expected-error@-2 {{'Second' inherits from itself}}
+  // expected-error@-2 2 {{circular class inheritance Second}}
 }
 
 // Spurious "Self or associated type requirements" diagnostic.
@@ -145,16 +144,5 @@ func freeFunction() {
 
     func method() -> ProtoWithAssocType {}
     // expected-error@-1 {{can only be used as a generic constraint because it has Self or associated type requirements}}
-  }
-}
-
-// Superclass lookup archetype vs interface type mixup
-class Generic<T> {
-  struct Nested {}
-
-  func outerMethod() {
-    class Inner : Generic<T> { // expected-error {{type 'Inner' cannot be nested in generic function 'outerMethod()'}}
-      func innerMethod() -> Nested {}
-    }
   }
 }

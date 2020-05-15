@@ -15,8 +15,6 @@
 
 #include "swift/Syntax/Syntax.h"
 
-#include <iterator>
-
 namespace swift {
 namespace syntax {
 
@@ -59,10 +57,10 @@ class SyntaxCollection : public Syntax {
 private:
   static RC<SyntaxData>
   makeData(std::initializer_list<Element> &Elements) {
-    std::vector<RC<RawSyntax>> List;
-    List.reserve(Elements.size());
-    for (auto &Elt : Elements)
+    RawSyntax::LayoutList List;
+    for (auto &Elt : Elements) {
       List.push_back(Elt.getRaw());
+    }
     auto Raw = RawSyntax::make(CollectionKind, List,
                                SourcePresence::Present);
     return SyntaxData::make(Raw);
@@ -84,7 +82,7 @@ public:
 
   /// Returns the number of elements in the collection.
   size_t size() const {
-    return getRaw()->getLayout().size();
+    return getRaw()->Layout.size();
   }
 
   SyntaxCollectionIterator<CollectionKind, Element> begin() const {
@@ -97,7 +95,7 @@ public:
   SyntaxCollectionIterator<CollectionKind, Element> end() const {
     return SyntaxCollectionIterator<CollectionKind, Element> {
       *this,
-      getRaw()->getLayout().size(),
+      getRaw()->Layout.size(),
     };
   }
 
@@ -108,18 +106,17 @@ public:
   Element operator[](const size_t Index) const {
     assert(Index < size());
     assert(!empty());
-    return { Root, Data->getChild(Index).get() };
+
+    auto ChildData = Data->getChild(Index);
+    return Element { Root, ChildData.get() };
   }
 
   /// Return a new collection with the given element added to the end.
   SyntaxCollection<CollectionKind, Element>
   appending(Element E) const {
-    auto OldLayout = getRaw()->getLayout();
-    std::vector<RC<RawSyntax>> NewLayout;
-    NewLayout.reserve(OldLayout.size() + 1);
-    std::copy(OldLayout.begin(), OldLayout.end(), back_inserter(NewLayout));
+    auto NewLayout = getRaw()->Layout;
     NewLayout.push_back(E.getRaw());
-    auto Raw = RawSyntax::make(CollectionKind, NewLayout, getRaw()->getPresence());
+    auto Raw = RawSyntax::make(CollectionKind, NewLayout, getRaw()->Presence);
     return Data->replaceSelf<SyntaxCollection<CollectionKind, Element>>(Raw);
   }
 
@@ -128,19 +125,20 @@ public:
   /// Precondition: !empty()
   SyntaxCollection<CollectionKind, Element> removingLast() const {
     assert(!empty());
-    auto NewLayout = getRaw()->getLayout().drop_back();
-    auto Raw = RawSyntax::make(CollectionKind, NewLayout, getRaw()->getPresence());
+    auto NewLayout = getRaw()->Layout;
+    NewLayout.pop_back();
+    auto Raw = RawSyntax::make(CollectionKind, NewLayout, getRaw()->Presence);
     return Data->replaceSelf<SyntaxCollection<CollectionKind, Element>>(Raw);
   }
 
   /// Return a new collection with the given element appended to the front.
   SyntaxCollection<CollectionKind, Element>
   prepending(Element E) const {
-    auto OldLayout = getRaw()->getLayout();
-    std::vector<RC<RawSyntax>> NewLayout = { E.getRaw() };
-    std::copy(OldLayout.begin(), OldLayout.end(),
+    RawSyntax::LayoutList NewLayout = { E.getRaw() };
+    std::copy(getRaw()->Layout.begin(),
+              getRaw()->Layout.end(),
               std::back_inserter(NewLayout));
-    auto Raw = RawSyntax::make(CollectionKind, NewLayout, getRaw()->getPresence());
+    auto Raw = RawSyntax::make(CollectionKind, NewLayout, getRaw()->Presence);
     return Data->replaceSelf<SyntaxCollection<CollectionKind, Element>>(Raw);
   }
 
@@ -149,8 +147,11 @@ public:
   /// Precondition: !empty()
   SyntaxCollection<CollectionKind, Element> removingFirst() const {
     assert(!empty());
-    auto NewLayout = getRaw()->getLayout().drop_front();
-    auto Raw = RawSyntax::make(CollectionKind, NewLayout, getRaw()->getPresence());
+    RawSyntax::LayoutList NewLayout;
+    std::copy(getRaw()->Layout.begin() + 1,
+              getRaw()->Layout.end(),
+              std::back_inserter(NewLayout));
+    auto Raw = RawSyntax::make(CollectionKind, NewLayout, getRaw()->Presence);
     return Data->replaceSelf<SyntaxCollection<CollectionKind, Element>>(Raw);
   }
 
@@ -160,42 +161,32 @@ public:
   SyntaxCollection<CollectionKind, Element>
   inserting(size_t i, Element E) const {
     assert(i <= size());
-    auto OldLayout = getRaw()->getLayout();
-    std::vector<RC<RawSyntax>> NewLayout;
-    NewLayout.reserve(OldLayout.size() + 1);
-
-    std::copy(OldLayout.begin(), OldLayout.begin() + i,
+    RawSyntax::LayoutList NewLayout;
+    std::copy(getRaw()->Layout.begin(), getRaw()->Layout.begin() + i,
               std::back_inserter(NewLayout));
     NewLayout.push_back(E.getRaw());
-    std::copy(OldLayout.begin() + i, OldLayout.end(),
+    std::copy(getRaw()->Layout.begin() + i, getRaw()->Layout.end(),
               std::back_inserter(NewLayout));
-    auto Raw = RawSyntax::make(CollectionKind, NewLayout, getRaw()->getPresence());
+    auto Raw = RawSyntax::make(CollectionKind, NewLayout, getRaw()->Presence);
     return Data->replaceSelf<SyntaxCollection<CollectionKind, Element>>(Raw);
   }
 
   /// Return a new collection with the element removed at index i.
   SyntaxCollection<CollectionKind, Element> removing(size_t i) const {
-    assert(i <= size());
-    std::vector<RC<RawSyntax>> NewLayout = getRaw()->getLayout();
-    auto iterator = NewLayout.begin();
-    std::advance(iterator, i);
-    NewLayout.erase(iterator);
-    auto Raw = RawSyntax::make(CollectionKind, NewLayout, getRaw()->getPresence());
+    auto NewLayout = getRaw()->Layout;
+    NewLayout.erase(NewLayout.begin() + i);
+    auto Raw = RawSyntax::make(CollectionKind, NewLayout, getRaw()->Presence);
     return Data->replaceSelf<SyntaxCollection<CollectionKind, Element>>(Raw);
   }
 
   /// Return an empty syntax collection of this type.
   SyntaxCollection<CollectionKind, Element> cleared() const {
-    auto Raw = RawSyntax::make(CollectionKind, {}, getRaw()->getPresence());
+    auto Raw = RawSyntax::make(CollectionKind, {}, getRaw()->Presence);
     return Data->replaceSelf<SyntaxCollection<CollectionKind, Element>>(Raw);
   }
 
-  static bool kindof(SyntaxKind Kind) {
-    return Kind == CollectionKind;
-  }
-
   static bool classof(const Syntax *S) {
-    return kindof(S->getKind());
+    return S->getKind() == CollectionKind;
   }
 };
 

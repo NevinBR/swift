@@ -1,6 +1,5 @@
-// RUN: %empty-directory(%t)
+// RUN: rm -rf %t && mkdir %t
 // RUN: mkdir %t/idx
-// UNSUPPORTED: OS=windows-msvc
 
 // Before indexing, do a dry-run to ensure any clang modules are cached. We
 // want to isolate the error that comes from swift's indexing support, not

@@ -12,19 +12,18 @@ TEST(ExprSyntaxTests, IntegerLiteralExprMakeAPIs) {
   {
     auto LiteralToken = SyntaxFactory::makeIntegerLiteral("100", {}, {});
     auto Sign = SyntaxFactory::makePrefixOperator("-", {}, {});
-    auto Literal = SyntaxFactory::makePrefixOperatorExpr(Sign,
-      SyntaxFactory::makeIntegerLiteralExpr(LiteralToken));
+    auto Literal = SyntaxFactory::makeIntegerLiteralExpr(Sign, LiteralToken);
 
     llvm::SmallString<10> Scratch;
     llvm::raw_svector_ostream OS(Scratch);
     Literal.print(OS);
     ASSERT_EQ(OS.str().str(), "-100");
-    ASSERT_EQ(Literal.getKind(), SyntaxKind::PrefixOperatorExpr);
+    ASSERT_EQ(Literal.getKind(), SyntaxKind::IntegerLiteralExpr);
   }
   {
     auto LiteralToken = SyntaxFactory::makeIntegerLiteral("1_000", {}, {});
     auto NoSign = TokenSyntax::missingToken(tok::oper_prefix, "");
-    auto Literal = SyntaxFactory::makeIntegerLiteralExpr(LiteralToken);
+    auto Literal = SyntaxFactory::makeIntegerLiteralExpr(NoSign, LiteralToken);
 
     llvm::SmallString<10> Scratch;
     llvm::raw_svector_ostream OS(Scratch);
@@ -32,10 +31,11 @@ TEST(ExprSyntaxTests, IntegerLiteralExprMakeAPIs) {
     ASSERT_EQ(OS.str().str(), "1_000");
   }
   {
-    auto Literal = SyntaxFactory::makeBlankPrefixOperatorExpr()
-    .withOperatorToken(TokenSyntax::missingToken(tok::oper_prefix, ""))
-    .withPostfixExpression(SyntaxFactory::makeIntegerLiteralExpr(
-      SyntaxFactory::makeIntegerLiteral("0", {}, { Trivia::spaces(4) })));
+    auto Literal = SyntaxFactory::makeBlankIntegerLiteralExpr()
+    .withSign(TokenSyntax::missingToken(tok::oper_prefix, ""))
+    .withDigits(SyntaxFactory::makeIntegerLiteral("0", {}, {
+      Trivia::spaces(4)
+    }));
 
     llvm::SmallString<10> Scratch;
     llvm::raw_svector_ostream OS(Scratch);
@@ -46,8 +46,8 @@ TEST(ExprSyntaxTests, IntegerLiteralExprMakeAPIs) {
     auto LiteralToken =
       SyntaxFactory::makeIntegerLiteral("1_000_000_000_000", {}, {});
     auto PlusSign = SyntaxFactory::makePrefixOperator("+", {}, {});
-    auto OneThousand = SyntaxFactory::makePrefixOperatorExpr(PlusSign,
-      SyntaxFactory::makeIntegerLiteralExpr(LiteralToken));
+    auto OneThousand = SyntaxFactory::makeIntegerLiteralExpr(PlusSign,
+                                                             LiteralToken);
 
     llvm::SmallString<10> Scratch;
     llvm::raw_svector_ostream OS(Scratch);
@@ -62,13 +62,13 @@ TEST(ExprSyntaxTests, SymbolicReferenceExprGetAPIs) {
   {
     auto Array = SyntaxFactory::makeIdentifier("Array", {}, {});
     auto Int = SyntaxFactory::makeIdentifier("Int", {}, {});
-    auto IntType = SyntaxFactory::makeSimpleTypeIdentifier(Int, None);
+    auto IntType = SyntaxFactory::makeTypeIdentifier(Int, None, None, None);
     auto GenericArg = SyntaxFactory::makeGenericArgument(IntType, None);
     GenericArgumentClauseSyntaxBuilder ArgBuilder;
     ArgBuilder
       .useLeftAngleBracket(SyntaxFactory::makeLeftAngleToken({}, {}))
       .useRightAngleBracket(SyntaxFactory::makeRightAngleToken({}, {}))
-      .addArgument(GenericArg);
+      .addGenericArgument(GenericArg);
 
     auto GenericArgs = ArgBuilder.build();
 
@@ -92,13 +92,13 @@ TEST(ExprSyntaxTests, SymbolicReferenceExprGetAPIs) {
 TEST(ExprSyntaxTests, SymbolicReferenceExprMakeAPIs) {
   auto Array = SyntaxFactory::makeIdentifier("Array", {}, {});
   auto Int = SyntaxFactory::makeIdentifier("Int", {}, {});
-  auto IntType = SyntaxFactory::makeSimpleTypeIdentifier(Int, None);
+  auto IntType = SyntaxFactory::makeTypeIdentifier(Int, None, None, None);
   auto GenericArg = SyntaxFactory::makeGenericArgument(IntType, None);
   GenericArgumentClauseSyntaxBuilder ArgBuilder;
   ArgBuilder
     .useLeftAngleBracket(SyntaxFactory::makeLeftAngleToken({}, {}))
     .useRightAngleBracket(SyntaxFactory::makeRightAngleToken({}, {}))
-    .addArgument(GenericArg);
+    .addGenericArgument(GenericArg);
   auto GenericArgs = ArgBuilder.build();
 
   {
@@ -129,13 +129,13 @@ TEST(ExprSyntaxTests, SymbolicReferenceExprMakeAPIs) {
 TEST(ExprSyntaxTests, SymbolicReferenceExprWithAPIs) {
   auto Array = SyntaxFactory::makeIdentifier("Array", {}, {});
   auto Int = SyntaxFactory::makeIdentifier("Int", {}, {});
-  auto IntType = SyntaxFactory::makeSimpleTypeIdentifier(Int, None);
+  auto IntType = SyntaxFactory::makeTypeIdentifier(Int, None, None, None);
   auto GenericArg = SyntaxFactory::makeGenericArgument(IntType, None);
   GenericArgumentClauseSyntaxBuilder ArgBuilder;
   ArgBuilder
     .useLeftAngleBracket(SyntaxFactory::makeLeftAngleToken({}, {}))
     .useRightAngleBracket(SyntaxFactory::makeRightAngleToken({}, {}))
-    .addArgument(GenericArg);
+    .addGenericArgument(GenericArg);
   auto GenericArgs = ArgBuilder.build();
 
   {
@@ -167,7 +167,7 @@ TEST(ExprSyntaxTests, SymbolicReferenceExprWithAPIs) {
 
 #pragma mark - function-call-argument
 
-TEST(ExprSyntaxTests, TupleExprElementGetAPIs) {
+TEST(ExprSyntaxTests, FunctionCallArgumentGetAPIs) {
   auto X = SyntaxFactory::makeIdentifier("x", {}, {});
   auto Foo = SyntaxFactory::makeIdentifier("foo", {}, {});
   auto Colon = SyntaxFactory::makeColonToken({}, Trivia::spaces(1));
@@ -175,7 +175,7 @@ TEST(ExprSyntaxTests, TupleExprElementGetAPIs) {
   auto Comma = SyntaxFactory::makeCommaToken({}, Trivia::spaces(1));
 
   {
-    auto Arg = SyntaxFactory::makeTupleExprElement(X, Colon, SymbolicRef,
+    auto Arg = SyntaxFactory::makeFunctionCallArgument(X, Colon, SymbolicRef,
                                                        Comma);
 
     ASSERT_EQ(X.getRaw(), Arg.getLabel()->getRaw());
@@ -193,7 +193,7 @@ TEST(ExprSyntaxTests, TupleExprElementGetAPIs) {
   }
 }
 
-TEST(ExprSyntaxTests, TupleExprElementMakeAPIs) {
+TEST(ExprSyntaxTests, FunctionCallArgumentMakeAPIs) {
   auto X = SyntaxFactory::makeIdentifier("x", {}, {});
   auto Foo = SyntaxFactory::makeIdentifier("foo", {}, {});
   auto Colon = SyntaxFactory::makeColonToken({}, Trivia::spaces(1));
@@ -203,14 +203,14 @@ TEST(ExprSyntaxTests, TupleExprElementMakeAPIs) {
   {
     llvm::SmallString<48> Scratch;
     llvm::raw_svector_ostream OS(Scratch);
-    SyntaxFactory::makeBlankTupleExprElement().print(OS);
+    SyntaxFactory::makeBlankFunctionCallArgument().print(OS);
     ASSERT_EQ(OS.str().str(), "");
   }
 
   {
     llvm::SmallString<48> Scratch;
     llvm::raw_svector_ostream OS(Scratch);
-    SyntaxFactory::makeBlankTupleExprElement()
+    SyntaxFactory::makeBlankFunctionCallArgument()
       .withExpression(SymbolicRef).print(OS);
     ASSERT_EQ(OS.str().str(), "foo");
   }
@@ -218,13 +218,13 @@ TEST(ExprSyntaxTests, TupleExprElementMakeAPIs) {
   {
     llvm::SmallString<48> Scratch;
     llvm::raw_svector_ostream OS(Scratch);
-    SyntaxFactory::makeTupleExprElement(X, Colon, SymbolicRef, Comma)
+    SyntaxFactory::makeFunctionCallArgument(X, Colon, SymbolicRef, Comma)
       .print(OS);
     ASSERT_EQ(OS.str().str(), "x: foo, ");
   }
 }
 
-TEST(ExprSyntaxTests, TupleExprElementWithAPIs) {
+TEST(ExprSyntaxTests, FunctionCallArgumentWithAPIs) {
   auto X = SyntaxFactory::makeIdentifier("x", {}, {});
   auto Foo = SyntaxFactory::makeIdentifier("foo", {}, {});
   auto Colon = SyntaxFactory::makeColonToken({}, Trivia::spaces(1));
@@ -234,7 +234,7 @@ TEST(ExprSyntaxTests, TupleExprElementWithAPIs) {
   {
     llvm::SmallString<48> Scratch;
     llvm::raw_svector_ostream OS(Scratch);
-    SyntaxFactory::makeBlankTupleExprElement()
+    SyntaxFactory::makeBlankFunctionCallArgument()
       .withLabel(X)
       .withColon(Colon)
       .withExpression(SymbolicRef)
@@ -247,7 +247,7 @@ TEST(ExprSyntaxTests, TupleExprElementWithAPIs) {
 #pragma mark - function-call-argument-list
 
 namespace {
-TupleExprElementListSyntax getFullArgumentList() {
+FunctionCallArgumentListSyntax getFullArgumentList() {
   auto X = SyntaxFactory::makeIdentifier("x", {}, {});
   auto Y = SyntaxFactory::makeIdentifier("y", {}, {});
   auto Z = SyntaxFactory::makeIdentifier("z", {}, {});
@@ -257,45 +257,45 @@ TupleExprElementListSyntax getFullArgumentList() {
   auto Comma = SyntaxFactory::makeCommaToken({}, Trivia::spaces(1));
   auto NoComma = TokenSyntax::missingToken(tok::comma, ",");
 
-  auto Arg = SyntaxFactory::makeTupleExprElement(X, Colon, SymbolicRef,
+  auto Arg = SyntaxFactory::makeFunctionCallArgument(X, Colon, SymbolicRef,
                                                      Comma);
 
-  return SyntaxFactory::makeBlankTupleExprElementList()
+  return SyntaxFactory::makeBlankFunctionCallArgumentList()
     .appending(Arg)
     .appending(Arg.withLabel(Y))
     .appending(Arg.withLabel(Z).withTrailingComma(NoComma))
-    .castTo<TupleExprElementListSyntax>();
+    .castTo<FunctionCallArgumentListSyntax>();
 }
 
-TupleExprElementListSyntax getLabellessArgumentList() {
+FunctionCallArgumentListSyntax getLabellessArgumentList() {
   auto NoSign = TokenSyntax::missingToken(tok::oper_prefix, "");
   auto OneDigits = SyntaxFactory::makeIntegerLiteral("1", {}, {});
   auto TwoDigits = SyntaxFactory::makeIntegerLiteral("2", {}, {});
   auto ThreeDigits = SyntaxFactory::makeIntegerLiteral("3", {}, {});
-  auto One = SyntaxFactory::makeIntegerLiteralExpr(OneDigits);
+  auto One = SyntaxFactory::makeIntegerLiteralExpr(NoSign, OneDigits);
   auto NoLabel = TokenSyntax::missingToken(tok::identifier, "");
   auto NoColon = TokenSyntax::missingToken(tok::colon, ":");
   auto Comma = SyntaxFactory::makeCommaToken({}, Trivia::spaces(1));
   auto NoComma = TokenSyntax::missingToken(tok::comma, ",");
-  auto Two = SyntaxFactory::makeIntegerLiteralExpr(TwoDigits);
-  auto Three = SyntaxFactory::makeIntegerLiteralExpr(ThreeDigits);
+  auto Two = SyntaxFactory::makeIntegerLiteralExpr(NoSign, TwoDigits);
+  auto Three = SyntaxFactory::makeIntegerLiteralExpr(NoSign, ThreeDigits);
 
-  auto OneArg = SyntaxFactory::makeTupleExprElement(NoLabel, NoColon, One,
+  auto OneArg = SyntaxFactory::makeFunctionCallArgument(NoLabel, NoColon, One,
                                                         Comma);
-  auto TwoArg = SyntaxFactory::makeTupleExprElement(NoLabel, NoColon, Two,
+  auto TwoArg = SyntaxFactory::makeFunctionCallArgument(NoLabel, NoColon, Two,
                                                         Comma);
-  auto ThreeArg = SyntaxFactory::makeTupleExprElement(NoLabel, NoColon,
+  auto ThreeArg = SyntaxFactory::makeFunctionCallArgument(NoLabel, NoColon,
                                                           Three, NoComma);
 
-  return SyntaxFactory::makeBlankTupleExprElementList()
+  return SyntaxFactory::makeBlankFunctionCallArgumentList()
     .appending(OneArg)
     .appending(TwoArg)
     .appending(ThreeArg)
-    .castTo<TupleExprElementListSyntax>();
+    .castTo<FunctionCallArgumentListSyntax>();
 }
 } // end anonymous namespace
 
-TEST(ExprSyntaxTests, TupleExprElementListGetAPIs) {
+TEST(ExprSyntaxTests, FunctionCallArgumentListGetAPIs) {
   auto X = SyntaxFactory::makeIdentifier("x", {}, {});
   auto Y = SyntaxFactory::makeIdentifier("y", {}, {});
   auto Z = SyntaxFactory::makeIdentifier("z", {}, {});
@@ -305,14 +305,14 @@ TEST(ExprSyntaxTests, TupleExprElementListGetAPIs) {
   auto Comma = SyntaxFactory::makeCommaToken({}, Trivia::spaces(1));
   auto NoComma = TokenSyntax::missingToken(tok::comma, ",");
 
-  auto Arg = SyntaxFactory::makeTupleExprElement(X, Colon, SymbolicRef,
+  auto Arg = SyntaxFactory::makeFunctionCallArgument(X, Colon, SymbolicRef,
                                                      Comma);
 
-  auto ArgList = SyntaxFactory::makeBlankTupleExprElementList()
+  auto ArgList = SyntaxFactory::makeBlankFunctionCallArgumentList()
     .appending(Arg)
     .appending(Arg.withLabel(Y))
     .appending(Arg.withLabel(Z).withTrailingComma(NoComma))
-    .castTo<TupleExprElementListSyntax>();
+    .castTo<FunctionCallArgumentListSyntax>();
 
   ASSERT_EQ(ArgList.size(), size_t(3));
 
@@ -347,11 +347,11 @@ TEST(ExprSyntaxTests, TupleExprElementListGetAPIs) {
   }
 }
 
-TEST(ExprSyntaxTests, TupleExprElementListMakeAPIs) {
+TEST(ExprSyntaxTests, FunctionCallArgumentListMakeAPIs) {
   {
     llvm::SmallString<1> Scratch;
     llvm::raw_svector_ostream OS(Scratch);
-    SyntaxFactory::makeBlankTupleExprElementList().print(OS);
+    SyntaxFactory::makeBlankFunctionCallArgumentList().print(OS);
     ASSERT_EQ(OS.str().str(), "");
   }
   {
@@ -365,23 +365,23 @@ TEST(ExprSyntaxTests, TupleExprElementListMakeAPIs) {
     auto Comma = SyntaxFactory::makeCommaToken({}, Trivia::spaces(1));
     auto NoComma = TokenSyntax::missingToken(tok::comma, ",");
 
-    auto Arg = SyntaxFactory::makeTupleExprElement(X, Colon, SymbolicRef,
+    auto Arg = SyntaxFactory::makeFunctionCallArgument(X, Colon, SymbolicRef,
                                                        Comma);
 
-    std::vector<TupleExprElementSyntax> Args {
+    std::vector<FunctionCallArgumentSyntax> Args {
       Arg, Arg.withLabel(Y), Arg.withLabel(Z).withTrailingComma(NoComma)
     };
 
     llvm::SmallString<64> Scratch;
     llvm::raw_svector_ostream OS(Scratch);
-    auto ArgList = SyntaxFactory::makeTupleExprElementList(Args);
+    auto ArgList = SyntaxFactory::makeFunctionCallArgumentList(Args);
     ArgList.print(OS);
     ASSERT_EQ(ArgList.size(), size_t(3));
     ASSERT_EQ(OS.str().str(), "x: foo, y: foo, z: foo");
   }
 }
 
-TEST(ExprSyntaxTests, TupleExprElementListWithAPIs) {
+TEST(ExprSyntaxTests, FunctionCallArgumentListWithAPIs) {
   auto ArgList = getFullArgumentList();
   llvm::SmallString<64> Scratch;
   llvm::raw_svector_ostream OS(Scratch);
@@ -400,8 +400,8 @@ TEST(ExprSyntaxTests, FunctionCallExprGetAPIs) {
   auto ArgList = getFullArgumentList();
   auto RightParen = SyntaxFactory::makeRightParenToken({}, {});
 
-  auto Call = SyntaxFactory::makeFunctionCallExpr(
-      SymbolicRef, LeftParen, ArgList, RightParen, None, None);
+  auto Call = SyntaxFactory::makeFunctionCallExpr(SymbolicRef, LeftParen,
+                                                  ArgList, RightParen);
 
   {
     auto GottenExpression1 = Call.getCalledExpression();
@@ -413,8 +413,8 @@ TEST(ExprSyntaxTests, FunctionCallExprGetAPIs) {
     ASSERT_EQ(OS.str().str(), "foo");
   }
 
-  ASSERT_EQ(LeftParen.getRaw(), Call.getLeftParen()->getRaw());
-  ASSERT_EQ(RightParen.getRaw(), Call.getRightParen()->getRaw());
+  ASSERT_EQ(LeftParen.getRaw(), Call.getLeftParen().getRaw());
+  ASSERT_EQ(RightParen.getRaw(), Call.getRightParen().getRaw());
 
   {
     auto GottenArgs1 = Call.getArgumentList();
@@ -435,8 +435,8 @@ TEST(ExprSyntaxTests, FunctionCallExprMakeAPIs) {
   auto RightParen = SyntaxFactory::makeRightParenToken({}, {});
 
   {
-    auto Call = SyntaxFactory::makeFunctionCallExpr(
-        SymbolicRef, LeftParen, ArgList, RightParen, None, None);
+    auto Call = SyntaxFactory::makeFunctionCallExpr(SymbolicRef, LeftParen,
+                                                    ArgList, RightParen);
     llvm::SmallString<64> Scratch;
     llvm::raw_svector_ostream OS(Scratch);
     Call.print(OS);
@@ -507,7 +507,7 @@ TEST(ExprSyntaxTests, FunctionCallExprBuilderAPIs) {
   auto OneDigits = SyntaxFactory::makeIntegerLiteral("1", {}, {});
   auto TwoDigits = SyntaxFactory::makeIntegerLiteral("2", {}, {});
   auto ThreeDigits = SyntaxFactory::makeIntegerLiteral("3", {}, {});
-  auto One = SyntaxFactory::makeIntegerLiteralExpr(OneDigits);
+  auto One = SyntaxFactory::makeIntegerLiteralExpr(NoSign, OneDigits);
   auto NoLabel = TokenSyntax::missingToken(tok::identifier, "");
   auto NoColon = TokenSyntax::missingToken(tok::colon, ":");
   auto Comma = SyntaxFactory::makeCommaToken({}, Trivia::spaces(1));
@@ -523,12 +523,12 @@ TEST(ExprSyntaxTests, FunctionCallExprBuilderAPIs) {
     ASSERT_EQ(OS.str().str(), "foo()");
   }
 
-  auto OneArg = SyntaxFactory::makeTupleExprElement(NoLabel, NoColon, One,
+  auto OneArg = SyntaxFactory::makeFunctionCallArgument(NoLabel, NoColon, One,
                                                         Comma);
   {
     llvm::SmallString<64> Scratch;
     llvm::raw_svector_ostream OS(Scratch);
-    CallBuilder.addArgument(OneArg);
+    CallBuilder.addFunctionCallArgument(OneArg);
     CallBuilder.build().print(OS);
     ASSERT_EQ(OS.str().str(), "foo(1, )");
   }
@@ -536,7 +536,7 @@ TEST(ExprSyntaxTests, FunctionCallExprBuilderAPIs) {
   {
     llvm::SmallString<64> Scratch;
     llvm::raw_svector_ostream OS(Scratch);
-    CallBuilder.addArgument(OneArg.withTrailingComma(NoComma));
+    CallBuilder.addFunctionCallArgument(OneArg.withTrailingComma(NoComma));
     CallBuilder.build().print(OS);
     ASSERT_EQ(OS.str().str(), "foo(1, 1)");
   }

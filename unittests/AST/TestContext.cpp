@@ -12,14 +12,13 @@
 
 #include "TestContext.h"
 #include "swift/AST/Module.h"
-#include "swift/AST/ParseRequests.h"
 #include "swift/Strings.h"
-#include "swift/Subsystems.h"
 
 using namespace swift;
 using namespace swift::unittest;
 
-static Decl *createOptionalType(ASTContext &ctx, SourceFile *fileForLookups,
+
+static void declareOptionalType(ASTContext &ctx, SourceFile *fileForLookups,
                                 Identifier name) {
   auto wrapped = new (ctx) GenericTypeParamDecl(fileForLookups,
                                                 ctx.getIdentifier("Wrapped"),
@@ -30,30 +29,24 @@ static Decl *createOptionalType(ASTContext &ctx, SourceFile *fileForLookups,
   auto decl = new (ctx) EnumDecl(SourceLoc(), name, SourceLoc(),
                                  /*inherited*/{}, params, fileForLookups);
   wrapped->setDeclContext(decl);
-  return decl;
+  fileForLookups->Decls.push_back(decl);
 }
 
 TestContext::TestContext(ShouldDeclareOptionalTypes optionals)
-    : Ctx(*ASTContext::get(LangOpts, TypeCheckerOpts, SearchPathOpts, SourceMgr,
-                           Diags)) {
-  registerParseRequestFunctions(Ctx.evaluator);
-  registerTypeCheckerRequestFunctions(Ctx.evaluator);
+    : Ctx(LangOpts, SearchPathOpts, SourceMgr, Diags) {
   auto stdlibID = Ctx.getIdentifier(STDLIB_NAME);
   auto *module = ModuleDecl::create(stdlibID, Ctx);
   Ctx.LoadedModules[stdlibID] = module;
 
+  using ImplicitModuleImportKind = SourceFile::ImplicitModuleImportKind;
   FileForLookups = new (Ctx) SourceFile(*module, SourceFileKind::Library,
-                                        /*buffer*/ None, /*keeps token*/ false);
+                                        /*buffer*/None,
+                                        ImplicitModuleImportKind::None);
   module->addFile(*FileForLookups);
 
   if (optionals == DeclareOptionalTypes) {
-    SmallVector<Decl *, 2> optionalTypes;
-    optionalTypes.push_back(createOptionalType(
-        Ctx, FileForLookups, Ctx.getIdentifier("Optional")));
-    optionalTypes.push_back(createOptionalType(
-        Ctx, FileForLookups, Ctx.getIdentifier("ImplicitlyUnwrappedOptional")));
-
-    Ctx.evaluator.cacheOutput(ParseSourceFileRequest{FileForLookups},
-                              Ctx.AllocateCopy(optionalTypes));
+    declareOptionalType(Ctx, FileForLookups, Ctx.getIdentifier("Optional"));
+    declareOptionalType(Ctx, FileForLookups,
+                        Ctx.getIdentifier("ImplicitlyUnwrappedOptional"));
   }
 }

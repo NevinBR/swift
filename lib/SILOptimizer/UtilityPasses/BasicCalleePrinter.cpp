@@ -35,12 +35,17 @@ class BasicCalleePrinterPass : public SILModuleTransform {
 
   void printCallees(FullApplySite FAS) {
     llvm::outs() << "Function call site:\n";
-    if (auto *Callee = FAS.getCallee()->getDefiningInstruction())
+    if (auto *Callee = dyn_cast<SILInstruction>(FAS.getCallee()))
       llvm::outs() << *Callee;
     llvm::outs() << *FAS.getInstruction();
 
     auto Callees = BCA->getCalleeList(FAS);
-    Callees.print(llvm::outs());
+    llvm::outs() << "Incomplete callee list? : "
+                 << (Callees.isIncomplete() ? "Yes" : "No") << "\n";
+    llvm::outs() << "Known callees:\n";
+    for (auto *CalleeFn : Callees)
+      llvm::outs() << CalleeFn->getName() << "\n";
+    llvm::outs() << "\n";
   }
 
   /// The entry point to the transformation.

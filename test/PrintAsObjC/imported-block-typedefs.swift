@@ -74,4 +74,5 @@ import ObjectiveC
   @objc func resultHasEscapingParam5() -> (@escaping BlockReturningBlockWithNoescapeParam) -> () { fatalError() }
 
 }
+// CHECK-NEXT: init
 // CHECK-NEXT: @end

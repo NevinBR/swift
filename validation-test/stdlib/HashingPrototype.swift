@@ -140,12 +140,12 @@ struct InProcessHashtableHasher : Hasher {
   mutating func squeezeHashValue<I : SignedInteger>(
     _ resultRange: Range<I>) -> I {
     // ... finalize hash value computation first...
-    return I(Int64(_state)) // Should actually clamp the value
+    return I(IntMax(_state)) // Should actually clamp the value
   }
   mutating func squeezeHashValue<I : UnsignedInteger>(
     _ resultRange: Range<I>) -> I {
     // ... finalize hash value computation first...
-    return I(UInt64(_state)) // Should actually clamp the value
+    return I(UIntMax(_state)) // Should actually clamp the value
   }
 }
 

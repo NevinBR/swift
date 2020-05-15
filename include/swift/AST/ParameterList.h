@@ -18,7 +18,6 @@
 #define SWIFT_AST_PARAMETERLIST_H
 
 #include "swift/AST/Decl.h"
-#include "swift/Basic/Debug.h"
 #include "swift/Basic/OptionSet.h"
 #include "llvm/Support/TrailingObjects.h"
 
@@ -66,6 +65,25 @@ public:
   static ParameterList *createWithoutLoc(ParamDecl *decl) {
     return create(decl->getASTContext(), decl);
   }
+  
+  /// Create an implicit 'self' decl for a method in the specified decl context.
+  /// If 'static' is true, then this is self for a static method in the type.
+  ///
+  /// Note that this decl is created, but it is returned with an incorrect
+  /// DeclContext that needs to be set correctly.  This is automatically handled
+  /// when a function is created with this as part of its argument list.
+  ///
+  static ParameterList *createUnboundSelf(SourceLoc loc, DeclContext *DC);
+
+  /// Create an implicit 'self' decl for a method in the specified decl context.
+  /// If 'static' is true, then this is self for a static method in the type.
+  ///
+  /// Note that this decl is created, but it is returned with an incorrect
+  /// DeclContext that needs to be set correctly.  This is automatically handled
+  /// when a function is created with this as part of its argument list.
+  static ParameterList *createSelf(SourceLoc loc, DeclContext *DC,
+                                   bool isStatic = false,
+                                   bool isInOut = false);
 
   SourceLoc getLParenLoc() const { return LParenLoc; }
   SourceLoc getRParenLoc() const { return RParenLoc; }
@@ -98,41 +116,46 @@ public:
 
   const ParamDecl *operator[](unsigned i) const { return get(i); }
   ParamDecl *&operator[](unsigned i) { return get(i); }
-  bool hasInternalParameter(StringRef prefix) const;
-
+  
   /// Change the DeclContext of any contained parameters to the specified
   /// DeclContext.
   void setDeclContextOfParamDecls(DeclContext *DC);
-
+  
+  
   /// Flags used to indicate how ParameterList cloning should operate.
   enum CloneFlags {
     /// The cloned ParamDecls should be marked implicit.
     Implicit = 0x01,
-    /// Mark default arguments as inherited.
-    Inherited = 0x02,
-    /// Mark unnamed arguments as named.
-    NamedArguments = 0x04,
+    /// The cloned pattern is for an inherited constructor; mark default
+    /// arguments as inherited, and mark unnamed arguments as named.
+    Inherited = 0x02
   };
-
-  friend OptionSet<CloneFlags> operator|(CloneFlags flag1, CloneFlags flag2) {
-    return OptionSet<CloneFlags>(flag1) | flag2;
-  }
-
+  
   /// Make a duplicate copy of this parameter list.  This allocates copies of
   /// the ParamDecls, so they can be reparented into a new DeclContext.
   ParameterList *clone(const ASTContext &C,
                        OptionSet<CloneFlags> options = None) const;
 
-  /// Return a list of function parameters for this parameter list,
-  /// based on the interface types of the parameters in this list.
-  void getParams(SmallVectorImpl<AnyFunctionType::Param> &params) const;
+  /// Return a TupleType or ParenType for this parameter list, written in terms
+  /// of contextual archetypes.
+  Type getType(const ASTContext &C) const;
+
+  /// Return a TupleType or ParenType for this parameter list, written in terms
+  /// of interface types.
+  Type getInterfaceType(const ASTContext &C) const;
+
+  /// Return the full function type for a set of curried parameter lists that
+  /// returns the specified result type written in terms of interface types.
+  static Type getFullInterfaceType(Type resultType, ArrayRef<ParameterList*> PL,
+                                   const ASTContext &C);
+
 
   /// Return the full source range of this parameter.
   SourceRange getSourceRange() const;
   SourceLoc getStartLoc() const { return getSourceRange().Start; }
   SourceLoc getEndLoc() const { return getSourceRange().End; }
 
-  SWIFT_DEBUG_DUMP;
+  void dump() const;
   void dump(raw_ostream &OS, unsigned Indent = 0) const;
   
   //  void print(raw_ostream &OS) const;

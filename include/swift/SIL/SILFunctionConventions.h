@@ -9,22 +9,20 @@
 // See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
-///
-/// \file
-///
-/// This file defines the SILModuleConventions and SILFunctionConventions
-/// classes.  These interfaces are used to determine when SIL can represent
-/// values of a given lowered type by value and when they must be represented by
-/// address. This is influenced by a SILModule-wide "lowered address" convention,
-/// which reflects whether the current SIL stage requires lowered addresses.
-///
-/// The primary purpose of this API is mapping the formal SIL parameter and
-/// result conventions onto the SIL argument types. The "formal" conventions are
-/// immutably associated with a SILFunctionType--a SIL function's type
-/// information never changes. The SIL conventions determine how those formal
-/// conventions will be represented in the body of SIL functions and at call
-/// sites.
-///
+//
+// This file defines the SILModuleConventions and SILFunctionConventions
+// classes.  These interfaces are used to determine when SIL can represent
+// values of a given lowered type by value and when they must be represented by
+// address. This is influenced by a SILModule-wide "lowered address" convention,
+// which reflects whether the current SIL stage requires lowered addresses.
+//
+// The primary purpose of this API is mapping the formal SIL parameter and
+// result conventions onto the SIL argument types. The "formal" conventions are
+// immutably associated with a SILFunctionType--a SIL function's type
+// information never changes. The SIL conventions determine how those formal
+// conventions will be represented in the body of SIL functions and at call
+// sites.
+//
 //===----------------------------------------------------------------------===//
 
 #ifndef SWIFT_SIL_FUNCTIONCONVENTIONS_H
@@ -37,11 +35,6 @@
 
 namespace swift {
 
-template<bool _, template<typename...> class T, typename...Args>
-struct delay_template_expansion {
-  using type = T<Args...>;
-};
-
 /// Transient wrapper for SILParameterInfo and SILResultInfo conventions. This
 /// abstraction helps handle the transition from canonical SIL conventions to
 /// lowered SIL conventions.
@@ -50,50 +43,33 @@ class SILModuleConventions {
   friend SILResultInfo;
   friend SILFunctionConventions;
 
-  static bool isIndirectSILParam(SILParameterInfo param,
-                                 bool loweredAddresses);
+  static bool isIndirectSILParam(SILParameterInfo param, bool loweredAddresses);
 
-  static bool isIndirectSILYield(SILYieldInfo yield,
-                                 bool loweredAddresses);
+  static bool isIndirectSILResult(SILResultInfo result, bool loweredAddresses);
 
-  static bool isIndirectSILResult(SILResultInfo result,
-                                  bool loweredAddresses);
+  static SILType getSILParamType(SILParameterInfo param, bool loweredAddresses);
 
-  static SILType getSILParamInterfaceType(
-                                 SILParameterInfo yield,
-                                 bool loweredAddresses);
-
-  static SILType getSILYieldInterfaceType(
-                                 SILYieldInfo yield,
-                                 bool loweredAddresses);
-
-  static SILType getSILResultInterfaceType(
-                                  SILResultInfo param,
-                                  bool loweredAddresses);
+  static SILType getSILResultType(SILResultInfo param, bool loweredAddresses);
 
 public:
   static bool isPassedIndirectlyInSIL(SILType type, SILModule &M);
 
   static bool isReturnedIndirectlyInSIL(SILType type, SILModule &M);
 
-  static SILModuleConventions getLoweredAddressConventions(SILModule &M) {
-    return SILModuleConventions(M, true);
+  static SILModuleConventions getLoweredAddressConventions() {
+    return SILModuleConventions(true);
   }
 
 private:
-  SILModule *M;
   bool loweredAddresses;
-  
-  SILModuleConventions(SILModule &M, bool loweredAddresses)
-    : M(&M), loweredAddresses(loweredAddresses)
-  {}
-  
+
+  SILModuleConventions(bool loweredAddresses)
+      : loweredAddresses(loweredAddresses) {}
+
 public:
-  SILModuleConventions(SILModule &M);
+  SILModuleConventions(const SILModule &M);
 
   SILFunctionConventions getFunctionConventions(CanSILFunctionType funcTy);
-  
-  SILModule &getModule() const { return *M; }
 
   bool useLoweredAddresses() const { return loweredAddresses; }
 
@@ -101,39 +77,16 @@ public:
     return isIndirectSILParam(param, loweredAddresses);
   }
 
-  bool isSILIndirect(SILYieldInfo yield) const {
-    return isIndirectSILYield(yield, loweredAddresses);
-  }
-
   bool isSILIndirect(SILResultInfo result) const {
     return isIndirectSILResult(result, loweredAddresses);
   }
 
-  SILType getSILType(SILParameterInfo param, CanSILFunctionType funcTy,
-                     TypeExpansionContext context) const {
-    auto interfaceTy = getSILParamInterfaceType(param, loweredAddresses);
-    // TODO: Always require a function type
-    if (funcTy)
-      return funcTy->substInterfaceType(*M, interfaceTy, context);
-    return interfaceTy;
+  SILType getSILType(SILParameterInfo param) const {
+    return getSILParamType(param, loweredAddresses);
   }
 
-  SILType getSILType(SILYieldInfo yield, CanSILFunctionType funcTy,
-                     TypeExpansionContext context) const {
-    auto interfaceTy = getSILYieldInterfaceType(yield, loweredAddresses);
-    // TODO: Always require a function type
-    if (funcTy)
-      return funcTy->substInterfaceType(*M, interfaceTy, context);
-    return interfaceTy;
-  }
-
-  SILType getSILType(SILResultInfo result, CanSILFunctionType funcTy,
-                     TypeExpansionContext context) const {
-    auto interfaceTy = getSILResultInterfaceType(result, loweredAddresses);
-    // TODO: Always require a function type
-    if (funcTy)
-      return funcTy->substInterfaceType(*M, interfaceTy, context);
-    return interfaceTy;
+  SILType getSILType(SILResultInfo result) const {
+    return getSILResultType(result, loweredAddresses);
   }
 };
 
@@ -162,25 +115,16 @@ public:
     return silConv.isSILIndirect(param);
   }
 
-  bool isSILIndirect(SILYieldInfo yield) const {
-    return silConv.isSILIndirect(yield);
-  }
-
   bool isSILIndirect(SILResultInfo result) const {
     return silConv.isSILIndirect(result);
   }
 
-  SILType getSILType(SILParameterInfo param,
-                     TypeExpansionContext context) const {
-    return silConv.getSILType(param, funcTy, context);
+  SILType getSILType(SILParameterInfo param) const {
+    return silConv.getSILType(param);
   }
 
-  SILType getSILType(SILYieldInfo yield, TypeExpansionContext context) const {
-    return silConv.getSILType(yield, funcTy, context);
-  }
-
-  SILType getSILType(SILResultInfo result, TypeExpansionContext context) const {
-    return silConv.getSILType(result, funcTy, context);
+  SILType getSILType(SILResultInfo result) const {
+    return silConv.getSILType(result);
   }
 
   //===--------------------------------------------------------------------===//
@@ -189,22 +133,20 @@ public:
 
   /// Get the normal result type of an apply that calls this function.
   /// This does not include indirect SIL results.
-  SILType getSILResultType(TypeExpansionContext context) {
+  SILType getSILResultType() {
     if (silConv.loweredAddresses)
-      return funcTy->getDirectFormalResultsType(silConv.getModule(), context);
+      return funcTy->getDirectFormalResultsType();
 
-    return funcTy->getAllResultsSubstType(silConv.getModule(), context);
+    return funcTy->getAllResultsType();
   }
 
   /// Get the SIL type for the single result which may be direct or indirect.
-  SILType getSingleSILResultType(TypeExpansionContext context) {
-    return getSILType(funcTy->getSingleResult(), context);
+  SILType getSingleSILResultType() {
+    return getSILType(funcTy->getSingleResult());
   }
 
   /// Get the error result type.
-  SILType getSILErrorType(TypeExpansionContext context) {
-    return getSILType(funcTy->getErrorResult(), context);
-  }
+  SILType getSILErrorType() { return getSILType(funcTy->getErrorResult()); }
 
   /// Returns an array of result info.
   /// Provides convenient access to the underlying SILFunctionType.
@@ -229,26 +171,34 @@ public:
     if (silConv.loweredAddresses)
       return funcTy->getIndirectFormalResults();
 
-    return llvm::make_filter_range(
-        llvm::make_range((const SILResultInfo *)0, (const SILResultInfo *)0),
+    auto filter = llvm::make_filter_range(
+        makeIteratorRange((const SILResultInfo *)0, (const SILResultInfo *)0),
         SILFunctionType::IndirectFormalResultFilter());
+    return makeIteratorRange(filter.begin(), filter.end());
   }
 
-  struct SILResultTypeFunc;
+  struct SILResultTypeFunc {
+    SILModuleConventions silConv;
+    SILResultTypeFunc(SILModuleConventions silConv) : silConv(silConv) {}
 
-  // Gratuitous template parameter is to delay instantiating `mapped_iterator`
-  // on the incomplete type SILParameterTypeFunc.
-  template<bool _ = false>
-  using IndirectSILResultTypeIter = typename delay_template_expansion<_, 
-      llvm::mapped_iterator, IndirectSILResultIter, SILResultTypeFunc>::type;
-  template<bool _ = false>
-  using IndirectSILResultTypeRange = iterator_range<IndirectSILResultTypeIter<_>>;
+    SILType operator()(SILResultInfo result) const {
+      return silConv.getSILType(result);
+    }
+  };
+
+  using IndirectSILResultTypeIter =
+      llvm::mapped_iterator<IndirectSILResultIter, SILResultTypeFunc>;
+  using IndirectSILResultTypeRange = IteratorRange<IndirectSILResultTypeIter>;
 
   /// Return a range of SILTypes for each result passed as an address-typed SIL
   /// argument.
-  template <bool _ = false>
-  IndirectSILResultTypeRange<_>
-  getIndirectSILResultTypes(TypeExpansionContext context) const;
+  IndirectSILResultTypeRange getIndirectSILResultTypes() const {
+    return makeIteratorRange(
+        IndirectSILResultTypeIter(getIndirectSILResults().begin(),
+                                  SILResultTypeFunc(silConv)),
+        IndirectSILResultTypeIter(getIndirectSILResults().end(),
+                                  SILResultTypeFunc(silConv)));
+  }
 
   /// Get the number of SIL results directly returned by SIL value.
   unsigned getNumDirectSILResults() const {
@@ -266,26 +216,29 @@ public:
   };
   using DirectSILResultIter =
       llvm::filter_iterator<const SILResultInfo *, DirectSILResultFilter>;
-  using DirectSILResultRange = iterator_range<DirectSILResultIter>;
+  using DirectSILResultRange = IteratorRange<DirectSILResultIter>;
 
   /// Return a range of direct result information for results directly returned
   /// by SIL value.
   DirectSILResultRange getDirectSILResults() const {
-    return llvm::make_filter_range(
+    auto filter = llvm::make_filter_range(
         funcTy->getResults(), DirectSILResultFilter(silConv.loweredAddresses));
+    return makeIteratorRange(filter.begin(), filter.end());
   }
 
-  template<bool _ = false>
-  using DirectSILResultTypeIter = typename delay_template_expansion<_, 
-      llvm::mapped_iterator, DirectSILResultIter, SILResultTypeFunc>::type;
-  template<bool _ = false>
-  using DirectSILResultTypeRange = iterator_range<DirectSILResultTypeIter<_>>;
+  using DirectSILResultTypeIter =
+      llvm::mapped_iterator<DirectSILResultIter, SILResultTypeFunc>;
+  using DirectSILResultTypeRange = IteratorRange<DirectSILResultTypeIter>;
 
   /// Return a range of SILTypes for each result directly returned
   /// by SIL value.
-  template <bool _ = false>
-  DirectSILResultTypeRange<_>
-  getDirectSILResultTypes(TypeExpansionContext context) const;
+  DirectSILResultTypeRange getDirectSILResultTypes() const {
+    return makeIteratorRange(
+        DirectSILResultTypeIter(getDirectSILResults().begin(),
+                                SILResultTypeFunc(silConv)),
+        DirectSILResultTypeIter(getDirectSILResults().end(),
+                                SILResultTypeFunc(silConv)));
+  }
 
   //===--------------------------------------------------------------------===//
   // SIL parameters types.
@@ -302,46 +255,27 @@ public:
     return funcTy->getParameters();
   }
 
-  struct SILParameterTypeFunc;
-  
-  // Gratuitous template parameter is to delay instantiating `mapped_iterator`
-  // on the incomplete type SILParameterTypeFunc.
-  template<bool _ = false>
-  using SILParameterTypeIter = typename
-    delay_template_expansion<_, llvm::mapped_iterator,
-                          const SILParameterInfo *, SILParameterTypeFunc>::type;
-  
-  template<bool _ = false>
-  using SILParameterTypeRange = iterator_range<SILParameterTypeIter<_>>;
+  struct SILParameterTypeFunc {
+    SILModuleConventions silConv;
+    SILParameterTypeFunc(SILModuleConventions silConv) : silConv(silConv) {}
+
+    SILType operator()(SILParameterInfo param) const {
+      return silConv.getSILType(param);
+    }
+  };
+
+  using SILParameterTypeIter =
+      llvm::mapped_iterator<const SILParameterInfo *, SILParameterTypeFunc>;
+  using SILParameterTypeRange = IteratorRange<SILParameterTypeIter>;
 
   /// Return a range of SILTypes for each function parameter, not including
   /// indirect results.
-  template <bool _ = false>
-  SILParameterTypeRange<_>
-  getParameterSILTypes(TypeExpansionContext context) const;
-
-  //===--------------------------------------------------------------------===//
-  // SIL yield types.
-  //===--------------------------------------------------------------------===//
-
-  unsigned getNumYields() const { return funcTy->getNumYields(); }
-
-  ArrayRef<SILYieldInfo> getYields() const {
-    return funcTy->getYields();
-  }
-
-  template<bool _ = false>
-  using SILYieldTypeIter = typename
-    delay_template_expansion<_, llvm::mapped_iterator,
-                              const SILYieldInfo *, SILParameterTypeFunc>::type;
-  template<bool _ = false>
-  using SILYieldTypeRange = iterator_range<SILYieldTypeIter<_>>;
-
-  template<bool _ = false>
-  SILYieldTypeRange<_> getYieldSILTypes(TypeExpansionContext context) const;
-
-  SILYieldInfo getYieldInfoForOperandIndex(unsigned opIndex) const {
-    return getYields()[opIndex];
+  SILParameterTypeRange getParameterSILTypes() const {
+    return makeIteratorRange(
+        SILParameterTypeIter(funcTy->getParameters().begin(),
+                             SILParameterTypeFunc(silConv)),
+        SILParameterTypeIter(funcTy->getParameters().end(),
+                             SILParameterTypeFunc(silConv)));
   }
 
   //===--------------------------------------------------------------------===//
@@ -349,7 +283,7 @@ public:
   //
   // The argument indices below relate to full applies in which the caller and
   // callee indices match. Partial apply indices are shifted on the caller
-  // side. See ApplySite::getCalleeArgIndexOfFirstAppliedArg().
+  // side. See ApplySite::getCallArgIndexOfFirstAppliedArg().
   //===--------------------------------------------------------------------===//
 
   unsigned getSILArgIndexOfFirstIndirectResult() const { return 0; }
@@ -394,75 +328,15 @@ public:
   // See SILArgument.h.
 
   /// Return the SIL type of the apply/entry argument at the given index.
-  SILType getSILArgumentType(unsigned index,
-                             TypeExpansionContext context) const;
-};
-
-struct SILFunctionConventions::SILResultTypeFunc {
-  SILFunctionConventions silConv;
-  TypeExpansionContext context;
-  SILResultTypeFunc(const SILFunctionConventions &silConv,
-                    TypeExpansionContext context)
-    : silConv(silConv), context(context) {}
-
-  SILType operator()(SILResultInfo result) const {
-    return silConv.getSILType(result, context);
+  SILType getSILArgumentType(unsigned index) const {
+    assert(index <= getNumSILArguments());
+    if (index < getNumIndirectSILResults()) {
+      return *std::next(getIndirectSILResultTypes().begin(), index);
+    }
+    return getSILType(
+        funcTy->getParameters()[index - getNumIndirectSILResults()]);
   }
 };
-
-template <bool _>
-SILFunctionConventions::IndirectSILResultTypeRange<_>
-SILFunctionConventions::getIndirectSILResultTypes(
-    TypeExpansionContext context) const {
-  return llvm::map_range(getIndirectSILResults(),
-                         SILResultTypeFunc(*this, context));
-}
-
-template <bool _>
-SILFunctionConventions::DirectSILResultTypeRange<_>
-SILFunctionConventions::getDirectSILResultTypes(
-    TypeExpansionContext context) const {
-  return llvm::map_range(getDirectSILResults(),
-                         SILResultTypeFunc(*this, context));
-}
-
-struct SILFunctionConventions::SILParameterTypeFunc {
-  SILFunctionConventions silConv;
-  TypeExpansionContext context;
-  SILParameterTypeFunc(const SILFunctionConventions &silConv,
-                       TypeExpansionContext context)
-      : silConv(silConv), context(context) {}
-
-  SILType operator()(SILParameterInfo param) const {
-    return silConv.getSILType(param, context);
-  }
-};
-
-template <bool _>
-SILFunctionConventions::SILParameterTypeRange<_>
-SILFunctionConventions::getParameterSILTypes(
-    TypeExpansionContext context) const {
-  return llvm::map_range(funcTy->getParameters(),
-                         SILParameterTypeFunc(*this, context));
-}
-
-template <bool _>
-SILFunctionConventions::SILYieldTypeRange<_>
-SILFunctionConventions::getYieldSILTypes(TypeExpansionContext context) const {
-  return llvm::map_range(funcTy->getYields(),
-                         SILParameterTypeFunc(*this, context));
-}
-
-inline SILType
-SILFunctionConventions::getSILArgumentType(unsigned index,
-                                           TypeExpansionContext context) const {
-  assert(index <= getNumSILArguments());
-  if (index < getNumIndirectSILResults()) {
-    return *std::next(getIndirectSILResultTypes(context).begin(), index);
-  }
-  return getSILType(
-      funcTy->getParameters()[index - getNumIndirectSILResults()], context);
-}
 
 inline SILFunctionConventions
 SILModuleConventions::getFunctionConventions(CanSILFunctionType funcTy) {
@@ -481,7 +355,7 @@ inline bool SILModuleConventions::isIndirectSILParam(SILParameterInfo param,
   case ParameterConvention::Indirect_In_Constant:
   case ParameterConvention::Indirect_In_Guaranteed:
     return (loweredAddresses ||
-            param.getInterfaceType()->isOpenedExistentialWithError());
+            param.getType()->isOpenedExistentialWithError());
   case ParameterConvention::Indirect_Inout:
   case ParameterConvention::Indirect_InoutAliasable:
     return true;
@@ -489,17 +363,12 @@ inline bool SILModuleConventions::isIndirectSILParam(SILParameterInfo param,
   llvm_unreachable("covered switch isn't covered?!");
 }
 
-inline bool SILModuleConventions::isIndirectSILYield(SILYieldInfo yield,
-                                                     bool loweredAddresses) {
-  return isIndirectSILParam(yield, loweredAddresses);
-}
-
 inline bool SILModuleConventions::isIndirectSILResult(SILResultInfo result,
                                                       bool loweredAddresses) {
   switch (result.getConvention()) {
   case ResultConvention::Indirect:
     return (loweredAddresses ||
-            result.getInterfaceType()->isOpenedExistentialWithError());
+            result.getType()->isOpenedExistentialWithError());
   case ResultConvention::Owned:
   case ResultConvention::Unowned:
   case ResultConvention::UnownedInnerPointer:
@@ -510,51 +379,26 @@ inline bool SILModuleConventions::isIndirectSILResult(SILResultInfo result,
   llvm_unreachable("Unhandled ResultConvention in switch.");
 }
 
-inline SILType SILModuleConventions::getSILParamInterfaceType(
-                                                     SILParameterInfo param,
+inline SILType SILModuleConventions::getSILParamType(SILParameterInfo param,
                                                      bool loweredAddresses) {
-  return SILModuleConventions::isIndirectSILParam(param,loweredAddresses)
-             ? SILType::getPrimitiveAddressType(param.getInterfaceType())
-             : SILType::getPrimitiveObjectType(param.getInterfaceType());
+  return SILModuleConventions::isIndirectSILParam(param, loweredAddresses)
+             ? SILType::getPrimitiveAddressType(param.getType())
+             : SILType::getPrimitiveObjectType(param.getType());
 }
 
-inline SILType SILModuleConventions::getSILYieldInterfaceType(
-                                                     SILYieldInfo yield,
-                                                     bool loweredAddresses) {
-  return getSILParamInterfaceType(yield, loweredAddresses);
-}
-
-inline SILType SILModuleConventions::getSILResultInterfaceType(
-                                                      SILResultInfo result,
+inline SILType SILModuleConventions::getSILResultType(SILResultInfo result,
                                                       bool loweredAddresses) {
   return SILModuleConventions::isIndirectSILResult(result, loweredAddresses)
-             ? SILType::getPrimitiveAddressType(result.getInterfaceType())
-             : SILType::getPrimitiveObjectType(result.getInterfaceType());
+             ? SILType::getPrimitiveAddressType(result.getType())
+             : SILType::getPrimitiveObjectType(result.getType());
 }
 
-inline SILType
-SILParameterInfo::getSILStorageInterfaceType() const {
-  return SILModuleConventions::getSILParamInterfaceType(*this, true);
+inline SILType SILParameterInfo::getSILStorageType() const {
+  return SILModuleConventions::getSILParamType(*this, true);
 }
 
-inline SILType
-SILResultInfo::getSILStorageInterfaceType() const {
-  return SILModuleConventions::getSILResultInterfaceType(*this, true);
-}
-
-inline SILType
-SILParameterInfo::getSILStorageType(SILModule &M,
-                                    const SILFunctionType *funcTy,
-                                    TypeExpansionContext context) const {
-  return funcTy->substInterfaceType(M, getSILStorageInterfaceType(),
-                                    context);
-}
-
-inline SILType
-SILResultInfo::getSILStorageType(SILModule &M, const SILFunctionType *funcTy,
-                                 TypeExpansionContext context) const {
-  return funcTy->substInterfaceType(M, getSILStorageInterfaceType(),
-                                    context);
+inline SILType SILResultInfo::getSILStorageType() const {
+  return SILModuleConventions::getSILResultType(*this, true);
 }
 
 } // end swift namespace

@@ -34,7 +34,7 @@ namespace irgen {
   class Explosion;
 
   /// Discriminator for checked cast modes.
-  enum class CheckedCastMode : uint8_t {
+  enum class CheckedCastMode : unsigned char {
     Unconditional,
     Conditional,
   };
@@ -48,17 +48,16 @@ namespace irgen {
                                CheckedCastMode mode);
 
   void emitScalarCheckedCast(IRGenFunction &IGF, Explosion &value,
-                             SILType sourceLoweredType,
-                             CanType sourceFormalType,
-                             SILType targetLoweredType,
-                             CanType targetFormalType,
+                             SILType valueType, SILType loweredTargetType,
                              CheckedCastMode mode, Explosion &out);
 
-  /// Convert a class object to the given destination type,
+  /// \brief Convert a class object to the given destination type,
   /// using a runtime-checked cast.
+  ///
+  /// FIXME: toType should be an AST CanType.
   llvm::Value *emitClassDowncast(IRGenFunction &IGF,
                                  llvm::Value *from,
-                                 CanType toType,
+                                 SILType toType,
                                  CheckedCastMode mode);
 
   /// A result of a cast generation function.
@@ -69,7 +68,7 @@ namespace irgen {
     llvm::Value *casted;
   };
 
-  /// Convert the given value to the exact destination type.
+  /// \brief Convert the given value to the exact destination type.
   FailableCastResult emitClassIdenticalCast(IRGenFunction &IGF,
                                                   llvm::Value *from,
                                                   SILType fromType,

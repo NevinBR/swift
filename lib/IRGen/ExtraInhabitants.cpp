@@ -16,41 +16,36 @@
 
 #include "ExtraInhabitants.h"
 
-#include "BitPatternBuilder.h"
 #include "IRGenModule.h"
 #include "IRGenFunction.h"
 #include "SwiftTargetInfo.h"
-#include "swift/ABI/MetadataValues.h"
 
 using namespace swift;
 using namespace irgen;
 
-static unsigned getNumLowObjCReservedBits(const IRGenModule &IGM) {
-  if (!IGM.ObjCInterop)
-    return 0;
-
+static unsigned getNumLowObjCReservedBits(IRGenModule &IGM) {
   // Get the index of the first non-reserved bit.
-  auto &mask = IGM.TargetInfo.ObjCPointerReservedBits;
-  return mask.asAPInt().countTrailingOnes();
+  SpareBitVector ObjCMask = IGM.TargetInfo.ObjCPointerReservedBits;
+  ObjCMask.flipAll();
+  return ObjCMask.enumerateSetBits().findNext().getValue();
 }
 
 /*****************************************************************************/
 
 /// Return the number of extra inhabitants for a pointer that reserves
 /// the given number of low bits.
-static unsigned getPointerExtraInhabitantCount(const IRGenModule &IGM,
+static unsigned getPointerExtraInhabitantCount(IRGenModule &IGM,
                                                unsigned numReservedLowBits) {  
   // FIXME: We could also make extra inhabitants using spare bits, but we
   // probably don't need to.
   uint64_t rawCount =
     IGM.TargetInfo.LeastValidPointerValue >> numReservedLowBits;
   
-  // The runtime limits the count.
-  return std::min(uint64_t(ValueWitnessFlags::MaxNumExtraInhabitants),
-                  rawCount);
+  // The runtime limits the count to INT_MAX.
+  return std::min((uint64_t)INT_MAX, rawCount);
 }
 
-unsigned irgen::getHeapObjectExtraInhabitantCount(const IRGenModule &IGM) {
+unsigned irgen::getHeapObjectExtraInhabitantCount(IRGenModule &IGM) {
   // This must be consistent with the extra inhabitant count produced
   // by the runtime's getHeapObjectExtraInhabitantCount function in
   // KnownMetadata.cpp.
@@ -64,24 +59,20 @@ unsigned irgen::getFunctionPointerExtraInhabitantCount(IRGenModule &IGM) {
 /*****************************************************************************/
 
 static APInt
-getPointerFixedExtraInhabitantValue(const IRGenModule &IGM, unsigned bits,
+getPointerFixedExtraInhabitantValue(IRGenModule &IGM, unsigned bits,
                                     unsigned index, unsigned offset,
                                     unsigned numReservedLowBits) {
-  unsigned pointerSizeInBits = IGM.getPointerSize().getValueInBits();
   assert(index < getPointerExtraInhabitantCount(IGM, numReservedLowBits) &&
          "pointer extra inhabitant out of bounds");
-  assert(bits >= pointerSizeInBits + offset);
-
   uint64_t value = (uint64_t)index << numReservedLowBits;
-
-  auto valueBits = BitPatternBuilder(IGM.Triple.isLittleEndian());
-  valueBits.appendClearBits(offset);
-  valueBits.append(APInt(pointerSizeInBits, value));
-  valueBits.padWithClearBitsTo(bits);
-  return valueBits.build().getValue();
+  APInt apValue(bits, value);
+  if (offset > 0)
+    apValue = apValue.shl(offset);
+  
+  return apValue;
 }
 
-APInt irgen::getHeapObjectFixedExtraInhabitantValue(const IRGenModule &IGM,
+APInt irgen::getHeapObjectFixedExtraInhabitantValue(IRGenModule &IGM,
                                                     unsigned bits,
                                                     unsigned index,
                                                     unsigned offset) {

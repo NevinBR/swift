@@ -16,28 +16,24 @@
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "sil-cse"
-#include "swift/SIL/DebugUtils.h"
+#include "swift/SILOptimizer/PassManager/Passes.h"
 #include "swift/SIL/Dominance.h"
-#include "swift/SIL/SILCloner.h"
 #include "swift/SIL/SILModule.h"
 #include "swift/SIL/SILOpenedArchetypesTracker.h"
 #include "swift/SIL/SILType.h"
 #include "swift/SIL/SILValue.h"
 #include "swift/SIL/SILVisitor.h"
+#include "swift/SIL/DebugUtils.h"
+#include "swift/SILOptimizer/Utils/Local.h"
+#include "swift/SILOptimizer/PassManager/Transforms.h"
 #include "swift/SILOptimizer/Analysis/ArraySemantic.h"
 #include "swift/SILOptimizer/Analysis/DominanceAnalysis.h"
-#include "swift/SILOptimizer/Analysis/SideEffectAnalysis.h"
 #include "swift/SILOptimizer/Analysis/SimplifyInstruction.h"
-#include "swift/SILOptimizer/PassManager/Passes.h"
-#include "swift/SILOptimizer/PassManager/Transforms.h"
-#include "swift/SILOptimizer/Utils/InstOptUtils.h"
-#include "swift/SILOptimizer/Utils/SILInliner.h"
-#include "swift/SILOptimizer/Utils/SILOptFunctionBuilder.h"
-#include "swift/SILOptimizer/Utils/BasicBlockOptUtils.h"
+#include "swift/SILOptimizer/Analysis/SideEffectAnalysis.h"
 #include "llvm/ADT/Hashing.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopedHashTable.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/RecyclingAllocator.h"
 
@@ -86,7 +82,7 @@ class HashVisitor : public SILInstructionVisitor<HashVisitor, llvm::hash_code> {
   using hash_code = llvm::hash_code;
 
 public:
-  hash_code visitSILInstruction(SILInstruction *) {
+  hash_code visitValueBase(ValueBase *) {
     llvm_unreachable("No hash implemented for the given type");
   }
 
@@ -97,15 +93,7 @@ public:
   hash_code visitBridgeObjectToWordInst(BridgeObjectToWordInst *X) {
     return llvm::hash_combine(X->getKind(), X->getType(), X->getOperand());
   }
-
-  hash_code visitClassifyBridgeObjectInst(ClassifyBridgeObjectInst *X) {
-    return llvm::hash_combine(X->getKind(), X->getOperand());
-  }
-
-  hash_code visitValueToBridgeObjectInst(ValueToBridgeObjectInst *X) {
-    return llvm::hash_combine(X->getKind(), X->getOperand());
-  }
-
+  
   hash_code visitRefToBridgeObjectInst(RefToBridgeObjectInst *X) {
     OperandValueArrayRef Operands(X->getAllOperands());
     return llvm::hash_combine(
@@ -126,8 +114,7 @@ public:
   }
 
   hash_code visitFunctionRefInst(FunctionRefInst *X) {
-    return llvm::hash_combine(X->getKind(),
-                              X->getInitiallyReferencedFunction());
+    return llvm::hash_combine(X->getKind(), X->getReferencedFunction());
   }
 
   hash_code visitGlobalAddrInst(GlobalAddrInst *X) {
@@ -162,14 +149,21 @@ public:
     return llvm::hash_combine(X->getKind(), X->getOperand());
   }
 
-#define LOADABLE_REF_STORAGE(Name, ...) \
-  hash_code visit##Name##ToRefInst(Name##ToRefInst *X) { \
-    return llvm::hash_combine(X->getKind(), X->getOperand()); \
-  } \
-  hash_code visitRefTo##Name##Inst(RefTo##Name##Inst *X) { \
-    return llvm::hash_combine(X->getKind(), X->getOperand()); \
+  hash_code visitUnownedToRefInst(UnownedToRefInst *X) {
+    return llvm::hash_combine(X->getKind(), X->getOperand());
   }
-#include "swift/AST/ReferenceStorage.def"
+
+  hash_code visitRefToUnownedInst(RefToUnownedInst *X) {
+    return llvm::hash_combine(X->getKind(), X->getOperand());
+  }
+
+  hash_code visitUnmanagedToRefInst(UnmanagedToRefInst *X) {
+    return llvm::hash_combine(X->getKind(), X->getOperand());
+  }
+
+  hash_code visitRefToUnmanagedInst(RefToUnmanagedInst *X) {
+    return llvm::hash_combine(X->getKind(), X->getOperand());
+  }
 
   hash_code visitUpcastInst(UpcastInst *X) {
     return llvm::hash_combine(X->getKind(), X->getType(), X->getOperand());
@@ -207,12 +201,6 @@ public:
                               X->getOperand());
   }
 
-  hash_code visitSuperMethodInst(SuperMethodInst *X) {
-    return llvm::hash_combine(X->getKind(),
-                              X->getType(),
-                              X->getOperand());
-  }
-
   hash_code visitTupleInst(TupleInst *X) {
     OperandValueArrayRef Operands(X->getAllOperands());
     return llvm::hash_combine(X->getKind(), X->getTupleType(),
@@ -239,13 +227,6 @@ public:
 
   hash_code visitExistentialMetatypeInst(ExistentialMetatypeInst *X) {
     return llvm::hash_combine(X->getKind(), X->getType());
-  }
-
-  hash_code visitInitExistentialMetatypeInst(InitExistentialMetatypeInst *X) {
-    return llvm::hash_combine(
-        X->getKind(), X->getType(), X->getOperand(),
-        llvm::hash_combine_range(X->getConformances().begin(),
-                                 X->getConformances().end()));
   }
 
   hash_code visitObjCProtocolInst(ObjCProtocolInst *X) {
@@ -362,6 +343,10 @@ public:
     return hash;
   }
 
+  hash_code visitIsNonnullInst(IsNonnullInst *X) {
+    return llvm::hash_combine(X->getKind(), X->getOperand(), X->getType());
+  }
+
   hash_code visitThinFunctionToPointerInst(ThinFunctionToPointerInst *X) {
     return llvm::hash_combine(X->getKind(), X->getOperand(), X->getType());
   }
@@ -410,36 +395,22 @@ bool llvm::DenseMapInfo<SimpleValue>::isEqual(SimpleValue LHS,
   if (LHS.isSentinel() || RHS.isSentinel())
     return LHSI == RHSI;
 
-  auto LOpen = dyn_cast<OpenExistentialRefInst>(LHSI);
-  auto ROpen = dyn_cast<OpenExistentialRefInst>(RHSI);
-  if (LOpen && ROpen) {
-    // Check operands.
-    if (LOpen->getOperand() != ROpen->getOperand())
+  if (isa<OpenExistentialRefInst>(LHSI) && isa<OpenExistentialRefInst>(RHSI)) {
+    if (LHSI->getNumOperands() != RHSI->getNumOperands())
       return false;
+
+    // Check operands.
+    for (unsigned i = 0, e = LHSI->getNumOperands(); i != e; ++i)
+      if (LHSI->getOperand(i) !=  RHSI->getOperand(i))
+        return false;
 
     // Consider the types of two open_existential_ref instructions to be equal,
-    // if the sets of protocols they conform to are equal ...
-    auto LHSArchetypeTy = LOpen->getType().castTo<ArchetypeType>();
-    auto RHSArchetypeTy = ROpen->getType().castTo<ArchetypeType>();
-
+    // if the sets of protocols they conform to are equal.
+    auto LHSArchetypeTy = LHSI->getType().castTo<ArchetypeType>();
     auto LHSConformsTo = LHSArchetypeTy->getConformsTo();
+    auto RHSArchetypeTy = RHSI->getType().castTo<ArchetypeType>();
     auto RHSConformsTo = RHSArchetypeTy->getConformsTo();
-    if (LHSConformsTo != RHSConformsTo)
-      return false;
-
-    // ... and other constraints are equal.
-    if (LHSArchetypeTy->requiresClass() != RHSArchetypeTy->requiresClass())
-      return false;
-
-    if (LHSArchetypeTy->getSuperclass().getPointer() !=
-        RHSArchetypeTy->getSuperclass().getPointer())
-      return false;
-
-    if (LHSArchetypeTy->getLayoutConstraint() !=
-        RHSArchetypeTy->getLayoutConstraint())
-      return false;
-
-    return true;
+    return LHSConformsTo == RHSConformsTo;
   }
   return LHSI->getKind() == RHSI->getKind() && LHSI->isIdenticalTo(RHSI);
 }
@@ -454,16 +425,12 @@ namespace swift {
 /// eliminating trivially redundant instructions and using simplifyInstruction
 /// to canonicalize things as it goes. It is intended to be fast and catch
 /// obvious cases so that SILCombine and other passes are more effective.
-///
-/// It also optimizes calls to lazy property getters: If such a call is
-/// dominated by another call to the same getter, it is replaced by a direct
-/// load of the property - assuming that it is already computed.
 class CSE {
 public:
   typedef llvm::ScopedHashTableVal<SimpleValue, ValueBase *> SimpleValueHTType;
   typedef llvm::RecyclingAllocator<llvm::BumpPtrAllocator, SimpleValueHTType>
   AllocatorTy;
-  typedef llvm::ScopedHashTable<SimpleValue, SILInstruction *,
+  typedef llvm::ScopedHashTable<SimpleValue, ValueBase *,
                                 llvm::DenseMapInfo<SimpleValue>,
                                 AllocatorTy> ScopedHTType;
 
@@ -476,21 +443,11 @@ public:
 
   SideEffectAnalysis *SEA;
 
-  SILOptFunctionBuilder &FuncBuilder;
-  
-  /// The set of calls to lazy property getters which can be replace by a direct
-  /// load of the property value.
-  llvm::SmallVector<ApplyInst *, 8> lazyPropertyGetters;
-
-  CSE(bool RunsOnHighLevelSil, SideEffectAnalysis *SEA,
-      SILOptFunctionBuilder &FuncBuilder)
-      : SEA(SEA), FuncBuilder(FuncBuilder),
-        RunsOnHighLevelSil(RunsOnHighLevelSil) {}
+  CSE(bool RunsOnHighLevelSil, SideEffectAnalysis *SEA)
+      : SEA(SEA), RunsOnHighLevelSil(RunsOnHighLevelSil) {}
 
   bool processFunction(SILFunction &F, DominanceInfo *DT);
-
-  bool processLazyPropertyGetters();
-
+  
   bool canHandle(SILInstruction *Inst);
 
 private:
@@ -550,7 +507,8 @@ private:
   };
 
   bool processNode(DominanceInfoNode *Node);
-  bool processOpenExistentialRef(OpenExistentialRefInst *Inst, ValueBase *V);
+  bool processOpenExistentialRef(SILInstruction *Inst, ValueBase *V,
+                                 SILBasicBlock::iterator &I);
 };
 } // namespace swift
 
@@ -600,47 +558,13 @@ bool CSE::processFunction(SILFunction &Fm, DominanceInfo *DT) {
   return Changed;
 }
 
-/// Replace lazy property getters (which are dominated by the same getter)
-/// by a direct load of the value.
-bool CSE::processLazyPropertyGetters() {
-  bool changed = false;
-  for (ApplyInst *ai : lazyPropertyGetters) {
-    SILFunction *getter = ai->getReferencedFunctionOrNull();
-    assert(getter && getter->isLazyPropertyGetter());
-    SILBasicBlock *callBlock = ai->getParent();
-
-    // Inline the getter...
-    SILInliner::inlineFullApply(ai, SILInliner::InlineKind::PerformanceInline,
-                                FuncBuilder);
-    
-    // ...and fold the switch_enum in the first block to the Optional.some case.
-    // The Optional.none branch becomes dead.
-    auto *sei = cast<SwitchEnumInst>(callBlock->getTerminator());
-    ASTContext &ctxt = callBlock->getParent()->getModule().getASTContext();
-    EnumElementDecl *someDecl = ctxt.getOptionalSomeDecl();
-    SILBasicBlock *someDest = sei->getCaseDestination(someDecl);
-    assert(someDest->getNumArguments() == 1);
-    SILValue enumVal = sei->getOperand();
-    SILBuilder builder(sei);
-    SILType ty = enumVal->getType().getEnumElementType(someDecl,
-                           sei->getModule(), builder.getTypeExpansionContext());
-    auto *ued =
-        builder.createUncheckedEnumData(sei->getLoc(), enumVal, someDecl, ty);
-    builder.createBranch(sei->getLoc(), someDest, { ued });
-    sei->eraseFromParent();
-    changed = true;
-    ++NumCSE;
-  }
-  return changed;
-}
-
 namespace {
   // A very simple cloner for cloning instructions inside
   // the same function. The only interesting thing it does
   // is remapping the archetypes when it is required.
   class InstructionCloner : public SILCloner<InstructionCloner> {
     friend class SILCloner<InstructionCloner>;
-    friend class SILInstructionVisitor<InstructionCloner>;
+    friend class SILVisitor<InstructionCloner>;
     SILInstruction *Result = nullptr;
   public:
     InstructionCloner(SILFunction *F) : SILCloner(*F) {}
@@ -662,7 +586,7 @@ namespace {
       Result = Cloned;
       SILCloner<InstructionCloner>::postProcess(Orig, Cloned);
     }
-    SILValue getMappedValue(SILValue Value) {
+    SILValue remapValue(SILValue Value) {
       return Value;
     }
     SILBasicBlock *remapBasicBlock(SILBasicBlock *BB) { return BB; }
@@ -676,7 +600,7 @@ static void updateBasicBlockArgTypes(SILBasicBlock *BB,
                                      ArchetypeType *OldOpenedArchetype,
                                      ArchetypeType *NewOpenedArchetype) {
   // Check types of all BB arguments.
-  for (auto *Arg : BB->getSILPhiArguments()) {
+  for (auto *Arg : BB->getPHIArguments()) {
     if (!Arg->getType().hasOpenedExistential())
       continue;
     // Type of this BB argument uses an opened existential.
@@ -702,9 +626,9 @@ static void updateBasicBlockArgTypes(SILBasicBlock *BB,
       OriginalArgUses.push_back(ArgUse);
     }
     // Then replace all uses by an undef.
-    Arg->replaceAllUsesWith(SILUndef::get(Arg->getType(), *BB->getParent()));
+    Arg->replaceAllUsesWith(SILUndef::get(Arg->getType(), BB->getModule()));
     // Replace the type of the BB argument.
-    auto *NewArg = BB->replacePhiArgument(Arg->getIndex(), NewArgType,
+    auto *NewArg = BB->replacePHIArgument(Arg->getIndex(), NewArgType,
                                           Arg->getOwnershipKind(),
                                           Arg->getDecl());
     // Restore all uses to refer to the BB argument with updated type.
@@ -719,15 +643,13 @@ static void updateBasicBlockArgTypes(SILBasicBlock *BB,
 /// be replaced by a dominating instruction.
 /// \Inst is the open_existential_ref instruction
 /// \V is the dominating open_existential_ref instruction
-bool CSE::processOpenExistentialRef(OpenExistentialRefInst *Inst,
-                                    ValueBase *V) {
-  // All the open instructions are single-value instructions.
-  auto VI = dyn_cast<SingleValueInstruction>(V);
-  if (!VI) return false;
-
+/// \I is the iterator referring to the current instruction.
+bool CSE::processOpenExistentialRef(SILInstruction *Inst, ValueBase *V,
+                                    SILBasicBlock::iterator &I) {
+  assert(isa<OpenExistentialRefInst>(Inst));
   llvm::SmallSetVector<SILInstruction *, 16> Candidates;
   auto OldOpenedArchetype = getOpenedArchetypeOf(Inst);
-  auto NewOpenedArchetype = getOpenedArchetypeOf(VI);
+  auto NewOpenedArchetype = getOpenedArchetypeOf(dyn_cast<SILInstruction>(V));
 
   // Collect all candidates that may contain opened archetypes
   // that need to be replaced.
@@ -760,12 +682,12 @@ bool CSE::processOpenExistentialRef(OpenExistentialRefInst *Inst,
   }
   // Now process candidates.
   // TODO: Move it to CSE instance to avoid recreating it every time?
-  SILOpenedArchetypesTracker OpenedArchetypesTracker(Inst->getFunction());
+  SILOpenedArchetypesTracker OpenedArchetypesTracker(*Inst->getFunction());
   // Register the new archetype to be used.
-  OpenedArchetypesTracker.registerOpenedArchetypes(VI);
+  OpenedArchetypesTracker.registerOpenedArchetypes(dyn_cast<SILInstruction>(V));
   // Use a cloner. It makes copying the instruction and remapping of
   // opened archetypes trivial.
-  InstructionCloner Cloner(Inst->getFunction());
+  InstructionCloner Cloner(I->getFunction());
   Cloner.registerOpenedExistentialRemapping(
       OldOpenedArchetype->castTo<ArchetypeType>(), NewOpenedArchetype);
   auto &Builder = Cloner.getBuilder();
@@ -778,31 +700,22 @@ bool CSE::processOpenExistentialRef(OpenExistentialRefInst *Inst,
     auto Candidate = Candidates.pop_back_val();
     if (Processed.count(Candidate))
       continue;
-
-    // Compute if a candidate depends on the old opened archetype.
-    // It always does if it has any type-dependent operands.
-    bool DependsOnOldOpenedArchetype =
-      !Candidate->getTypeDependentOperands().empty();
-
-    // Look for dependencies propagated via the candidate's results.
-    for (auto CandidateResult : Candidate->getResults()) {
-      if (CandidateResult->use_empty() ||
-          !CandidateResult->getType().hasOpenedExistential())
-        continue;
-
-      // Check if the result type depends on this specific opened existential.
+    // True if a candidate depends on the old opened archetype.
+    bool DependsOnOldOpenedArchetype = !Candidate->getTypeDependentOperands().empty();
+    if (!Candidate->use_empty() &&
+        Candidate->getType().hasOpenedExistential()) {
+      // Check if the result type of the candidate depends on the opened
+      // existential in question.
       auto ResultDependsOnOldOpenedArchetype =
-          CandidateResult->getType().getASTType().findIf(
+          Candidate->getType().getSwiftRValueType().findIf(
               [&OldOpenedArchetype](Type t) -> bool {
                 return (CanType(t) == OldOpenedArchetype);
               });
-
-      // If it does, the candidate depends on the opened existential.
       if (ResultDependsOnOldOpenedArchetype) {
         DependsOnOldOpenedArchetype |= ResultDependsOnOldOpenedArchetype;
-
-        // The users of this candidate are new candidates.
-        for (auto Use : CandidateResult->getUses()) {
+        // We need to update uses of this candidate, because their types
+        // may be affected.
+        for (auto Use : Candidate->getUses()) {
           Candidates.insert(Use->getUser());
         }
       }
@@ -820,38 +733,12 @@ bool CSE::processOpenExistentialRef(OpenExistentialRefInst *Inst,
     auto NewI = Cloner.clone(Candidate);
     // Result types of candidate's uses instructions may be using this archetype.
     // Thus, we need to try to replace it there.
-    Candidate->replaceAllUsesPairwiseWith(NewI);
-    eraseFromParentWithDebugInsts(Candidate);
+    Candidate->replaceAllUsesWith(NewI);
+    if (I == Candidate->getIterator())
+      I = NewI->getIterator();
+    eraseFromParentWithDebugInsts(Candidate, I);
   }
   return true;
-}
-
-/// Returns true if \p ai is a call to a lazy property getter, which we can
-/// handle.
-static bool isLazyPropertyGetter(ApplyInst *ai) {
-  SILFunction *callee = ai->getReferencedFunctionOrNull();
-  if (!callee || callee->isExternalDeclaration() ||
-      !callee->isLazyPropertyGetter())
-    return false;
-
-  // Check if the first block has a switch_enum of an Optional.
-  // We don't handle getters of generic types, which have a switch_enum_addr.
-  // This will be obsolete with opaque values anyway.
-  auto *SEI = dyn_cast<SwitchEnumInst>(callee->getEntryBlock()->getTerminator());
-  if (!SEI)
-    return false;
-
-  ASTContext &ctxt = SEI->getFunction()->getModule().getASTContext();
-  EnumElementDecl *someDecl = ctxt.getOptionalSomeDecl();
-
-  for (unsigned i = 0, e = SEI->getNumCases(); i != e; ++i) {
-    auto Entry = SEI->getCase(i);
-    if (Entry.first == someDecl) {
-      SILBasicBlock *destBlock = Entry.second;
-      return destBlock->getNumArguments() == 1;
-    }
-  }
-  return false;
 }
 
 bool CSE::processNode(DominanceInfoNode *Node) {
@@ -859,19 +746,17 @@ bool CSE::processNode(DominanceInfoNode *Node) {
   bool Changed = false;
 
   // See if any instructions in the block can be eliminated.  If so, do it.  If
-  // not, add them to AvailableValues. Assume the block terminator can't be
-  // erased.
-  for (SILBasicBlock::iterator nextI = BB->begin(), E = BB->end();
-       nextI != E;) {
-    SILInstruction *Inst = &*nextI;
-    ++nextI;
+  // not, add them to AvailableValues.
+  for (SILBasicBlock::iterator I = BB->begin(), E = BB->end(); I != E;) {
+    SILInstruction *Inst = &*I;
+    ++I;
 
-    LLVM_DEBUG(llvm::dbgs() << "SILCSE VISITING: " << *Inst << "\n");
+    DEBUG(llvm::dbgs() << "SILCSE VISITING: " << *Inst << "\n");
 
     // Dead instructions should just be removed.
     if (isInstructionTriviallyDead(Inst)) {
-      LLVM_DEBUG(llvm::dbgs() << "SILCSE DCE: " << *Inst << '\n');
-      nextI = eraseFromParentWithDebugInsts(Inst);
+      DEBUG(llvm::dbgs() << "SILCSE DCE: " << *Inst << '\n');
+      eraseFromParentWithDebugInsts(Inst, I);
       Changed = true;
       ++NumSimplify;
       continue;
@@ -880,9 +765,10 @@ bool CSE::processNode(DominanceInfoNode *Node) {
     // If the instruction can be simplified (e.g. X+0 = X) then replace it with
     // its simpler value.
     if (SILValue V = simplifyInstruction(Inst)) {
-      LLVM_DEBUG(llvm::dbgs() << "SILCSE SIMPLIFY: " << *Inst << "  to: " << *V
-                              << '\n');
-      nextI = replaceAllSimplifiedUsesAndErase(Inst, V);
+      DEBUG(llvm::dbgs() << "SILCSE SIMPLIFY: " << *Inst << "  to: " << *V
+            << '\n');
+      Inst->replaceAllUsesWith(V);
+      Inst->eraseFromParent();
       Changed = true;
       ++NumSimplify;
       continue;
@@ -900,30 +786,14 @@ bool CSE::processNode(DominanceInfoNode *Node) {
 
     // Now that we know we have an instruction we understand see if the
     // instruction has an available value.  If so, use it.
-    if (SILInstruction *AvailInst = AvailableValues->lookup(Inst)) {
-      LLVM_DEBUG(llvm::dbgs() << "SILCSE CSE: " << *Inst << "  to: "
-                              << *AvailInst << '\n');
-
-      auto *AI = dyn_cast<ApplyInst>(Inst);
-      if (AI && isLazyPropertyGetter(AI)) {
-        // We do the actual transformation for lazy property getters later. It
-        // changes the CFG and we don't want to disturb the dominator tree walk
-        // here.
-        lazyPropertyGetters.push_back(AI);
-        continue;
-      }
-                              
+    if (ValueBase *V = AvailableValues->lookup(Inst)) {
+      DEBUG(llvm::dbgs() << "SILCSE CSE: " << *Inst << "  to: " << *V << '\n');
       // Instructions producing a new opened archetype need a special handling,
       // because replacing these instructions may require a replacement
       // of the opened archetype type operands in some of the uses.
-      if (!isa<OpenExistentialRefInst>(Inst)
-          || processOpenExistentialRef(
-              cast<OpenExistentialRefInst>(Inst),
-              cast<OpenExistentialRefInst>(AvailInst))) {
-        // processOpenExistentialRef may delete instructions other than Inst, so
-        // nextI must be reassigned.
-        nextI = std::next(Inst->getIterator());
-        Inst->replaceAllUsesPairwiseWith(AvailInst);
+      if (!isa<OpenExistentialRefInst>(Inst) ||
+          processOpenExistentialRef(Inst, V, I)) {
+        Inst->replaceAllUsesWith(V);
         Inst->eraseFromParent();
         Changed = true;
         ++NumCSE;
@@ -933,8 +803,8 @@ bool CSE::processNode(DominanceInfoNode *Node) {
 
     // Otherwise, just remember that this value is available.
     AvailableValues->insert(Inst, Inst);
-    LLVM_DEBUG(llvm::dbgs() << "SILCSE Adding to value table: " << *Inst
-                            << " -> " << *Inst << "\n");
+    DEBUG(llvm::dbgs() << "SILCSE Adding to value table: " << *Inst << " -> "
+                       << *Inst << "\n");
   }
 
   return Changed;
@@ -960,8 +830,8 @@ bool CSE::canHandle(SILInstruction *Inst) {
     
     // We can CSE function calls which do not read or write memory and don't
     // have any other side effects.
-    FunctionSideEffects Effects;
-    SEA->getCalleeEffects(Effects, AI);
+    SideEffectAnalysis::FunctionEffects Effects;
+    SEA->getEffects(Effects, AI);
 
     // Note that the function also may not contain any retains. And there are
     // functions which are read-none and have a retain, e.g. functions which
@@ -969,14 +839,6 @@ bool CSE::canHandle(SILInstruction *Inst) {
     auto MB = Effects.getMemBehavior(RetainObserveKind::ObserveRetains);
     if (MB == SILInstruction::MemoryBehavior::None)
       return true;
-    
-    if (isLazyPropertyGetter(AI))
-      return true;
-      
-    if (SILFunction *callee = AI->getReferencedFunctionOrNull()) {
-      if (callee->isGlobalInit())
-        return true;
-    }
     
     return false;
   }
@@ -987,69 +849,68 @@ bool CSE::canHandle(SILInstruction *Inst) {
       return false;
     return !BI->mayReadOrWriteMemory();
   }
+  if (auto *CMI = dyn_cast<ClassMethodInst>(Inst)) {
+    return !CMI->isVolatile();
+  }
+  if (auto *WMI = dyn_cast<WitnessMethodInst>(Inst)) {
+    return !WMI->isVolatile();
+  }
   if (auto *EMI = dyn_cast<ExistentialMetatypeInst>(Inst)) {
     return !EMI->getOperand()->getType().isAddress();
   }
   switch (Inst->getKind()) {
-  case SILInstructionKind::ClassMethodInst:
-  case SILInstructionKind::SuperMethodInst:
-  case SILInstructionKind::FunctionRefInst:
-  case SILInstructionKind::GlobalAddrInst:
-  case SILInstructionKind::IntegerLiteralInst:
-  case SILInstructionKind::FloatLiteralInst:
-  case SILInstructionKind::StringLiteralInst:
-  case SILInstructionKind::StructInst:
-  case SILInstructionKind::StructExtractInst:
-  case SILInstructionKind::StructElementAddrInst:
-  case SILInstructionKind::TupleInst:
-  case SILInstructionKind::TupleExtractInst:
-  case SILInstructionKind::TupleElementAddrInst:
-  case SILInstructionKind::MetatypeInst:
-  case SILInstructionKind::ValueMetatypeInst:
-  case SILInstructionKind::ObjCProtocolInst:
-  case SILInstructionKind::RefElementAddrInst:
-  case SILInstructionKind::RefTailAddrInst:
-  case SILInstructionKind::ProjectBoxInst:
-  case SILInstructionKind::IndexRawPointerInst:
-  case SILInstructionKind::IndexAddrInst:
-  case SILInstructionKind::PointerToAddressInst:
-  case SILInstructionKind::AddressToPointerInst:
-  case SILInstructionKind::CondFailInst:
-  case SILInstructionKind::EnumInst:
-  case SILInstructionKind::UncheckedEnumDataInst:
-  case SILInstructionKind::UncheckedTrivialBitCastInst:
-  case SILInstructionKind::UncheckedBitwiseCastInst:
-  case SILInstructionKind::RefToRawPointerInst:
-  case SILInstructionKind::RawPointerToRefInst:
-  case SILInstructionKind::UpcastInst:
-  case SILInstructionKind::ThickToObjCMetatypeInst:
-  case SILInstructionKind::ObjCToThickMetatypeInst:
-  case SILInstructionKind::UncheckedRefCastInst:
-  case SILInstructionKind::UncheckedAddrCastInst:
-  case SILInstructionKind::ObjCMetatypeToObjectInst:
-  case SILInstructionKind::ObjCExistentialMetatypeToObjectInst:
-  case SILInstructionKind::SelectEnumInst:
-  case SILInstructionKind::SelectValueInst:
-  case SILInstructionKind::RefToBridgeObjectInst:
-  case SILInstructionKind::BridgeObjectToRefInst:
-  case SILInstructionKind::BridgeObjectToWordInst:
-  case SILInstructionKind::ClassifyBridgeObjectInst:
-  case SILInstructionKind::ValueToBridgeObjectInst:
-  case SILInstructionKind::ThinFunctionToPointerInst:
-  case SILInstructionKind::PointerToThinFunctionInst:
-  case SILInstructionKind::MarkDependenceInst:
-  case SILInstructionKind::OpenExistentialRefInst:
-  case SILInstructionKind::InitExistentialMetatypeInst:
-  case SILInstructionKind::WitnessMethodInst:
-    // Intentionally we don't handle (prev_)dynamic_function_ref.
-    // They change at runtime.
-#define LOADABLE_REF_STORAGE(Name, ...) \
-  case SILInstructionKind::RefTo##Name##Inst: \
-  case SILInstructionKind::Name##ToRefInst:
-#include "swift/AST/ReferenceStorage.def"
-    return true;
-  default:
-    return false;
+    case ValueKind::FunctionRefInst:
+    case ValueKind::GlobalAddrInst:
+    case ValueKind::IntegerLiteralInst:
+    case ValueKind::FloatLiteralInst:
+    case ValueKind::StringLiteralInst:
+    case ValueKind::StructInst:
+    case ValueKind::StructExtractInst:
+    case ValueKind::StructElementAddrInst:
+    case ValueKind::TupleInst:
+    case ValueKind::TupleExtractInst:
+    case ValueKind::TupleElementAddrInst:
+    case ValueKind::MetatypeInst:
+    case ValueKind::ValueMetatypeInst:
+    case ValueKind::ObjCProtocolInst:
+    case ValueKind::RefElementAddrInst:
+    case ValueKind::RefTailAddrInst:
+    case ValueKind::ProjectBoxInst:
+    case ValueKind::IndexRawPointerInst:
+    case ValueKind::IndexAddrInst:
+    case ValueKind::PointerToAddressInst:
+    case ValueKind::AddressToPointerInst:
+    case ValueKind::CondFailInst:
+    case ValueKind::EnumInst:
+    case ValueKind::UncheckedEnumDataInst:
+    case ValueKind::IsNonnullInst:
+    case ValueKind::UncheckedTrivialBitCastInst:
+    case ValueKind::UncheckedBitwiseCastInst:
+    case ValueKind::RefToRawPointerInst:
+    case ValueKind::RawPointerToRefInst:
+    case ValueKind::RefToUnownedInst:
+    case ValueKind::UnownedToRefInst:
+    case ValueKind::RefToUnmanagedInst:
+    case ValueKind::UnmanagedToRefInst:
+    case ValueKind::UpcastInst:
+    case ValueKind::ThickToObjCMetatypeInst:
+    case ValueKind::ObjCToThickMetatypeInst:
+    case ValueKind::UncheckedRefCastInst:
+    case ValueKind::UncheckedAddrCastInst:
+    case ValueKind::ObjCMetatypeToObjectInst:
+    case ValueKind::ObjCExistentialMetatypeToObjectInst:
+    case ValueKind::SelectEnumInst:
+    case ValueKind::SelectValueInst:
+    case ValueKind::RefToBridgeObjectInst:
+    case ValueKind::BridgeObjectToRefInst:
+    case ValueKind::BridgeObjectToWordInst:
+    case ValueKind::ThinFunctionToPointerInst:
+    case ValueKind::PointerToThinFunctionInst:
+    case ValueKind::MarkDependenceInst:
+    case ValueKind::OpenExistentialRefInst:
+      return true;
+    default:
+      return false;
   }
 }
 
@@ -1132,7 +993,7 @@ static bool tryToCSEOpenExtCall(OpenExistentialAddrInst *From,
 
   SILBuilder Builder(FromAI);
   // Make archetypes used by the ToAI available to the builder.
-  SILOpenedArchetypesTracker OpenedArchetypesTracker(FromAI->getFunction());
+  SILOpenedArchetypesTracker OpenedArchetypesTracker(*FromAI->getFunction());
   OpenedArchetypesTracker.registerUsedOpenedArchetypes(ToAI);
   Builder.setOpenedArchetypesTracker(&OpenedArchetypesTracker);
 
@@ -1140,8 +1001,7 @@ static bool tryToCSEOpenExtCall(OpenExistentialAddrInst *From,
          "Invalid number of arguments");
 
   // Don't handle any apply instructions that involve substitutions.
-  if (ToAI->getSubstitutionMap().getReplacementTypes().size() != 1)
-    return false;
+  if (ToAI->getSubstitutions().size() != 1) return false;
 
   // Prepare the Apply args.
   SmallVector<SILValue, 8> Args;
@@ -1150,7 +1010,7 @@ static bool tryToCSEOpenExtCall(OpenExistentialAddrInst *From,
   }
 
   ApplyInst *NAI = Builder.createApply(ToAI->getLoc(), ToWMI,
-                                       ToAI->getSubstitutionMap(), Args,
+                                       ToAI->getSubstitutions(), Args,
                                        ToAI->isNonThrowing());
   FromAI->replaceAllUsesWith(NAI);
   FromAI->eraseFromParent();
@@ -1241,7 +1101,7 @@ static bool CSExistentialInstructions(SILFunctionArgument *Arg,
 /// witness_method):
 ///
 /// open_existential_addr %0 : $*Pingable to $*@opened("1E467EB8-...")
-/// witness_method $@opened("1E467EB8-...") Pingable, #Pingable.ping, %2
+/// witness_method $@opened("1E467EB8-...") Pingable, #Pingable.ping!1, %2
 /// apply %3<@opened("1E467EB8-...") Pingable>(%2)
 ///
 /// \returns True if some instructions were modified.
@@ -1267,19 +1127,14 @@ class SILCSE : public SILFunctionTransform {
   bool RunsOnHighLevelSil;
   
   void run() override {
-    // FIXME: We should be able to support ownership.
-    if (getFunction()->hasOwnership())
-      return;
-
-    LLVM_DEBUG(llvm::dbgs() << "***** CSE on function: "
-                            << getFunction()->getName() << " *****\n");
+    DEBUG(llvm::dbgs() << "***** CSE on function: " << getFunction()->getName()
+          << " *****\n");
 
     DominanceAnalysis* DA = getAnalysis<DominanceAnalysis>();
 
     auto *SEA = PM->getAnalysis<SideEffectAnalysis>();
-    SILOptFunctionBuilder FuncBuilder(*this);
 
-    CSE C(RunsOnHighLevelSil, SEA, FuncBuilder);
+    CSE C(RunsOnHighLevelSil, SEA);
     bool Changed = false;
 
     // Perform the traditional CSE.
@@ -1288,15 +1143,7 @@ class SILCSE : public SILFunctionTransform {
     // Perform CSE of existential and witness_method instructions.
     Changed |= CSEExistentialCalls(getFunction(),
                                           DA->get(getFunction()));
-
-    // Handle calls to lazy property getters, which are collected in
-    // processFunction().
-    if (C.processLazyPropertyGetters()) {
-      // Cleanup the dead blocks from the inlined lazy property getters.
-      removeUnreachableBlocks(*getFunction());
-
-      invalidateAnalysis(SILAnalysis::InvalidationKind::Everything);
-    } else if (Changed) {
+    if (Changed) {
       invalidateAnalysis(SILAnalysis::InvalidationKind::CallsAndInstructions);
     }
   }

@@ -10,42 +10,42 @@
 //
 //===----------------------------------------------------------------------===//
 
-import SwiftShims
-
-@frozen // namespace
 public enum _DebuggerSupport {
-  private enum CollectionStatus {
-    case notACollection
-    case collectionOfElements
-    case collectionOfPairs
-    case element
-    case pair
-    case elementOfPair
+  internal enum CollectionStatus {
+    case NotACollection
+    case CollectionOfElements
+    case CollectionOfPairs
+    case Element
+    case Pair
+    case ElementOfPair
   
     internal var isCollection: Bool {
-      return self != .notACollection
+      return self != .NotACollection
     }
   
     internal func getChildStatus(child: Mirror) -> CollectionStatus {
-      let disposition = child.displayStyle
+      let disposition = child.displayStyle ?? .struct
     
-      if disposition == .collection { return .collectionOfElements }
-      if disposition == .dictionary { return .collectionOfPairs }
-      if disposition == .set { return .collectionOfElements }
+      if disposition == .collection { return .CollectionOfElements }
+      if disposition == .dictionary { return .CollectionOfPairs }
+      if disposition == .set { return .CollectionOfElements }
     
-      if self == .collectionOfElements { return .element }
-      if self == .collectionOfPairs { return .pair }
-      if self == .pair { return .elementOfPair }
+      if self == .CollectionOfElements { return .Element }
+      if self == .CollectionOfPairs { return .Pair }
+      if self == .Pair { return .ElementOfPair }
     
-      return .notACollection
+      return .NotACollection
     }
   }
 
-  private static func isClass(_ value: Any) -> Bool {
-    return type(of: value) is AnyClass
+  internal static func isClass(_ value: Any) -> Bool {
+    if let _ = type(of: value) as? AnyClass {
+      return true
+    }
+    return false
   }
   
-  private static func checkValue<T>(
+  internal static func checkValue<T>(
     _ value: Any,
     ifClass: (AnyObject) -> T,
     otherwise: () -> T
@@ -56,76 +56,107 @@ public enum _DebuggerSupport {
     return otherwise()
   }
 
-  private static func asObjectIdentifier(_ value: Any) -> ObjectIdentifier? {
+  internal static func asObjectIdentifier(_ value: Any) -> ObjectIdentifier? {
     return checkValue(value,
       ifClass: { return ObjectIdentifier($0) },
       otherwise: { return nil })
   }
 
-  private static func asObjectAddress(_ value: Any) -> String {
-    let address = checkValue(value,
+  internal static func asNumericValue(_ value: Any) -> Int {
+    return checkValue(value,
       ifClass: { return unsafeBitCast($0, to: Int.self) },
       otherwise: { return 0 })
-    return String(address, radix: 16, uppercase: false)
   }
 
-  private static func asStringRepresentation(
+  internal static func asStringRepresentation(
     value: Any?,
     mirror: Mirror,
     count: Int
   ) -> String? {
-    switch mirror.displayStyle {
-    case .optional? where count > 0:
-        return "\(mirror.subjectType)"
-    case .optional?:
-      return value.map(String.init(reflecting:))
-    case .collection?, .dictionary?, .set?, .tuple?:
-      return count == 1 ? "1 element" : "\(count) elements"
-    case .`struct`?, .`enum`?, nil:
-      switch value {
-      case let x as CustomDebugStringConvertible:
-        return x.debugDescription
-      case let x as CustomStringConvertible:
-        return x.description
-      case _ where count > 0:
-        return "\(mirror.subjectType)"
-      default:
-        return value.map(String.init(reflecting:))
-      }
-    case .`class`?:
-      switch value {
-      case let x as CustomDebugStringConvertible:
-        return x.debugDescription
-      case let x as CustomStringConvertible:
-        return x.description
-      case let x?:
-        // for a Class with no custom summary, mimic the Foundation default
-        return "<\(type(of: x)): 0x\(asObjectAddress(x))>"
-      default:
-        // but if I can't provide a value, just use the type anyway
-        return "\(mirror.subjectType)"
-      }
+    let ds = mirror.displayStyle ?? .`struct`
+    switch ds {
+      case .optional:
+        if count > 0 {
+          return "\(mirror.subjectType)"
+        }
+        else {
+          if let x = value {
+            return String(reflecting: x)
+          }
+        }
+      case .collection:
+        fallthrough
+      case .dictionary:
+        fallthrough
+      case .set:
+        fallthrough
+      case .tuple:
+        if count == 1 {
+          return "1 element"
+        } else {
+          return "\(count) elements"
+        }
+      case .`struct`:
+        fallthrough
+      case .`enum`:
+        if let x = value {
+          if let cdsc = (x as? CustomDebugStringConvertible) {
+            return cdsc.debugDescription
+          }
+          if let csc = (x as? CustomStringConvertible) {
+            return csc.description
+          }
+        }
+        if count > 0 {
+            return "\(mirror.subjectType)"
+        }
+      case .`class`:
+        if let x = value {
+          if let cdsc = (x as? CustomDebugStringConvertible) {
+            return cdsc.debugDescription
+          }
+          if let csc = (x as? CustomStringConvertible) {
+            return csc.description
+          }
+          // for a Class with no custom summary, mimic the Foundation default
+          return "<\(type(of: x)): 0x\(String(asNumericValue(x), radix: 16, uppercase: false))>"
+        } else {
+          // but if I can't provide a value, just use the type anyway
+          return "\(mirror.subjectType)"
+        }
+    }
+    if let x = value {
+      return String(reflecting: x)
+    }
+    return nil
+  }
+
+  internal static func ivarCount(mirror: Mirror) -> Int {
+    let count = Int(mirror.children.count)
+    if let sc = mirror.superclassMirror {
+      return ivarCount(mirror: sc) + count
+    } else {
+      return count
     }
   }
 
-  private static func ivarCount(mirror: Mirror) -> Int {
-    let ivars = mirror.superclassMirror.map(ivarCount) ?? 0
-    return ivars + mirror.children.count
-  }
 
-  private static func shouldExpand(
+  internal static func shouldExpand(
     mirror: Mirror,
     collectionStatus: CollectionStatus,
     isRoot: Bool
   ) -> Bool {
     if isRoot || collectionStatus.isCollection { return true }
-    if !mirror.children.isEmpty { return true }
-    if mirror.displayStyle == .`class` { return true }
-    if let sc = mirror.superclassMirror { return ivarCount(mirror: sc) > 0 }
-    return true
+    let count = Int(mirror.children.count)
+    if count > 0 { return true }
+    if let sc = mirror.superclassMirror {
+      return ivarCount(mirror: sc) > 0
+    } else {
+      return true
+    }
   }
 
-  private static func printForDebuggerImpl<StreamType: TextOutputStream>(
+  internal static func printForDebuggerImpl<StreamType : TextOutputStream>(
     value: Any?,
     mirror: Mirror,
     name: String?,
@@ -135,56 +166,72 @@ public enum _DebuggerSupport {
     parentCollectionStatus: CollectionStatus,
     refsAlreadySeen: inout Set<ObjectIdentifier>,
     maxItemCounter: inout Int,
-    target: inout StreamType
-  ) {    
-    guard maxItemCounter > 0 else { return }
+    targetStream: inout StreamType
+  ) {
+    if maxItemCounter <= 0 {
+      return
+    }
 
-    guard shouldExpand(mirror: mirror,
-                       collectionStatus: parentCollectionStatus,
-                       isRoot: isRoot) 
-    else { return }
+    if !shouldExpand(mirror: mirror,
+                     collectionStatus: parentCollectionStatus,
+                     isRoot: isRoot) {
+      return
+    }
 
     maxItemCounter -= 1
   
-    print(String(repeating: " ", count: indent), terminator: "", to: &target)
+    for _ in 0..<indent {
+      print(" ", terminator: "", to: &targetStream)
+    }
 
     // do not expand classes with no custom Mirror
     // yes, a type can lie and say it's a class when it's not since we only
     // check the displayStyle - but then the type would have a custom Mirror
     // anyway, so there's that...
-    let willExpand = mirror.displayStyle != .`class` || value is CustomReflectable?
-
-    let count = mirror.children.count
-    let bullet = isRoot && (count == 0 || !willExpand) ? ""
-      : count == 0    ? "- "
-      : maxDepth <= 0 ? "▹ " : "▿ "
-    print(bullet, terminator: "", to: &target)
-  
-    let collectionStatus = parentCollectionStatus.getChildStatus(child: mirror)
-  
-    if let name = name {
-      print("\(name) : ", terminator: "", to: &target)
-    }
-
-    if let str = asStringRepresentation(value: value, mirror: mirror, count: count) {
-      print(str, terminator: "", to: &target)
-    }
-  
-    if (maxDepth <= 0) || !willExpand {
-      print("", to: &target)
-      return
-    }
-
-    if let valueIdentifier = value.flatMap(asObjectIdentifier) {
-      if refsAlreadySeen.contains(valueIdentifier) {
-        print(" { ... }", to: &target)
-        return
-      } else {
-        refsAlreadySeen.insert(valueIdentifier)
+    var willExpand = true
+    if let ds = mirror.displayStyle {
+      if ds == .`class` {
+        if let x = value {
+          if !(x is CustomReflectable) {
+            willExpand = false
+          }
+        }
       }
     }
 
-    print("", to: &target)
+    let count = Int(mirror.children.count)
+    let bullet = isRoot && (count == 0 || !willExpand) ? ""
+      : count == 0    ? "- "
+      : maxDepth <= 0 ? "▹ " : "▿ "
+    print("\(bullet)", terminator: "", to: &targetStream)
+  
+    let collectionStatus = parentCollectionStatus.getChildStatus(child: mirror)
+  
+    if let nam = name {
+      print("\(nam) : ", terminator: "", to: &targetStream)
+    }
+
+    if let str = asStringRepresentation(value: value, mirror: mirror, count: count) {
+      print("\(str)", terminator: "", to: &targetStream)
+    }
+  
+    if (maxDepth <= 0) || !willExpand {
+      print("", to: &targetStream)
+      return
+    }
+
+    if let x = value {
+      if let valueIdentifier = asObjectIdentifier(x) {
+        if refsAlreadySeen.contains(valueIdentifier) {
+          print(" { ... }", to: &targetStream)
+          return
+        } else {
+          refsAlreadySeen.insert(valueIdentifier)
+        }
+      }
+    }
+
+    print("", to: &targetStream)
   
     var printedElements = 0
   
@@ -196,22 +243,28 @@ public enum _DebuggerSupport {
         indent: indent + 2,
         maxDepth: maxDepth - 1,
         isRoot: false,
-        parentCollectionStatus: .notACollection,
+        parentCollectionStatus: .NotACollection,
         refsAlreadySeen: &refsAlreadySeen,
         maxItemCounter: &maxItemCounter,
-        target: &target)
+        targetStream: &targetStream)
     }
   
     for (optionalName,child) in mirror.children {
       let childName = optionalName ?? "\(printedElements)"
       if maxItemCounter <= 0 {
-        print(String(repeating: " ", count: indent+4), terminator: "", to: &target)
-        let remainder = count - printedElements
-        print("(\(remainder)", terminator: "", to: &target)
-        if printedElements > 0 {
-          print(" more", terminator: "", to: &target)
+        for _ in 0..<(indent+4) {
+          print(" ", terminator: "", to: &targetStream)
         }
-        print(remainder == 1 ? " child)" : " children)", to: &target)
+        let remainder = count - printedElements
+        print("(\(remainder)", terminator: "", to: &targetStream)
+        if printedElements > 0 {
+          print(" more", terminator: "", to: &targetStream)
+        }
+        if remainder == 1 {
+          print(" child)", to: &targetStream)
+        } else {
+          print(" children)", to: &targetStream)
+        }
         return
       }
     
@@ -225,15 +278,19 @@ public enum _DebuggerSupport {
         parentCollectionStatus: collectionStatus,
         refsAlreadySeen: &refsAlreadySeen,
         maxItemCounter: &maxItemCounter,
-        target: &target)
+        targetStream: &targetStream)
       printedElements += 1
     }
   }
 
+  // LLDB uses this function in expressions, and if it is inlined the resulting
+  // LLVM IR is enormous.  As a result, to improve LLDB performance we have made
+  // this stdlib_binary_only, which prevents inlining.
+  @_semantics("stdlib_binary_only")
   public static func stringForPrintObject(_ value: Any) -> String {
     var maxItemCounter = Int.max
     var refs = Set<ObjectIdentifier>()
-    var target = ""
+    var targetStream = ""
 
     printForDebuggerImpl(
       value: value,
@@ -242,25 +299,12 @@ public enum _DebuggerSupport {
       indent: 0,
       maxDepth: maxItemCounter,
       isRoot: true,
-      parentCollectionStatus: .notACollection,
+      parentCollectionStatus: .NotACollection,
       refsAlreadySeen: &refs,
       maxItemCounter: &maxItemCounter,
-      target: &target)
+      targetStream: &targetStream)
 
-    return target
+    return targetStream
   }
 }
 
-public func _stringForPrintObject(_ value: Any) -> String {
-  return _DebuggerSupport.stringForPrintObject(value)
-}
-
-public func _debuggerTestingCheckExpect(_: String, _: String) { }
-
-// Utilities to get refcount(s) of class objects.
-@_silgen_name("swift_retainCount")
-public func _getRetainCount(_ Value: AnyObject) -> UInt
-@_silgen_name("swift_unownedRetainCount")
-public func _getUnownedRetainCount(_ Value: AnyObject) -> UInt
-@_silgen_name("swift_weakRetainCount")
-public func _getWeakRetainCount(_ Value: AnyObject) -> UInt

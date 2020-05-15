@@ -10,16 +10,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-import TestsUtils
-
-public let ClassArrayGetter = BenchmarkInfo(
-  name: "ClassArrayGetter2",
-  runFunction: run_ClassArrayGetter,
-  tags: [.validation, .api, .Array],
-  setUpFunction: { blackHole(inputArray) },
-  tearDownFunction: { inputArray = nil },
-  legacyFactor: 10)
-
 class Box {
   var v: Int
   init(v: Int) { self.v = v }
@@ -34,18 +24,13 @@ func sumArray(_ a: [Box]) -> Int {
   return s
 }
 
-var inputArray: [Box]! = {
+public func run_ClassArrayGetter(_ N: Int) {
   let aSize = 10_000
   var a: [Box] = []
   a.reserveCapacity(aSize)
   for i in 1...aSize {
     a.append(Box(v:i))
   }
-  return a
-}()
-
-public func run_ClassArrayGetter(_ N: Int) {
-  let a: [Box] = inputArray
   for _ in 1...N {
     _ = sumArray(a)
   }

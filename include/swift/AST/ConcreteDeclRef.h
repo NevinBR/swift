@@ -17,13 +17,13 @@
 #ifndef SWIFT_AST_CONCRETEDECLREF_H
 #define SWIFT_AST_CONCRETEDECLREF_H
 
-#include "swift/Basic/Debug.h"
 #include "swift/Basic/LLVM.h"
-#include "swift/AST/SubstitutionMap.h"
+#include "swift/AST/SubstitutionList.h"
 #include "swift/AST/TypeAlignments.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/Support/Compiler.h"
+#include "llvm/Support/TrailingObjects.h"
 #include <cstring>
 
 namespace swift {
@@ -36,56 +36,132 @@ class ValueDecl;
 /// providing substitutions for all type parameters of the original,
 /// underlying declaration.
 class ConcreteDeclRef {
-  /// The declaration.
-  ValueDecl *decl = nullptr;
+  /// A specialized declaration reference, which provides substitutions
+  /// that fully specialize a generic declaration.
+  class SpecializedDeclRef final :
+      private llvm::TrailingObjects<SpecializedDeclRef, Substitution> {
+    friend TrailingObjects;
 
-  /// The substitutions.
-  SubstitutionMap substitutions;
+    /// The declaration.
+    ValueDecl *TheDecl;
+
+    /// The number of substitutions, which are tail allocated.
+    unsigned NumSubstitutions;
+
+    SpecializedDeclRef(ValueDecl *decl, SubstitutionList substitutions)
+      : TheDecl(decl), NumSubstitutions(substitutions.size())
+    {
+      std::uninitialized_copy(substitutions.begin(), substitutions.end(),
+                              getTrailingObjects<Substitution>());
+    }
+
+  public:
+    /// Retrieve the generic declaration.
+    ValueDecl *getDecl() const { return TheDecl; }
+
+    /// Retrieve the substitutions.
+    SubstitutionList getSubstitutions() const {
+      return {getTrailingObjects<Substitution>(), NumSubstitutions};
+    }
+    
+    /// Allocate a new specialized declaration reference.
+    static SpecializedDeclRef *create(ASTContext &ctx, ValueDecl *decl,
+                                      SubstitutionList substitutions);
+  };
+
+  llvm::PointerUnion<ValueDecl *, SpecializedDeclRef *> Data;
+
+  friend class llvm::PointerLikeTypeTraits<ConcreteDeclRef>;
 
 public:
   /// Create an empty declaration reference.
-  ConcreteDeclRef() { }
+  ConcreteDeclRef() : Data() { }
 
   /// Construct a reference to the given value.
-  ConcreteDeclRef(ValueDecl *decl) : decl(decl) { }
+  ConcreteDeclRef(ValueDecl *decl) : Data(decl) { }
 
   /// Construct a reference to the given value, specialized with the given
   /// substitutions.
+  ///
+  /// \param ctx The ASTContext in which to allocate the specialized
+  /// declaration reference.
   ///
   /// \param decl The declaration to which this reference refers, which will
   /// be specialized by applying the given substitutions.
   ///
   /// \param substitutions The complete set of substitutions to apply to the
-  /// given declaration.
-  ConcreteDeclRef(ValueDecl *decl, SubstitutionMap substitutions)
-    : decl(decl), substitutions(substitutions) { }
+  /// given declaration. This array will be copied into the ASTContext by the
+  /// constructor.
+  ConcreteDeclRef(ASTContext &ctx, ValueDecl *decl,
+                  SubstitutionList substitutions) {
+    if (substitutions.empty())
+      Data = decl;
+    else
+      Data = SpecializedDeclRef::create(ctx, decl, substitutions);
+  }
 
   /// Determine whether this declaration reference refers to anything.
-  explicit operator bool() const { return decl != nullptr; }
+  explicit operator bool() const { return !Data.isNull(); }
 
   /// Retrieve the declarations to which this reference refers.
-  ValueDecl *getDecl() const { return decl; }
+  ValueDecl *getDecl() const {
+    if (Data.is<ValueDecl *>())
+      return Data.get<ValueDecl *>();
+
+    return Data.get<SpecializedDeclRef *>()->getDecl();
+  }
 
   /// Retrieve a reference to the declaration this one overrides.
-  ConcreteDeclRef getOverriddenDecl() const;
+  ConcreteDeclRef
+  getOverriddenDecl(ASTContext &ctx) const;
 
   /// Determine whether this reference specializes the declaration to which
   /// it refers.
-  bool isSpecialized() const { return !substitutions.empty(); }
+  bool isSpecialized() const { return Data.is<SpecializedDeclRef *>(); }
 
   /// For a specialized reference, return the set of substitutions applied to
   /// the declaration reference.
-  SubstitutionMap getSubstitutions() const { return substitutions; }
+  SubstitutionList getSubstitutions() const {
+    if (!isSpecialized())
+      return { };
+    
+    return Data.get<SpecializedDeclRef *>()->getSubstitutions();
+  }
 
-  friend bool operator==(ConcreteDeclRef lhs, ConcreteDeclRef rhs) {
-    return lhs.decl == rhs.decl && lhs.substitutions == rhs.substitutions;
+  bool operator==(ConcreteDeclRef rhs) const {
+    return Data == rhs.Data;
   }
   
   /// Dump a debug representation of this reference.
-  void dump(raw_ostream &os) const;
-  SWIFT_DEBUG_DUMP;
+  void dump(raw_ostream &os);
+  void dump() LLVM_ATTRIBUTE_USED;
 };
 
 } // end namespace swift
+
+namespace llvm {
+  template<> class PointerLikeTypeTraits<swift::ConcreteDeclRef> {
+    typedef llvm::PointerUnion<swift::ValueDecl *,
+                               swift::ConcreteDeclRef::SpecializedDeclRef *>
+      DataPointer;
+    typedef PointerLikeTypeTraits<DataPointer> DataTraits;
+
+  public:
+    static inline void *
+    getAsVoidPointer(swift::ConcreteDeclRef ref) {
+      return ref.Data.getOpaqueValue();
+    }
+
+    static inline swift::ConcreteDeclRef getFromVoidPointer(void *ptr) {
+      swift::ConcreteDeclRef ref;
+      ref.Data = DataPointer::getFromOpaqueValue(ptr);
+      return ref;
+    }
+
+    enum {
+      NumLowBitsAvailable = DataTraits::NumLowBitsAvailable
+    };
+  };
+} // end namespace llvm
 
 #endif

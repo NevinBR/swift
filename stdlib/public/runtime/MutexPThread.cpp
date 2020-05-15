@@ -15,7 +15,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#if !defined(_WIN32) && !defined(__wasi__)
+#if !defined(_WIN32)
 #include "swift/Runtime/Mutex.h"
 
 #include "swift/Runtime/Debug.h"

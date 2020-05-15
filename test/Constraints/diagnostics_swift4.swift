@@ -24,7 +24,7 @@ extension C_2505 {
 class C2_2505: P_2505 {
 }
 
-let c_2505 = C_2505(arg: [C2_2505()]) // expected-error {{extraneous argument label 'arg:' in call}}
+let c_2505 = C_2505(arg: [C2_2505()]) // expected-error {{argument labels '(arg:)' do not match any available overloads}} expected-note {{overloads for 'C_2505' exist}}
 
 // rdar://problem/31898542 - Swift 4: 'type of expression is ambiguous without more context' errors, without a fixit
 
@@ -34,7 +34,7 @@ enum R31898542<T> {
 }
 
 func foo() -> R31898542<()> {
-  return .success() // expected-error {{missing argument for parameter #1 in call}} {{19-19=<#()#>}}
+  return .success() // expected-error {{missing argument for parameter #1 in call}} {{19-19=<#T#>}}
 }
 
 // rdar://problem/31973368 - Cannot convert value of type '(K, V) -> ()' to expected argument type '((key: _, value: _)) -> Void'
@@ -49,8 +49,3 @@ class R<K: Hashable, V> {
     dict.forEach(body)
   }
 }
-
-// Make sure that solver doesn't try to form solutions with available overloads when better generic choices are present.
-infix operator +=+ : AdditionPrecedence
-func +=+(_ lhs: Int, _ rhs: Int) -> Bool { return lhs == rhs }
-func +=+<T: BinaryInteger>(_ lhs: T, _ rhs: Int) -> Bool { return lhs == rhs }

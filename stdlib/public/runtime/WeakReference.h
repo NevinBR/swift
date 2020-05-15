@@ -17,8 +17,6 @@
 #ifndef SWIFT_RUNTIME_WEAKREFERENCE_H
 #define SWIFT_RUNTIME_WEAKREFERENCE_H
 
-#include "../../../stdlib/public/SwiftShims/Target.h"
-#include "../SwiftShims/Visibility.h"
 #include "swift/Runtime/Config.h"
 #include "swift/Runtime/HeapObject.h"
 #include "swift/Runtime/Metadata.h"
@@ -80,22 +78,16 @@ class WeakReferenceBits {
 #if !SWIFT_OBJC_INTEROP
     NativeMarkerMask  = 0,
     NativeMarkerValue = 0
-#elif defined(__x86_64__) && SWIFT_TARGET_OS_SIMULATOR
-    NativeMarkerMask  = SWIFT_ABI_X86_64_SIMULATOR_OBJC_WEAK_REFERENCE_MARKER_MASK,
-    NativeMarkerValue = SWIFT_ABI_X86_64_SIMULATOR_OBJC_WEAK_REFERENCE_MARKER_VALUE
-#elif defined(__x86_64__)
+#elif __x86_64__
     NativeMarkerMask  = SWIFT_ABI_X86_64_OBJC_WEAK_REFERENCE_MARKER_MASK,
     NativeMarkerValue = SWIFT_ABI_X86_64_OBJC_WEAK_REFERENCE_MARKER_VALUE
-#elif defined(__i386__)
+#elif __i386__
     NativeMarkerMask  = SWIFT_ABI_I386_OBJC_WEAK_REFERENCE_MARKER_MASK,
     NativeMarkerValue = SWIFT_ABI_I386_OBJC_WEAK_REFERENCE_MARKER_VALUE
-#elif defined(__arm__) || defined(_M_ARM)
+#elif __arm__
     NativeMarkerMask  = SWIFT_ABI_ARM_OBJC_WEAK_REFERENCE_MARKER_MASK,
     NativeMarkerValue = SWIFT_ABI_ARM_OBJC_WEAK_REFERENCE_MARKER_VALUE
-#elif defined(__s390x__)
-    NativeMarkerMask  = SWIFT_ABI_S390X_OBJC_WEAK_REFERENCE_MARKER_MASK,
-    NativeMarkerValue = SWIFT_ABI_S390X_OBJC_WEAK_REFERENCE_MARKER_VALUE
-#elif defined(__arm64__) || defined(__aarch64__) || defined(_M_ARM64)
+#elif __arm64__
     NativeMarkerMask  = SWIFT_ABI_ARM64_OBJC_WEAK_REFERENCE_MARKER_MASK,
     NativeMarkerValue = SWIFT_ABI_ARM64_OBJC_WEAK_REFERENCE_MARKER_VALUE
 #else
@@ -120,36 +112,37 @@ class WeakReferenceBits {
   uintptr_t bits;
 
  public:
-   SWIFT_ALWAYS_INLINE
-   WeakReferenceBits() {}
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  WeakReferenceBits() { }
 
-   SWIFT_ALWAYS_INLINE
-   WeakReferenceBits(HeapObjectSideTableEntry *newValue) {
-     setNativeOrNull(newValue);
-   }
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  WeakReferenceBits(HeapObjectSideTableEntry *newValue) {
+    setNativeOrNull(newValue);
+  }
 
-   SWIFT_ALWAYS_INLINE
-   bool isNativeOrNull() const {
-     return bits == 0 || (bits & NativeMarkerMask) == NativeMarkerValue;
-   }
-
-   SWIFT_ALWAYS_INLINE
-   HeapObjectSideTableEntry *getNativeOrNull() const {
-     assert(isNativeOrNull());
-     if (bits == 0)
-       return nullptr;
-     return reinterpret_cast<HeapObjectSideTableEntry *>(bits &
-                                                         ~NativeMarkerMask);
-   }
-
-   SWIFT_ALWAYS_INLINE
-   void setNativeOrNull(HeapObjectSideTableEntry *newValue) {
-     assert((uintptr_t(newValue) & NativeMarkerMask) == 0);
-     if (newValue)
-       bits = uintptr_t(newValue) | NativeMarkerValue;
-     else
-       bits = 0;
-   }
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  bool isNativeOrNull() const {
+    return bits == 0  ||  (bits & NativeMarkerMask) == NativeMarkerValue;
+  }
+    
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  HeapObjectSideTableEntry *getNativeOrNull() const {
+    assert(isNativeOrNull());
+    if (bits == 0)
+      return nullptr;
+    else
+      return
+        reinterpret_cast<HeapObjectSideTableEntry *>(bits & ~NativeMarkerMask);
+  }
+  
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  void setNativeOrNull(HeapObjectSideTableEntry *newValue) {
+    assert((uintptr_t(newValue) & NativeMarkerMask) == 0);
+    if (newValue)
+      bits = uintptr_t(newValue) | NativeMarkerValue;
+    else
+      bits = 0;
+  }
 };
 
 
@@ -192,7 +185,7 @@ class WeakReference {
 
  public:
   
-  WeakReference() : nativeValue() {}
+  WeakReference() = default;
 
   WeakReference(std::nullptr_t)
     : nativeValue(WeakReferenceBits(nullptr)) { }

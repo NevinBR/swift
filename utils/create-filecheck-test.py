@@ -25,18 +25,18 @@ parser.add_argument('-o', type=argparse.FileType('w'),
 args = parser.parse_args()
 
 seen_variables = set([])
-ssa_re = re.compile(r'[%](\d+)')
-for line in args.input.readlines():
-    line = line[:line.find('//')].rstrip() + "\n"
+ssa_re = re.compile('[%](\d+)')
+for l in args.input.readlines():
+    l = l[:l.find('//')].rstrip() + "\n"
     have_match = False
-    for match in ssa_re.finditer(line):
+    for match in ssa_re.finditer(l):
         have_match = True
         var = match.groups()[0]
         if var not in seen_variables:
-            line = line.replace('%' + var, '[[VAR_%s:%%[0-9]+]]' % var)
+            l = l.replace('%' + var, '[[VAR_%s:%%[0-9]+]]' % var)
             seen_variables.add(var)
         else:
-            line = line.replace('%' + var, '[[VAR_%s]]' % var)
+            l = l.replace('%' + var, '[[VAR_%s]]' % var)
     if have_match:
-        line = '// CHECK: ' + line
-    args.o.write(line)
+        l = '// CHECK: ' + l
+    args.o.write(l)

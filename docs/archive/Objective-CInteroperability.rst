@@ -1,5 +1,7 @@
 :orphan:
 
+.. @raise litre.TestsAreMissing
+
 ============================
 Objective-C Interoperability
 ============================

@@ -1,6 +1,8 @@
 // RUN: %empty-directory(%t)
-// RUN: %target-swift-frontend -enable-objc-interop -emit-module -o %t/a~partial.swiftmodule -I %S/Inputs/custom-modules -module-name TEST -primary-file %s
-// RUN: %target-swift-frontend -enable-objc-interop -emit-module -o %t/test.swiftmodule -I %S/Inputs/custom-modules -module-name TEST %t/a~partial.swiftmodule
+// RUN: %target-swift-frontend -emit-module -o %t/a~partial.swiftmodule -I %S/Inputs/custom-modules -module-name TEST -primary-file %s
+// RUN: %target-swift-frontend -emit-module -o %t/test.swiftmodule -I %S/Inputs/custom-modules -module-name TEST %t/a~partial.swiftmodule
+
+// REQUIRES: objc_interop
 
 import TestProtocols
 

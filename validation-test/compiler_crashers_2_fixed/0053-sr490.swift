@@ -13,7 +13,7 @@ protocol Storable {
 
 protocol RawProducable {
     var rawValueForType : Int16 { get }
-    init<T: Storable>(value: T) where T.Representation == Self
+    init<T: Storable where T.Representation == Self>(value: T)
 }
 
 extension Int : Storable {

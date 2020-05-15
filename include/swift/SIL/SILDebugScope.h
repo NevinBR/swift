@@ -65,10 +65,8 @@ public:
   SILFunction *getParentFunction() const;
 
 #ifndef NDEBUG
-  SWIFT_DEBUG_DUMPER(dump(SourceManager &SM,
-                          llvm::raw_ostream &OS = llvm::errs(),
-                          unsigned Indent = 0));
-  SWIFT_DEBUG_DUMPER(dump(SILModule &Mod));
+  void dump(SourceManager &SM, llvm::raw_ostream &OS = llvm::errs(),
+            unsigned Indent = 0) const;
 #endif
 };
 

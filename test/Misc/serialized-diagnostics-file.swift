@@ -1,4 +1,5 @@
-// RUN: %empty-directory(%t)
+// RUN: rm -rf %t
+// RUN: mkdir -p %t
 
 // RUN: not %target-swift-frontend -typecheck -serialize-diagnostics-path %t/nonexistent/some.dia %s 2>%t.err.txt
 // RUN: %FileCheck --input-file=%t.err.txt %s -check-prefix=OPEN-FAIL

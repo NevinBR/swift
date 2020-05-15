@@ -17,7 +17,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-/// The version constants for the sourcekitd API.
+/// \brief The version constants for the sourcekitd API.
 /// SOURCEKITD_VERSION_MINOR should increase when there are API additions.
 /// SOURCEKITD_VERSION_MAJOR is intended for "major" source/ABI breaking
 /// changes.
@@ -25,7 +25,7 @@
 /// The policy about the sourcekitd API is to keep it source and ABI compatible,
 /// thus SOURCEKITD_VERSION_MAJOR is expected to remain stable.
 #define SOURCEKITD_VERSION_MAJOR 0
-#define SOURCEKITD_VERSION_MINOR 4
+#define SOURCEKITD_VERSION_MINOR 3
 
 #define SOURCEKITD_VERSION_ENCODE(major, minor) ( \
       ((major) * 10000)                           \
@@ -87,7 +87,7 @@
 
 SOURCEKITD_BEGIN_DECLS
 
-/// Initializes structures needed across the rest of the sourcekitd API.
+/// \brief Initializes structures needed across the rest of the sourcekitd API.
 ///
 /// Must be called before any other sourcekitd call.
 /// Can be called multiple times as long as it is matched with a
@@ -100,7 +100,7 @@ SOURCEKITD_PUBLIC
 void
 sourcekitd_initialize(void);
 
-/// Deallocates structures needed across the rest of the sourcekitd API.
+/// \brief Deallocates structures needed across the rest of the sourcekitd API.
 ///
 /// If there are response handlers still waiting for a response, they will
 /// receive a SOURCEKITD_ERROR_REQUEST_CANCELLED response.
@@ -115,7 +115,7 @@ sourcekitd_shutdown(void);
 
 typedef void(^sourcekitd_interrupted_connection_handler_t)(void);
 
-/// Sets the handler which should be called whenever the connection to
+/// \brief Sets the handler which should be called whenever the connection to
 /// SourceKit is interrupted.
 ///
 /// The handler should reestablish any necessary state, such as re-opening any
@@ -133,7 +133,7 @@ sourcekitd_set_interrupted_connection_handler(
 
 #endif
 
-/// A "unique identifier" utilized by the request/response protocol.
+/// \brief A "unique identifier" utilized by the request/response protocol.
 ///
 /// A \c sourcekitd_uid_t object is associated with a string and is uniqued for
 /// the lifetime of the process. Its usefulness is in providing an "infinite
@@ -141,22 +141,22 @@ sourcekitd_set_interrupted_connection_handler(
 /// A \c sourcekitd_uid_t object remains valid even if the service crashes.
 typedef struct sourcekitd_uid_s *sourcekitd_uid_t;
 
-/// Create a \c sourcekitd_uid_t from a C string.
+/// \brief Create a \c sourcekitd_uid_t from a C string.
 SOURCEKITD_PUBLIC SOURCEKITD_NONNULL1 SOURCEKITD_WARN_RESULT
 sourcekitd_uid_t
 sourcekitd_uid_get_from_cstr(const char *string);
 
-/// Create a \c sourcekitd_uid_t from a string buffer.
+/// \brief Create a \c sourcekitd_uid_t from a string buffer.
 SOURCEKITD_PUBLIC SOURCEKITD_NONNULL1 SOURCEKITD_WARN_RESULT
 sourcekitd_uid_t
 sourcekitd_uid_get_from_buf(const char *buf, size_t length);
 
-/// Get the length of the string associated with a \c sourcekitd_uid_t.
+/// \brief Get the length of the string associated with a \c sourcekitd_uid_t.
 SOURCEKITD_PUBLIC SOURCEKITD_NONNULL1 SOURCEKITD_WARN_RESULT
 size_t
 sourcekitd_uid_get_length(sourcekitd_uid_t obj);
 
-/// Get the C string pointer associated with a \c sourcekitd_uid_t.
+/// \brief Get the C string pointer associated with a \c sourcekitd_uid_t.
 SOURCEKITD_PUBLIC SOURCEKITD_NONNULL1 SOURCEKITD_WARN_RESULT
 const char *
 sourcekitd_uid_get_string_ptr(sourcekitd_uid_t obj);
@@ -165,7 +165,7 @@ sourcekitd_uid_get_string_ptr(sourcekitd_uid_t obj);
 ///
 /// @{
 ///
-/// Used for constructing a request object.
+/// \brief Used for constructing a request object.
 typedef void *sourcekitd_object_t;
 
 SOURCEKITD_PUBLIC SOURCEKITD_NONNULL1
@@ -255,7 +255,7 @@ SOURCEKITD_PUBLIC SOURCEKITD_NONNULL1 SOURCEKITD_WARN_RESULT
 sourcekitd_object_t
 sourcekitd_request_uid_create(sourcekitd_uid_t uid);
 
-/// Creates a request object by parsing the provided string in YAML
+/// \brief Creates a request object by parsing the provided string in YAML
 /// format.
 ///
 /// \param yaml The string in YAML format.
@@ -269,13 +269,13 @@ SOURCEKITD_PUBLIC SOURCEKITD_NONNULL1 SOURCEKITD_WARN_RESULT
 sourcekitd_object_t
 sourcekitd_request_create_from_yaml(const char *yaml, char **error);
 
-/// Prints to stderr a string representation of the request object in
+/// \brief Prints to stderr a string representation of the request object in
 /// YAML format.
 SOURCEKITD_PUBLIC SOURCEKITD_NONNULL1
 void
 sourcekitd_request_description_dump(sourcekitd_object_t obj);
 
-/// Copies a string representation of the request object in YAML format.
+/// \brief Copies a string representation of the request object in YAML format.
 /// \returns A string representation of the request object. This string should
 /// be disposed of with \c free when done.
 SOURCEKITD_PUBLIC SOURCEKITD_NONNULL1
@@ -288,14 +288,14 @@ sourcekitd_request_description_copy(sourcekitd_object_t obj);
 ///
 /// @{
 
-/// The result of a request.
+/// \brief The result of a request.
 ///
 /// If the request failed \c sourcekitd_response_t will be an error response and
 /// will contain information about the error, otherwise it will contain the
 /// resulting values of the request.
 typedef void *sourcekitd_response_t;
 
-/// A value of the response object.
+/// \brief A value of the response object.
 ///
 /// Its lifetime is tied to the sourcekitd_response_t object that it came from.
 typedef struct {
@@ -309,10 +309,7 @@ typedef enum {
   SOURCEKITD_VARIANT_TYPE_INT64 = 3,
   SOURCEKITD_VARIANT_TYPE_STRING = 4,
   SOURCEKITD_VARIANT_TYPE_UID = 5,
-  SOURCEKITD_VARIANT_TYPE_BOOL = 6,
-  // Reserved for future addition
-  // SOURCEKITD_VARIANT_TYPE_DOUBLE = 7,
-  SOURCEKITD_VARIANT_TYPE_DATA = 8,
+  SOURCEKITD_VARIANT_TYPE_BOOL = 6
 } sourcekitd_variant_type_t;
 
 typedef enum {
@@ -326,12 +323,12 @@ SOURCEKITD_PUBLIC SOURCEKITD_NONNULL1
 void
 sourcekitd_response_dispose(sourcekitd_response_t obj);
 
-/// Returns true if the given response is an error.
+/// \brief Returns true if the given response is an error.
 SOURCEKITD_PUBLIC SOURCEKITD_NONNULL_ALL SOURCEKITD_WARN_RESULT
 bool
 sourcekitd_response_is_error(sourcekitd_response_t obj);
 
-/// Returns the error kind given a response error.
+/// \brief Returns the error kind given a response error.
 ///
 /// Passing a response object that is not an error will result in undefined
 /// behavior.
@@ -339,7 +336,7 @@ SOURCEKITD_PUBLIC SOURCEKITD_NONNULL_ALL SOURCEKITD_WARN_RESULT
 sourcekitd_error_t
 sourcekitd_response_error_get_kind(sourcekitd_response_t err);
 
-/// Returns a C string of the error description.
+/// \brief Returns a C string of the error description.
 ///
 /// Passing a response object that is not an error will result in undefined
 /// behavior.
@@ -347,14 +344,14 @@ SOURCEKITD_PUBLIC SOURCEKITD_NONNULL_ALL SOURCEKITD_WARN_RESULT
 const char *
 sourcekitd_response_error_get_description(sourcekitd_response_t err);
 
-/// Returns the value contained in the response.
+/// \brief Returns the value contained in the response.
 ///
 /// If the response is an error it will return a null variant.
 SOURCEKITD_PUBLIC SOURCEKITD_NONNULL1 SOURCEKITD_WARN_RESULT
 sourcekitd_variant_t
 sourcekitd_response_get_value(sourcekitd_response_t resp);
 
-SOURCEKITD_PUBLIC SOURCEKITD_WARN_RESULT
+SOURCEKITD_PUBLIC SOURCEKITD_NONNULL_ALL SOURCEKITD_WARN_RESULT
 sourcekitd_variant_type_t
 sourcekitd_variant_get_type(sourcekitd_variant_t obj);
 
@@ -396,7 +393,7 @@ sourcekitd_variant_dictionary_get_uid(sourcekitd_variant_t dict,
                                       sourcekitd_uid_t key);
 
 #if SOURCEKITD_HAS_BLOCKS
-/// A block to be invoked for every key/value pair in the dictionary.
+/// \brief A block to be invoked for every key/value pair in the dictionary.
 ///
 /// \param key The current key in the iteration.
 ///
@@ -406,7 +403,7 @@ sourcekitd_variant_dictionary_get_uid(sourcekitd_variant_t dict,
 typedef bool (^sourcekitd_variant_dictionary_applier_t)(sourcekitd_uid_t key,
                                                     sourcekitd_variant_t value);
 
-/// Invokes the given block for every key/value pair in the dictionary.
+/// \brief Invokes the given block for every key/value pair in the dictionary.
 ///
 /// \returns true to indicate that iteration of the dictionary completed
 /// successfully. Iteration will only fail if the applier block returns false.
@@ -416,7 +413,7 @@ sourcekitd_variant_dictionary_apply(sourcekitd_variant_t dict,
                                sourcekitd_variant_dictionary_applier_t applier);
 #endif
 
-/// A function to be invoked for every key/value pair in the dictionary.
+/// \brief A function to be invoked for every key/value pair in the dictionary.
 ///
 /// \param key The current key in the iteration.
 ///
@@ -427,7 +424,7 @@ typedef bool (*sourcekitd_variant_dictionary_applier_f_t)(sourcekitd_uid_t key,
                                                     sourcekitd_variant_t value,
                                                     void *context);
 
-/// Invokes the given function for every key/value pair in the
+/// \brief Invokes the given function for every key/value pair in the
 /// dictionary.
 ///
 /// \returns true to indicate that iteration of the dictionary completed
@@ -463,7 +460,7 @@ sourcekitd_uid_t
 sourcekitd_variant_array_get_uid(sourcekitd_variant_t array, size_t index);
 
 #if SOURCEKITD_HAS_BLOCKS
-/// A block to be invoked for every value in the array.
+/// \brief A block to be invoked for every value in the array.
 ///
 /// \param index The current index in the iteration.
 ///
@@ -473,7 +470,7 @@ sourcekitd_variant_array_get_uid(sourcekitd_variant_t array, size_t index);
 typedef bool (^sourcekitd_variant_array_applier_t)(size_t index,
                                                    sourcekitd_variant_t value);
 
-/// Invokes the given block for every value in the array.
+/// \brief Invokes the given block for every value in the array.
 ///
 /// \returns true to indicate that iteration of the array completed
 /// successfully. Iteration will only fail if the applier block returns false.
@@ -483,7 +480,7 @@ sourcekitd_variant_array_apply(sourcekitd_variant_t array,
                                sourcekitd_variant_array_applier_t applier);
 #endif
 
-/// A function to be invoked for every value in the array.
+/// \brief A function to be invoked for every value in the array.
 ///
 /// \param index The current index in the iteration.
 ///
@@ -494,7 +491,7 @@ typedef bool (*sourcekitd_variant_array_applier_f_t)(size_t index,
                                                      sourcekitd_variant_t value,
                                                      void *context);
 
-/// Invokes the given function for every value in the array.
+/// \brief Invokes the given function for every value in the array.
 ///
 /// \returns true to indicate that iteration of the array completed
 /// successfully. Iteration will only fail if the applier block returns false.
@@ -521,57 +518,49 @@ const char *
 sourcekitd_variant_string_get_ptr(sourcekitd_variant_t obj);
 
 SOURCEKITD_PUBLIC SOURCEKITD_WARN_RESULT
-size_t
-sourcekitd_variant_data_get_size(sourcekitd_variant_t obj);
-
-SOURCEKITD_PUBLIC SOURCEKITD_WARN_RESULT
-const void *
-sourcekitd_variant_data_get_ptr(sourcekitd_variant_t obj);
-
-SOURCEKITD_PUBLIC SOURCEKITD_WARN_RESULT
 sourcekitd_uid_t
 sourcekitd_variant_uid_get_value(sourcekitd_variant_t obj);
 
-/// Prints to stderr a string representation of the response object in
+/// \brief Prints to stderr a string representation of the response object in
 /// YAML format.
 SOURCEKITD_PUBLIC SOURCEKITD_NONNULL1
 void
 sourcekitd_response_description_dump(sourcekitd_response_t resp);
 
-/// Prints to the given file descriptor a string representation of the
+/// \brief Prints to the given file descriptor a string representation of the
 /// response object.
 SOURCEKITD_PUBLIC SOURCEKITD_NONNULL1
 void
 sourcekitd_response_description_dump_filedesc(sourcekitd_response_t resp,
                                               int fd);
 
-/// Copies a string representation of the response object in YAML format.
+/// \brief Copies a string representation of the response object in YAML format.
 /// \returns A string representation of the response object. This string should
 /// be disposed of with \c free when done.
 SOURCEKITD_PUBLIC SOURCEKITD_NONNULL1
 char *
 sourcekitd_response_description_copy(sourcekitd_response_t resp);
 
-/// Prints to stderr a string representation of the variant object in
+/// \brief Prints to stderr a string representation of the variant object in
 /// YAML format.
 SOURCEKITD_PUBLIC
 void
 sourcekitd_variant_description_dump(sourcekitd_variant_t obj);
 
-/// Prints to the given file descriptor a string representation of the
+/// \brief Prints to the given file descriptor a string representation of the
 /// variant object.
 SOURCEKITD_PUBLIC
 void
 sourcekitd_variant_description_dump_filedesc(sourcekitd_variant_t obj, int fd);
 
-/// Copies a string representation of the variant object in YAML format.
+/// \brief Copies a string representation of the variant object in YAML format.
 /// \returns A string representation of the variant object. This string should
 /// be disposed of with \c free when done.
 SOURCEKITD_PUBLIC
 char *
 sourcekitd_variant_description_copy(sourcekitd_variant_t obj);
 
-/// Copies a string representation of the variant object in JSON format.
+/// \brief Copies a string representation of the variant object in JSON format.
 /// \returns A string representation of the variant object. This string should
 /// be disposed of with \c free when done.
 SOURCEKITD_PUBLIC
@@ -580,7 +569,7 @@ sourcekitd_variant_json_description_copy(sourcekitd_variant_t obj);
 
 /// @}
 
-/// Invoke a request synchronously.
+/// \brief Invoke a request synchronously.
 ///
 /// The caller accepts ownership of the returned sourcekitd_response_t object
 /// and should invoke \c sourcekitd_response_dispose on it when it is done with
@@ -589,17 +578,17 @@ SOURCEKITD_PUBLIC SOURCEKITD_NONNULL_ALL SOURCEKITD_WARN_RESULT
 sourcekitd_response_t
 sourcekitd_send_request_sync(sourcekitd_object_t req);
 
-/// Used to cancel a request that has been invoked asynchronously.
+/// \brief Used to cancel a request that has been invoked asynchronously.
 typedef void *sourcekitd_request_handle_t;
 
 #if SOURCEKITD_HAS_BLOCKS
-/// Receives the response of an asynchronous request or notification.
+/// \brief Receives the response of an asynchronous request or notification.
 ///
 /// The receiver accepts ownership of the response object and should invoke
 /// \c sourcekitd_response_dispose on it when it is done with it.
 typedef void (^sourcekitd_response_receiver_t)(sourcekitd_response_t resp);
 
-/// Invoke a request asynchronously.
+/// \brief Invoke a request asynchronously.
 ///
 /// \param req the request object.
 ///
@@ -614,7 +603,7 @@ sourcekitd_send_request(sourcekitd_object_t req,
                         sourcekitd_response_receiver_t receiver);
 #endif
 
-/// Cancel a request using the associated request handle returned by
+/// \brief Cancel a request using the associated request handle returned by
 /// \c sourcekitd_send_request.
 ///
 /// It is not guaranteed that invoking \c sourcekitd_cancel_request will cancel
@@ -629,7 +618,7 @@ sourcekitd_cancel_request(sourcekitd_request_handle_t handle);
 
 #if SOURCEKITD_HAS_BLOCKS
 
-/// Sets the handler which should be called to receive notifications.
+/// \brief Sets the handler which should be called to receive notifications.
 /// The block will be set to be executed in the main thread queue.
 ///
 /// If the connection to SourceKit is interrupted the handler will receive an

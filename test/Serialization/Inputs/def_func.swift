@@ -30,7 +30,7 @@ public func different<T : Equatable>(a: T, b: T) -> Bool {
   return a != b
 }
 
-public func different2<T>(a: T, b: T) -> Bool where T : Equatable {
+public func different2<T where T : Equatable>(a: T, b: T) -> Bool {
   return a != b
 }
 
@@ -45,9 +45,9 @@ public protocol Wrapped {
 
 public func differentWrapped<
   T : Wrapped, U : Wrapped
->(a: T, b: U) -> Bool
-  where T.Value == U.Value
-{
+  where
+  T.Value == U.Value
+>(a: T, b: U) -> Bool {
   return a.getValue() != b.getValue()
 }
 
@@ -60,7 +60,7 @@ public func testNoReturnAttrPoly<T>(x: T) -> Never { exit() }
 @_silgen_name("primitive") public func primitive()
 
 public protocol EqualOperator {
-  static func ==(x: Self, y: Self) -> Bool
+  func ==(x: Self, y: Self) -> Bool
 }
 
 public func throws1() throws {}

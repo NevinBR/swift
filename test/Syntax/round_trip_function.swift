@@ -1,4 +1,3 @@
-// RUN: %empty-directory(%t)
 // RUN: %round-trip-syntax-test --swift-syntax-test %swift-syntax-test --file %s
 
 func noArgs() {}

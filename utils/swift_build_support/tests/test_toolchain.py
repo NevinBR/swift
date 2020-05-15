@@ -10,7 +10,6 @@
 # See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 
 import os
-import platform
 import unittest
 
 from swift_build_support import toolchain
@@ -32,10 +31,10 @@ class ToolchainTestCase(unittest.TestCase):
 
         self.assertTrue(
             os.path.isabs(tc.cc) and
-            os.path.basename(tc.cc).startswith(self._platform_cc_name()))
+            os.path.basename(tc.cc).startswith('clang'))
         self.assertTrue(
             os.path.isabs(tc.cxx) and
-            os.path.basename(tc.cxx).startswith(self._platform_cxx_name()))
+            os.path.basename(tc.cxx).startswith('clang++'))
 
     def test_llvm_tools(self):
         tc = host_toolchain()
@@ -87,8 +86,8 @@ class ToolchainTestCase(unittest.TestCase):
         tc = host_toolchain()
 
         # CC and CXX must have consistent suffix
-        cc_suffix = get_suffix(tc.cc, self._platform_cc_name())
-        cxx_suffix = get_suffix(tc.cxx, self._platform_cxx_name())
+        cc_suffix = get_suffix(tc.cc, 'clang')
+        cxx_suffix = get_suffix(tc.cxx, 'clang++')
         self.assertEqual(cc_suffix, cxx_suffix)
 
     def test_tools_llvm_suffix(self):
@@ -105,7 +104,7 @@ class ToolchainTestCase(unittest.TestCase):
             self.assertEqual(profdata_suffix, cov_suffix)
 
         # If we have suffixed clang, llvm tools must have the same suffix.
-        cc_suffix = get_suffix(tc.cc, self._platform_cc_name())
+        cc_suffix = get_suffix(tc.cc, 'clang')
         if cc_suffix != '':
             if cov_suffix is not None:
                 self.assertEqual(cc_suffix, cov_suffix)
@@ -119,18 +118,6 @@ class ToolchainTestCase(unittest.TestCase):
         toolchain.Linux()
         toolchain.FreeBSD()
         toolchain.Cygwin()
-
-    def _platform_cc_name(self):
-        if platform.system() == 'Windows':
-            return 'clang-cl'
-        else:
-            return 'clang'
-
-    def _platform_cxx_name(self):
-        if platform.system() == 'Windows':
-            return 'clang-cl'
-        else:
-            return 'clang++'
 
 
 if __name__ == '__main__':

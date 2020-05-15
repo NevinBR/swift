@@ -86,8 +86,7 @@ namespace irgen {
                                                    SILType destType,
                                                    SILType valueType,
                                                    Address existentialContainer,
-                                                   GenericEnvironment *genEnv,
-                                                   bool isOutlined);
+                                                   GenericEnvironment *genEnv);
   /// Deallocate the storage for an opaque existential in the existential
   /// container.
   /// If the value is not stored inline, this will deallocate the box for the

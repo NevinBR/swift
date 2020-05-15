@@ -3,7 +3,7 @@ Classes:
 - Name: NSRuncibleSpoon
   SwiftBridge: RuncibleSpoon
 SwiftVersions:
-- Version: 4
+- Version: 3
   Classes:
   - Name: NSRuncibleSpoon
     SwiftBridge: ""

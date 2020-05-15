@@ -7,20 +7,6 @@
   asdf asdf asdf asdf
 #endif
 
-#if swift(<1.2)
-#endif
-
-#if swift(<4.2)
-  let a = 1
-#else
-  let a = 2
-#endif
-
-#if swift(<1.0)
-   // This shouldn't emit any diagnostics.
-   asdf asdf asdf asdf
-#endif
-
 #if swift(>=1.2)
 
 #if os(iOS)
@@ -48,21 +34,13 @@
   %#^*&
 #endif
 
-#if !swift(<1000.0)
-  // This shouldn't emit any diagnostics.
-  %#^*&
+#if swift(">=7.1") // expected-error {{unexpected platform condition argument: expected a unary comparison, such as '>=2.2'}}
 #endif
 
-#if swift(">=7.1") // expected-error {{unexpected platform condition argument: expected a unary comparison '>=' or '<'; for example, '>=2.2' or '<2.2'}}
+#if swift(">=2n.2") // expected-error {{unexpected platform condition argument: expected a unary comparison, such as '>=2.2'}}
 #endif
 
-#if swift("<7.1") // expected-error {{unexpected platform condition argument: expected a unary comparison '>=' or '<'; for example, '>=2.2' or '<2.2'}}
-#endif
-
-#if swift(">=2n.2") // expected-error {{unexpected platform condition argument: expected a unary comparison '>=' or '<'; for example, '>=2.2' or '<2.2'}}
-#endif
-
-#if swift("") // expected-error {{unexpected platform condition argument: expected a unary comparison '>=' or '<'; for example, '>=2.2' or '<2.2'}}
+#if swift("") // expected-error {{unexpected platform condition argument: expected a unary comparison, such as '>=2.2'}}
 #endif
 
 #if swift(>=2.2.1)

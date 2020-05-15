@@ -13,46 +13,39 @@
 #define DEBUG_TYPE "sil-looprotate"
 
 #include "swift/SIL/Dominance.h"
-#include "swift/SIL/SILArgument.h"
-#include "swift/SIL/SILBuilder.h"
-#include "swift/SIL/SILInstruction.h"
 #include "swift/SILOptimizer/Analysis/Analysis.h"
 #include "swift/SILOptimizer/Analysis/DominanceAnalysis.h"
 #include "swift/SILOptimizer/Analysis/LoopAnalysis.h"
 #include "swift/SILOptimizer/PassManager/Passes.h"
 #include "swift/SILOptimizer/PassManager/Transforms.h"
-#include "swift/SILOptimizer/Utils/BasicBlockOptUtils.h"
-#include "swift/SILOptimizer/Utils/CFGOptUtils.h"
-#include "swift/SILOptimizer/Utils/LoopUtils.h"
+#include "swift/SILOptimizer/Utils/CFG.h"
 #include "swift/SILOptimizer/Utils/SILSSAUpdater.h"
-#include "swift/SILOptimizer/Utils/SILInliner.h"
+#include "swift/SILOptimizer/Utils/LoopUtils.h"
+#include "swift/SIL/SILArgument.h"
+#include "swift/SIL/SILBuilder.h"
+#include "swift/SIL/SILInstruction.h"
 
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/CommandLine.h"
 
 using namespace swift;
 
-/// The size limit for the loop block to duplicate.
-///
-/// Larger blocks will not be duplicated to avoid too much code size increase.
-/// It's very seldom that the default value of 20 is exceeded (< 0.3% of all
-/// loops in the swift benchmarks).
-static llvm::cl::opt<int> LoopRotateSizeLimit("looprotate-size-limit",
-                                              llvm::cl::init(20));
+static llvm::cl::opt<bool> ShouldRotate("sil-looprotate",
+                                        llvm::cl::init(true));
 
 /// Check whether all operands are loop invariant.
-static bool
-hasLoopInvariantOperands(SILInstruction *inst, SILLoop *loop,
-                         llvm::DenseSet<SILInstruction *> &invariant) {
-  auto operands = inst->getAllOperands();
+static bool hasLoopInvariantOperands(SILInstruction *I, SILLoop *L,
+                                     llvm::DenseSet<SILInstruction *> &Inv) {
+  auto Opds = I->getAllOperands();
 
-  return llvm::all_of(operands, [=](Operand &operand) {
-    ValueBase *def = operand.get();
+  return std::all_of(Opds.begin(), Opds.end(), [=](Operand &Op) {
+
+    ValueBase *Def = Op.get();
     // Operand is outside the loop or marked invariant.
-    if (auto *inst = def->getDefiningInstruction())
-      return !loop->contains(inst->getParent()) || invariant.count(inst);
-    if (auto *arg = dyn_cast<SILArgument>(def))
-      return !loop->contains(arg->getParent());
+    if (auto *Inst = dyn_cast<SILInstruction>(Def))
+      return !L->contains(Inst->getParent()) || Inv.count(Inst);
+    if (auto *Arg = dyn_cast<SILArgument>(Def))
+      return !L->contains(Arg->getParent());
 
     return false;
   });
@@ -61,183 +54,166 @@ hasLoopInvariantOperands(SILInstruction *inst, SILLoop *loop,
 /// We cannot duplicate blocks with AllocStack instructions (they need to be
 /// FIFO). Other instructions can be moved to the preheader.
 static bool
-canDuplicateOrMoveToPreheader(SILLoop *loop, SILBasicBlock *preheader,
-                              SILBasicBlock *bb,
-                              SmallVectorImpl<SILInstruction *> &moves) {
-  llvm::DenseSet<SILInstruction *> invariants;
-  int cost = 0;
-  for (auto &instRef : *bb) {
-    auto *inst = &instRef;
-    if (auto *MI = dyn_cast<MethodInst>(inst)) {
-      if (MI->getMember().isForeign)
+canDuplicateOrMoveToPreheader(SILLoop *L, SILBasicBlock *Preheader,
+                              SILBasicBlock *Blk,
+                              SmallVectorImpl<SILInstruction *> &Move) {
+  llvm::DenseSet<SILInstruction *> Invariant;
+  for (auto &I : *Blk) {
+    auto *Inst = &I;
+    if (auto *MI = dyn_cast<MethodInst>(Inst)) {
+      if (MI->getMember().isForeign && MI->isVolatile())
         return false;
-      if (!hasLoopInvariantOperands(inst, loop, invariants))
+      if (MI->isVolatile() || !hasLoopInvariantOperands(Inst, L, Invariant))
         continue;
-      moves.push_back(inst);
-      invariants.insert(inst);
-    } else if (!inst->isTriviallyDuplicatable())
+      Move.push_back(Inst);
+      Invariant.insert(Inst);
+    } else if (!I.isTriviallyDuplicatable())
       return false;
-    // It wouldn't make sense to rotate dealloc_stack without also rotating the
-    // alloc_stack, which is covered by isTriviallyDuplicatable.
-    else if (isa<DeallocStackInst>(inst))
-      return false;
-    else if (isa<FunctionRefInst>(inst)) {
-      moves.push_back(inst);
-      invariants.insert(inst);
-    } else if (isa<DynamicFunctionRefInst>(inst)) {
-      moves.push_back(inst);
-      invariants.insert(inst);
-    } else if (isa<PreviousDynamicFunctionRefInst>(inst)) {
-      moves.push_back(inst);
-      invariants.insert(inst);
-    } else if (isa<IntegerLiteralInst>(inst)) {
-      moves.push_back(inst);
-      invariants.insert(inst);
-    } else if (!inst->mayHaveSideEffects() && !inst->mayReadFromMemory()
-               && !isa<TermInst>(inst) && !isa<AllocationInst>(inst)
-               && /* not marked mayhavesideffects */
-               hasLoopInvariantOperands(inst, loop, invariants)) {
-      moves.push_back(inst);
-      invariants.insert(inst);
-    } else {
-      cost += (int)instructionInlineCost(instRef);
+    else if (isa<FunctionRefInst>(Inst)) {
+      Move.push_back(Inst);
+      Invariant.insert(Inst);
+    } else if (isa<IntegerLiteralInst>(Inst)) {
+      Move.push_back(Inst);
+      Invariant.insert(Inst);
+    } else if (!Inst->mayHaveSideEffects() &&
+               !Inst->mayReadFromMemory() &&
+               !isa<TermInst>(Inst) &&
+               !isa<AllocationInst>(Inst) && /* not marked mayhavesideffects */
+               hasLoopInvariantOperands(Inst, L, Invariant)) {
+      Move.push_back(Inst);
+      Invariant.insert(Inst);
     }
   }
 
-  return cost < LoopRotateSizeLimit;
+  return true;
 }
 
-static void mapOperands(SILInstruction *inst,
-                        const llvm::DenseMap<ValueBase *, SILValue> &valueMap) {
-  for (auto &operand : inst->getAllOperands()) {
-    SILValue origVal = operand.get();
-    ValueBase *origDef = origVal;
-    auto found = valueMap.find(origDef);
-    if (found != valueMap.end()) {
-      SILValue mappedVal = found->second;
-      operand.set(mappedVal);
+static void mapOperands(SILInstruction *I,
+                        const llvm::DenseMap<ValueBase *, SILValue> &ValueMap) {
+  for (auto &Opd : I->getAllOperands()) {
+    SILValue OrigVal = Opd.get();
+    ValueBase *OrigDef = OrigVal;
+    auto Found = ValueMap.find(OrigDef);
+    if (Found != ValueMap.end()) {
+      SILValue MappedVal = Found->second;
+      Opd.set(MappedVal);
     }
   }
 }
 
-static void updateSSAForUseOfValue(
-    SILSSAUpdater &updater, SmallVectorImpl<SILPhiArgument *> &insertedPhis,
-    const llvm::DenseMap<ValueBase *, SILValue> &valueMap,
-    SILBasicBlock *Header, SILBasicBlock *EntryCheckBlock, SILValue Res) {
+static void updateSSAForUseOfInst(
+    SILSSAUpdater &Updater, SmallVectorImpl<SILPHIArgument *> &InsertedPHIs,
+    const llvm::DenseMap<ValueBase *, SILValue> &ValueMap,
+    SILBasicBlock *Header, SILBasicBlock *EntryCheckBlock, ValueBase *Inst) {
+  if (Inst->use_empty())
+    return;
+
   // Find the mapped instruction.
-  assert(valueMap.count(Res) && "Expected to find value in map!");
-  SILValue MappedValue = valueMap.find(Res)->second;
+  assert(ValueMap.count(Inst) && "Expected to find value in map!");
+  SILValue MappedValue = ValueMap.find(Inst)->second;
   assert(MappedValue);
-  assert(Res->getType() == MappedValue->getType() && "The types must match");
 
-  insertedPhis.clear();
-  updater.Initialize(Res->getType());
-  updater.AddAvailableValue(Header, Res);
-  updater.AddAvailableValue(EntryCheckBlock, MappedValue);
+  // For each use of a specific result value of the instruction.
+  if (Inst->hasValue()) {
+    SILValue Res(Inst);
+    assert(Res->getType() == MappedValue->getType() && "The types must match");
 
-  // Because of the way that phi nodes are represented we have to collect all
-  // uses before we update SSA. Modifying one phi node can invalidate another
-  // unrelated phi nodes operands through the common branch instruction (that
-  // has to be modified). This would invalidate a plain ValueUseIterator.
-  // Instead we collect uses wrapping uses in branches specially so that we
-  // can reconstruct the use even after the branch has been modified.
-  SmallVector<UseWrapper, 8> storedUses;
-  for (auto *use : Res->getUses())
-    storedUses.push_back(UseWrapper(use));
-  for (auto useWrapper : storedUses) {
-    Operand *use = useWrapper;
-    SILInstruction *user = use->getUser();
-    assert(user && "Missing user");
+    InsertedPHIs.clear();
+    Updater.Initialize(Res->getType());
+    Updater.AddAvailableValue(Header, Res);
+    Updater.AddAvailableValue(EntryCheckBlock, MappedValue);
 
-    // Ignore uses in the same basic block.
-    if (user->getParent() == Header)
-      continue;
 
-    assert(user->getParent() != EntryCheckBlock
-           && "The entry check block should dominate the header");
-    updater.RewriteUse(*use);
-  }
-  // Canonicalize inserted phis to avoid extra BB Args.
-  for (SILPhiArgument *arg : insertedPhis) {
-    if (SILValue inst = replaceBBArgWithCast(arg)) {
-      arg->replaceAllUsesWith(inst);
-      // DCE+SimplifyCFG runs as a post-pass cleanup.
-      // DCE replaces dead arg values with undef.
-      // SimplifyCFG deletes the dead BB arg.
+    // Because of the way that phi nodes are represented we have to collect all
+    // uses before we update SSA. Modifying one phi node can invalidate another
+    // unrelated phi nodes operands through the common branch instruction (that
+    // has to be modified). This would invalidate a plain ValueUseIterator.
+    // Instead we collect uses wrapping uses in branches specially so that we
+    // can reconstruct the use even after the branch has been modified.
+    SmallVector<UseWrapper, 8> StoredUses;
+    for (auto *U : Res->getUses())
+      StoredUses.push_back(UseWrapper(U));
+    for (auto U : StoredUses) {
+      Operand *Use = U;
+      SILInstruction *User = Use->getUser();
+      assert(User && "Missing user");
+
+      // Ignore uses in the same basic block.
+      if (User->getParent() == Header)
+        continue;
+
+      assert(User->getParent() != EntryCheckBlock &&
+             "The entry check block should dominate the header");
+      Updater.RewriteUse(*Use);
+    }
+    // Canonicalize inserted phis to avoid extra BB Args.
+    for (SILPHIArgument *Arg : InsertedPHIs) {
+      if (SILInstruction *Inst = replaceBBArgWithCast(Arg)) {
+        Arg->replaceAllUsesWith(Inst);
+        // DCE+SimplifyCFG runs as a post-pass cleanup.
+        // DCE replaces dead arg values with undef.
+        // SimplifyCFG deletes the dead BB arg.
+      }
     }
   }
-}
-
-static void
-updateSSAForUseOfInst(SILSSAUpdater &updater,
-                      SmallVectorImpl<SILPhiArgument *> &insertedPhis,
-                      const llvm::DenseMap<ValueBase *, SILValue> &valueMap,
-                      SILBasicBlock *header, SILBasicBlock *entryCheckBlock,
-                      SILInstruction *inst) {
-  for (auto result : inst->getResults())
-    updateSSAForUseOfValue(updater, insertedPhis, valueMap, header,
-                           entryCheckBlock, result);
 }
 
 /// Rewrite the code we just created in the preheader and update SSA form.
-static void rewriteNewLoopEntryCheckBlock(
-    SILBasicBlock *header, SILBasicBlock *entryCheckBlock,
-    const llvm::DenseMap<ValueBase *, SILValue> &valueMap) {
-  SmallVector<SILPhiArgument *, 4> insertedPhis;
-  SILSSAUpdater updater(&insertedPhis);
+static void
+rewriteNewLoopEntryCheckBlock(SILBasicBlock *Header,
+                              SILBasicBlock *EntryCheckBlock,
+                        const llvm::DenseMap<ValueBase *, SILValue> &ValueMap) {
+  SmallVector<SILPHIArgument *, 4> InsertedPHIs;
+  SILSSAUpdater Updater(&InsertedPHIs);
 
   // Fix PHIs (incoming arguments).
-  for (auto *arg : header->getArguments())
-    updateSSAForUseOfValue(updater, insertedPhis, valueMap, header,
-                           entryCheckBlock, arg);
+  for (auto *Inst : Header->getArguments())
+    updateSSAForUseOfInst(Updater, InsertedPHIs, ValueMap, Header,
+                          EntryCheckBlock, Inst);
 
-  auto instIter = header->begin();
+  auto InstIter = Header->begin();
 
   // The terminator might change from under us.
-  while (instIter != header->end()) {
-    auto &inst = *instIter;
-    updateSSAForUseOfInst(updater, insertedPhis, valueMap, header,
-                          entryCheckBlock, &inst);
-    instIter++;
+  while (InstIter != Header->end()) {
+    auto &Inst = *InstIter;
+    updateSSAForUseOfInst(Updater, InsertedPHIs, ValueMap, Header,
+                          EntryCheckBlock, &Inst);
+    InstIter++;
   }
 }
 
 /// Update the dominator tree after rotating the loop.
 /// The former preheader now dominates all of the former headers children. The
 /// former latch now dominates the former header.
-static void updateDomTree(DominanceInfo *domInfo, SILBasicBlock *preheader,
-                          SILBasicBlock *latch, SILBasicBlock *header) {
-  auto *headerN = domInfo->getNode(header);
-  SmallVector<DominanceInfoNode *, 4> Children(headerN->begin(),
-                                               headerN->end());
-  auto *preheaderN = domInfo->getNode(preheader);
+static void updateDomTree(DominanceInfo *DT, SILBasicBlock *Preheader,
+                          SILBasicBlock *Latch, SILBasicBlock *Header) {
+  auto *HeaderN = DT->getNode(Header);
+  SmallVector<DominanceInfoNode *, 4> Children(HeaderN->begin(),
+                                               HeaderN->end());
+  auto *PreheaderN = DT->getNode(Preheader);
   for (auto *Child : Children)
-    domInfo->changeImmediateDominator(Child, preheaderN);
+    DT->changeImmediateDominator(Child, PreheaderN);
 
-  if (header != latch)
-    domInfo->changeImmediateDominator(headerN, domInfo->getNode(latch));
+  if (Header != Latch)
+    DT->changeImmediateDominator(HeaderN, DT->getNode(Latch));
 }
 
-static bool rotateLoopAtMostUpToLatch(SILLoop *loop, DominanceInfo *domInfo,
-                                      SILLoopInfo *loopInfo,
-                                      bool ShouldVerify) {
-  auto *latch = loop->getLoopLatch();
-  if (!latch) {
-    LLVM_DEBUG(llvm::dbgs()
-               << *loop << " does not have a single latch block\n");
+static bool rotateLoopAtMostUpToLatch(SILLoop *L, DominanceInfo *DT,
+                                      SILLoopInfo *LI, bool ShouldVerify) {
+  auto *Latch = L->getLoopLatch();
+  if (!Latch) {
+    DEBUG(llvm::dbgs() << *L << " does not have a single latch block\n");
     return false;
   }
 
-  bool didRotate =
-      rotateLoop(loop, domInfo, loopInfo, false /* rotateSingleBlockLoops */,
-                 latch, ShouldVerify);
+  bool DidRotate = rotateLoop(L, DT, LI, false /* RotateSingleBlockLoops */,
+                              Latch, ShouldVerify);
 
   // Keep rotating at most until we hit the original latch.
-  if (didRotate)
-    while (rotateLoop(loop, domInfo, loopInfo, false, latch, ShouldVerify)) {
-    }
+  if (DidRotate)
+    while (rotateLoop(L, DT, LI, false, Latch, ShouldVerify)) {}
 
-  return didRotate;
+  return DidRotate;
 }
 
 /// Check whether this a single basic block loop - ignoring split back edges.
@@ -250,16 +226,16 @@ static bool isSingleBlockLoop(SILLoop *L) {
   if (NumBlocks == 1)
     return true;
 
-  auto *header = L->getHeader();
+  auto *Header = L->getHeader();
   auto *BackEdge = Blocks[1];
-  if (BackEdge == header)
+  if (BackEdge == Header)
     BackEdge = Blocks[0];
 
   if (!BackEdge->getSingleSuccessorBlock())
     return false;
 
-  assert(BackEdge->getSingleSuccessorBlock() == header
-         && "Loop not well formed");
+  assert(BackEdge->getSingleSuccessorBlock() == Header &&
+         "Loop not well formed");
 
   // Check whether the back-edge block is just a split-edge.
   return ++BackEdge->begin() == BackEdge->end();
@@ -273,155 +249,148 @@ static bool isSingleBlockLoop(SILLoop *L) {
 ///
 /// We will rotate at most up to the basic block passed as an argument.
 /// We will not rotate a loop where the header is equal to the latch except is
-/// rotateSingleBlockLoops is true.
+/// RotateSingleBlockLoops is true.
 ///
 /// Note: The code relies on the 'UpTo' basic block to stay within the rotate
 /// loop for termination.
-bool swift::rotateLoop(SILLoop *loop, DominanceInfo *domInfo,
-                       SILLoopInfo *loopInfo, bool rotateSingleBlockLoops,
-                       SILBasicBlock *upToBB, bool shouldVerify) {
-  assert(loop != nullptr && domInfo != nullptr && loopInfo != nullptr
-         && "Missing loop information");
+bool swift::rotateLoop(SILLoop *L, DominanceInfo *DT, SILLoopInfo *LI,
+                       bool RotateSingleBlockLoops, SILBasicBlock *UpTo,
+                       bool ShouldVerify) {
+  assert(L != nullptr && DT != nullptr && LI != nullptr &&
+         "Missing loop information");
 
-  auto *header = loop->getHeader();
-  if (!header)
+  auto *Header = L->getHeader();
+  if (!Header)
     return false;
 
   // We need a preheader - this is also a canonicalization for follow-up
   // passes.
-  auto *preheader = loop->getLoopPreheader();
-  if (!preheader) {
-    LLVM_DEBUG(llvm::dbgs() << *loop << " no preheader\n");
-    LLVM_DEBUG(loop->getHeader()->getParent()->dump());
+  auto *Preheader = L->getLoopPreheader();
+  if (!Preheader) {
+    DEBUG(llvm::dbgs() << *L << " no preheader\n");
+    DEBUG(L->getHeader()->getParent()->dump());
     return false;
   }
 
-  if (!rotateSingleBlockLoops && (header == upToBB || isSingleBlockLoop(loop)))
+  if (!RotateSingleBlockLoops && (Header == UpTo || isSingleBlockLoop(L)))
     return false;
 
-  assert(rotateSingleBlockLoops || loop->getBlocks().size() != 1);
+  assert(RotateSingleBlockLoops || L->getBlocks().size() != 1);
 
   // Need a conditional branch that guards the entry into the loop.
-  auto *loopEntryBranch = dyn_cast<CondBranchInst>(header->getTerminator());
-  if (!loopEntryBranch)
+  auto *LoopEntryBranch = dyn_cast<CondBranchInst>(Header->getTerminator());
+  if (!LoopEntryBranch)
     return false;
 
   // The header needs to exit the loop.
-  if (!loop->isLoopExiting(header)) {
-    LLVM_DEBUG(llvm::dbgs() << *loop << " not an exiting header\n");
-    LLVM_DEBUG(loop->getHeader()->getParent()->dump());
+  if (!L->isLoopExiting(Header)) {
+    DEBUG(llvm::dbgs() << *L << " not an exiting header\n");
+    DEBUG(L->getHeader()->getParent()->dump());
     return false;
   }
 
   // We need a single backedge and the latch must not exit the loop if it is
   // also the header.
-  auto *latch = loop->getLoopLatch();
-  if (!latch) {
-    LLVM_DEBUG(llvm::dbgs() << *loop << " no single latch\n");
+  auto *Latch = L->getLoopLatch();
+  if (!Latch) {
+    DEBUG(llvm::dbgs() << *L << " no single latch\n");
     return false;
   }
 
   // Make sure we can duplicate the header.
-  SmallVector<SILInstruction *, 8> moveToPreheader;
-  if (!canDuplicateOrMoveToPreheader(loop, preheader, header,
-                                     moveToPreheader)) {
-    LLVM_DEBUG(llvm::dbgs()
-               << *loop << " instructions in header preventing rotating\n");
+  SmallVector<SILInstruction *, 8> MoveToPreheader;
+  if (!canDuplicateOrMoveToPreheader(L, Preheader, Header, MoveToPreheader)) {
+    DEBUG(llvm::dbgs() << *L << " instructions in header preventing rotating\n");
     return false;
   }
 
-  auto *newHeader = loopEntryBranch->getTrueBB();
-  auto *exit = loopEntryBranch->getFalseBB();
-  if (loop->contains(exit))
-    std::swap(newHeader, exit);
-  assert(loop->contains(newHeader) && !loop->contains(exit)
-         && "Could not find loop header and exit block");
+  auto *NewHeader = LoopEntryBranch->getTrueBB();
+  auto *Exit = LoopEntryBranch->getFalseBB();
+  if (L->contains(Exit))
+    std::swap(NewHeader, Exit);
+  assert(L->contains(NewHeader) && !L->contains(Exit) &&
+         "Could not find loop header and exit block");
 
   // We don't want to rotate such that we merge two headers of separate loops
   // into one. This can be turned into an assert again once we have guaranteed
   // preheader insertions.
-  if (!newHeader->getSinglePredecessorBlock() && header != latch)
+  if (!NewHeader->getSinglePredecessorBlock() && Header != Latch)
     return false;
 
   // Now that we know we can perform the rotation - move the instructions that
   // need moving.
-  for (auto *inst : moveToPreheader)
-    inst->moveBefore(preheader->getTerminator());
+  for (auto *Inst : MoveToPreheader)
+    Inst->moveBefore(Preheader->getTerminator());
 
-  LLVM_DEBUG(llvm::dbgs() << " Rotating " << *loop);
+  DEBUG(llvm::dbgs() << " Rotating " << *L);
 
   // Map the values for the duplicated header block. We are duplicating the
   // header instructions into the end of the preheader.
-  llvm::DenseMap<ValueBase *, SILValue> valueMap;
+  llvm::DenseMap<ValueBase *, SILValue> ValueMap;
 
   // The original 'phi' argument values are just the values coming from the
   // preheader edge.
-  ArrayRef<SILArgument *> phis = header->getArguments();
-  OperandValueArrayRef preheaderArgs =
-      cast<BranchInst>(preheader->getTerminator())->getArgs();
-  assert(phis.size() == preheaderArgs.size()
-         && "Basic block arguments and incoming edge mismatch");
+  ArrayRef<SILArgument *> PHIs = Header->getArguments();
+  OperandValueArrayRef PreheaderArgs =
+      cast<BranchInst>(Preheader->getTerminator())->getArgs();
+  assert(PHIs.size() == PreheaderArgs.size() &&
+         "Basic block arguments and incoming edge mismatch");
 
   // Here we also store the value index to use into the value map (versus
   // non-argument values where the operand use decides which value index to
   // use).
-  for (unsigned Idx = 0, E = phis.size(); Idx != E; ++Idx)
-    valueMap[phis[Idx]] = preheaderArgs[Idx];
+  for (unsigned Idx = 0, E = PHIs.size(); Idx != E; ++Idx)
+    ValueMap[PHIs[Idx]] = PreheaderArgs[Idx];
 
   // The other instructions are just cloned to the preheader.
-  TermInst *preheaderBranch = preheader->getTerminator();
-  for (auto &inst : *header) {
-    if (SILInstruction *cloned = inst.clone(preheaderBranch)) {
-      mapOperands(cloned, valueMap);
+  TermInst *PreheaderBranch = Preheader->getTerminator();
+  for (auto &Inst : *Header) {
+    if (SILInstruction *I = Inst.clone(PreheaderBranch)) {
+      mapOperands(I, ValueMap);
 
       // The actual operand will sort out which result idx to use.
-      auto instResults = inst.getResults();
-      auto clonedResults = cloned->getResults();
-      assert(instResults.size() == clonedResults.size());
-      for (auto i : indices(instResults))
-        valueMap[instResults[i]] = clonedResults[i];
+      ValueMap[&Inst] = I;
     }
   }
 
-  preheaderBranch->dropAllReferences();
-  preheaderBranch->eraseFromParent();
+  PreheaderBranch->dropAllReferences();
+  PreheaderBranch->eraseFromParent();
 
   // If there were any uses of instructions in the duplicated loop entry check
   // block rewrite them using the ssa updater.
-  rewriteNewLoopEntryCheckBlock(header, preheader, valueMap);
+  rewriteNewLoopEntryCheckBlock(Header, Preheader, ValueMap);
 
-  loop->moveToHeader(newHeader);
+  L->moveToHeader(NewHeader);
 
   // Now the original preheader dominates all of headers children and the
   // original latch dominates the header.
-  updateDomTree(domInfo, preheader, latch, header);
+  updateDomTree(DT, Preheader, Latch, Header);
 
-  assert(domInfo->getNode(newHeader)->getIDom() == domInfo->getNode(preheader));
-  assert(!domInfo->dominates(header, exit)
-         || domInfo->getNode(exit)->getIDom() == domInfo->getNode(preheader));
-  assert(domInfo->getNode(header)->getIDom() == domInfo->getNode(latch)
-         || ((header == latch)
-             && domInfo->getNode(header)->getIDom()
-                    == domInfo->getNode(preheader)));
+  assert(DT->getNode(NewHeader)->getIDom() == DT->getNode(Preheader));
+  assert(!DT->dominates(Header, Exit) ||
+         DT->getNode(Exit)->getIDom() == DT->getNode(Preheader));
+  assert(DT->getNode(Header)->getIDom() == DT->getNode(Latch) ||
+         ((Header == Latch) &&
+          DT->getNode(Header)->getIDom() == DT->getNode(Preheader)));
 
   // Beautify the IR. Move the old header to after the old latch as it is now
   // the latch.
-  header->moveAfter(latch);
+  Header->moveAfter(Latch);
 
   // Merge the old latch with the old header if possible.
-  mergeBasicBlockWithSuccessor(latch, domInfo, loopInfo);
+  mergeBasicBlockWithSuccessor(Latch, DT, LI);
 
   // Create a new preheader.
-  splitIfCriticalEdge(preheader, newHeader, domInfo, loopInfo);
+  splitIfCriticalEdge(Preheader, NewHeader, DT, LI);
 
-  if (shouldVerify) {
-    domInfo->verify();
-    loopInfo->verify();
-    latch->getParent()->verify();
+  if (ShouldVerify) {
+    DT->verify();
+    LI->verify();
+    Latch->getParent()->verify();
   }
 
-  LLVM_DEBUG(llvm::dbgs() << "  to " << *loop);
-  LLVM_DEBUG(loop->getHeader()->getParent()->dump());
+  DEBUG(llvm::dbgs() << "  to " << *L);
+  DEBUG(L->getHeader()->getParent()->dump());
   return true;
 }
 
@@ -430,54 +399,54 @@ namespace {
 class LoopRotation : public SILFunctionTransform {
 
   void run() override {
-    SILLoopAnalysis *loopAnalysis = PM->getAnalysis<SILLoopAnalysis>();
-    assert(loopAnalysis);
-    DominanceAnalysis *domAnalysis = PM->getAnalysis<DominanceAnalysis>();
-    assert(domAnalysis);
+    SILLoopAnalysis *LA = PM->getAnalysis<SILLoopAnalysis>();
+    assert(LA);
+    DominanceAnalysis *DA = PM->getAnalysis<DominanceAnalysis>();
+    assert(DA);
 
-    SILFunction *f = getFunction();
-    assert(f);
-    // FIXME: Add ownership support.
-    if (f->hasOwnership())
-      return;
+    SILFunction *F = getFunction();
+    assert(F);
+    SILLoopInfo *LI = LA->get(F);
+    assert(LI);
+    DominanceInfo *DT = DA->get(F);
 
-    SILLoopInfo *loopInfo = loopAnalysis->get(f);
-    assert(loopInfo);
-    DominanceInfo *domInfo = domAnalysis->get(f);
-
-    if (loopInfo->empty()) {
-      LLVM_DEBUG(llvm::dbgs() << "No loops in " << f->getName() << "\n");
+    if (LI->empty()) {
+      DEBUG(llvm::dbgs() << "No loops in " << F->getName() << "\n");
       return;
     }
-    LLVM_DEBUG(llvm::dbgs() << "Rotating loops in " << f->getName() << "\n");
-    bool shouldVerify = getOptions().VerifyAll;
+    if (!ShouldRotate) {
+      DEBUG(llvm::dbgs() << "Skipping loop rotation in " << F->getName()
+            << "\n");
+      return;
+    }
+    DEBUG(llvm::dbgs() << "Rotating loops in " << F->getName() << "\n");
+    bool ShouldVerify = getOptions().VerifyAll;
 
-    bool changed = false;
-    for (auto *LoopIt : *loopInfo) {
+    bool Changed = false;
+    for (auto *LoopIt : *LI) {
       // Rotate loops recursively bottom-up in the loop tree.
-      SmallVector<SILLoop *, 8> worklist;
-      worklist.push_back(LoopIt);
-      for (unsigned i = 0; i < worklist.size(); ++i) {
-        auto *L = worklist[i];
+      SmallVector<SILLoop *, 8> Worklist;
+      Worklist.push_back(LoopIt);
+      for (unsigned i = 0; i < Worklist.size(); ++i) {
+        auto *L = Worklist[i];
         for (auto *SubLoop : *L)
-          worklist.push_back(SubLoop);
+          Worklist.push_back(SubLoop);
       }
 
-      while (!worklist.empty()) {
-        SILLoop *loop = worklist.pop_back_val();
-        changed |= canonicalizeLoop(loop, domInfo, loopInfo);
-        changed |=
-            rotateLoopAtMostUpToLatch(loop, domInfo, loopInfo, shouldVerify);
+      while (!Worklist.empty()) {
+        SILLoop *Loop = Worklist.pop_back_val();
+        Changed |= canonicalizeLoop(Loop, DT, LI);
+        Changed |= rotateLoopAtMostUpToLatch(Loop, DT, LI, ShouldVerify);
       }
     }
 
-    if (changed) {
+    if (Changed) {
       // We preserve loop info and the dominator tree.
-      domAnalysis->lockInvalidation();
-      loopAnalysis->lockInvalidation();
-      PM->invalidateAnalysis(f, SILAnalysis::InvalidationKind::FunctionBody);
-      domAnalysis->unlockInvalidation();
-      loopAnalysis->unlockInvalidation();
+      DA->lockInvalidation();
+      LA->lockInvalidation();
+      PM->invalidateAnalysis(F, SILAnalysis::InvalidationKind::FunctionBody);
+      DA->unlockInvalidation();
+      LA->unlockInvalidation();
     }
   }
 };

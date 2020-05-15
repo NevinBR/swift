@@ -4,8 +4,6 @@ public struct EmptyResilientStruct {
   public var computed: Int {
     return 1337
   }
-
-  public mutating func mutate() {}
 }
 
 public var emptyGlobal = EmptyResilientStruct()

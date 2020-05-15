@@ -1,6 +1,6 @@
 -static
 -lswiftCore
--lswiftImageInspectionShared
+-lswiftImageInspectionStatic
 -Xlinker
 --defsym=__import_pthread_self=pthread_self
 -Xlinker
@@ -8,9 +8,8 @@
 -Xlinker
 --defsym=__import_pthread_key_create=pthread_key_create
 -lpthread
--licui18nswift
--licuucswift
--licudataswift
+-latomic
+-licui18n
+-licuuc
+-licudata
 -ldl
--lstdc++
--lm

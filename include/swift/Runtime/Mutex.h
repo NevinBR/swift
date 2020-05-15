@@ -20,51 +20,15 @@
 
 #include <type_traits>
 
-#if (defined(__APPLE__) || defined(__linux__) || defined(__CYGWIN__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__HAIKU__))
+#if (defined(__APPLE__) || defined(__linux__) || defined(__CYGWIN__) || defined(__FreeBSD__))
 #include "swift/Runtime/MutexPThread.h"
 #elif defined(_WIN32)
 #include "swift/Runtime/MutexWin32.h"
-#elif defined(__wasi__)
-#include "swift/Runtime/MutexWASI.h"
 #else
 #error "Implement equivalent of MutexPThread.h/cpp for your platform."
 #endif
 
 namespace swift {
-
-/// A stack based object that notifies one thread waiting on a condition
-/// variable on destruction.
-template <typename ConditionVariable>
-class ScopedNotifyOneT {
-  ScopedNotifyOneT() = delete;
-  ScopedNotifyOneT(const ScopedNotifyOneT &) = delete;
-  ScopedNotifyOneT &operator=(const ScopedNotifyOneT &) = delete;
-
-  ConditionVariable &Condition;
-public:
-  explicit ScopedNotifyOneT(ConditionVariable &c) : Condition(c) {}
-
-  ~ScopedNotifyOneT() {
-    Condition.notifyOne();
-  }
-};
-
-/// A stack based object that notifies all threads waiting on a condition
-/// variable on destruction.
-template <typename ConditionVariable>
-class ScopedNotifyAllT {
-  ScopedNotifyAllT() = delete;
-  ScopedNotifyAllT(const ScopedNotifyAllT &) = delete;
-  ScopedNotifyAllT &operator=(const ScopedNotifyAllT &) = delete;
-
-  ConditionVariable &Condition;
-public:
-  explicit ScopedNotifyAllT(ConditionVariable &c) : Condition(c) {}
-
-  ~ScopedNotifyAllT() {
-    Condition.notifyAll();
-  }
-};
 
 /// A ConditionVariable that works with Mutex to allow -- as an example --
 /// multi-threaded producers and consumers to signal each other in a safe way.
@@ -95,56 +59,6 @@ public:
 private:
   ConditionHandle Handle;
 };
-
-using ScopedNotifyOne = ScopedNotifyOneT<ConditionVariable>;
-using ScopedNotifyAll = ScopedNotifyAllT<ConditionVariable>;
-
-/// Compile time adjusted stack based object that locks/unlocks the supplied
-/// Mutex type. Use the provided typedefs instead of this directly.
-template <typename T, bool Inverted> class ScopedLockT {
-  ScopedLockT() = delete;
-  ScopedLockT(const ScopedLockT &) = delete;
-  ScopedLockT &operator=(const ScopedLockT &) = delete;
-  ScopedLockT(ScopedLockT &&) = delete;
-  ScopedLockT &operator=(ScopedLockT &&) = delete;
-
-public:
-  explicit ScopedLockT(T &l) : Lock(l) {
-    if (Inverted) {
-      Lock.unlock();
-    } else {
-      Lock.lock();
-    }
-  }
-
-  ~ScopedLockT() {
-    if (Inverted) {
-      Lock.lock();
-    } else {
-      Lock.unlock();
-    }
-  }
-
-private:
-  T &Lock;
-};
-
-class Mutex;
-class StaticMutex;
-
-/// A stack based object that locks the supplied mutex on construction
-/// and unlocks it on destruction.
-///
-/// Precondition: Mutex unlocked by this thread, undefined otherwise.
-typedef ScopedLockT<Mutex, false> ScopedLock;
-typedef ScopedLockT<StaticMutex, false> StaticScopedLock;
-
-/// A stack based object that unlocks the supplied mutex on construction
-/// and relocks it on destruction.
-///
-/// Precondition: Mutex locked by this thread, undefined otherwise.
-typedef ScopedLockT<Mutex, true> ScopedUnlock;
-typedef ScopedLockT<StaticMutex, true> StaticScopedUnlock;
 
 /// A Mutex object that supports `BasicLockable` and `Lockable` C++ concepts.
 /// See http://en.cppreference.com/w/cpp/concept/BasicLockable
@@ -224,9 +138,10 @@ public:
   ///
   /// Precondition: Mutex not held by this thread, undefined otherwise.
   template <typename CriticalSection>
-  auto withLock(CriticalSection criticalSection) -> decltype(criticalSection()){
-    ScopedLock guard(*this);
-    return criticalSection();
+  void withLock(CriticalSection criticalSection) {
+    lock();
+    criticalSection();
+    unlock();
   }
 
   /// Acquires lock before calling the supplied critical section. If critical
@@ -277,12 +192,11 @@ public:
   ///
   /// Precondition: Mutex not held by this thread, undefined otherwise.
   template <typename CriticalSection>
-  auto withLockThenNotifyOne(ConditionVariable &condition,
-                             CriticalSection criticalSection)
-      -> decltype(criticalSection()) {
-    return withLock([&] {
-      ScopedNotifyOne guard(condition);
-      return criticalSection();
+  void withLockThenNotifyOne(ConditionVariable &condition,
+                             CriticalSection criticalSection) {
+    withLock([&] {
+      criticalSection();
+      condition.notifyOne();
     });
   }
 
@@ -301,97 +215,17 @@ public:
   ///
   /// Precondition: Mutex not held by this thread, undefined otherwise.
   template <typename CriticalSection>
-  auto withLockThenNotifyAll(ConditionVariable &condition,
-                             CriticalSection criticalSection)
-      -> decltype(criticalSection()) {
-    return withLock([&] {
-      ScopedNotifyAll guard(condition);
-      return criticalSection();
+  void withLockThenNotifyAll(ConditionVariable &condition,
+                             CriticalSection criticalSection) {
+    withLock([&] {
+      criticalSection();
+      condition.notifyAll();
     });
   }
 
 private:
   MutexHandle Handle;
 };
-
-/// Compile time adjusted stack based object that locks/unlocks the supplied
-/// ReadWriteLock type. Use the provided typedefs instead of this directly.
-template <typename T, bool Read, bool Inverted> class ScopedRWLockT {
-
-  ScopedRWLockT() = delete;
-  ScopedRWLockT(const ScopedRWLockT &) = delete;
-  ScopedRWLockT &operator=(const ScopedRWLockT &) = delete;
-  ScopedRWLockT(ScopedRWLockT &&) = delete;
-  ScopedRWLockT &operator=(ScopedRWLockT &&) = delete;
-
-public:
-  explicit ScopedRWLockT(T &l) : Lock(l) {
-    if (Inverted) {
-      if (Read) {
-        Lock.readUnlock();
-      } else {
-        Lock.writeUnlock();
-      }
-    } else {
-      if (Read) {
-        Lock.readLock();
-      } else {
-        Lock.writeLock();
-      }
-    }
-  }
-
-  ~ScopedRWLockT() {
-    if (Inverted) {
-      if (Read) {
-        Lock.readLock();
-      } else {
-        Lock.writeLock();
-      }
-    } else {
-      if (Read) {
-        Lock.readUnlock();
-      } else {
-        Lock.writeUnlock();
-      }
-    }
-  }
-
-private:
-  T &Lock;
-};
-
-class ReadWriteLock;
-class StaticReadWriteLock;
-
-/// A stack based object that unlocks the supplied ReadWriteLock on
-/// construction and locks it for reading on destruction.
-///
-/// Precondition: ReadWriteLock unlocked by this thread, undefined otherwise.
-typedef ScopedRWLockT<ReadWriteLock, true, false> ScopedReadLock;
-typedef ScopedRWLockT<StaticReadWriteLock, true, false> StaticScopedReadLock;
-
-/// A stack based object that unlocks the supplied ReadWriteLock on
-/// construction and locks it for reading on destruction.
-///
-/// Precondition: ReadWriteLock unlocked by this thread, undefined
-/// otherwise.
-typedef ScopedRWLockT<ReadWriteLock, true, true> ScopedReadUnlock;
-typedef ScopedRWLockT<StaticReadWriteLock, true, true> StaticScopedReadUnlock;
-
-/// A stack based object that unlocks the supplied ReadWriteLock on
-/// construction and locks it for reading on destruction.
-///
-/// Precondition: ReadWriteLock unlocked by this thread, undefined otherwise.
-typedef ScopedRWLockT<ReadWriteLock, false, false> ScopedWriteLock;
-typedef ScopedRWLockT<StaticReadWriteLock, false, false> StaticScopedWriteLock;
-
-/// A stack based object that unlocks the supplied ReadWriteLock on
-/// construction and locks it for writing on destruction.
-///
-/// Precondition: ReadWriteLock unlocked by this thread, undefined otherwise.
-typedef ScopedRWLockT<ReadWriteLock, false, true> ScopedWriteUnlock;
-typedef ScopedRWLockT<StaticReadWriteLock, false, true> StaticScopedWriteUnlock;
 
 /// A Read / Write lock object that has semantics similar to `BasicLockable`
 /// and `Lockable` C++ concepts however it supports multiple concurrent
@@ -516,10 +350,10 @@ public:
   ///
   /// Precondition: ReadWriteLock not held by this thread, undefined otherwise.
   template <typename CriticalSection>
-  auto withReadLock(CriticalSection criticalSection)
-      -> decltype(criticalSection()) {
-    ScopedReadLock guard(*this);
-    return criticalSection();
+  void withReadLock(CriticalSection criticalSection) {
+    readLock();
+    criticalSection();
+    readUnlock();
   }
 
   /// Acquires write lock before calling the supplied critical section and
@@ -536,10 +370,10 @@ public:
   ///
   /// Precondition: ReadWriteLock not held by this thread, undefined otherwise.
   template <typename CriticalSection>
-  auto withWriteLock(CriticalSection criticalSection)
-      -> decltype(criticalSection()) {
-    ScopedWriteLock guard(*this);
-    return criticalSection();
+  void withWriteLock(CriticalSection criticalSection) {
+    writeLock();
+    criticalSection();
+    writeUnlock();
   }
 
 private:
@@ -575,9 +409,6 @@ private:
   ConditionHandle Handle;
 };
 
-using StaticScopedNotifyOne = ScopedNotifyOneT<StaticConditionVariable>;
-using StaticScopedNotifyAll = ScopedNotifyAllT<StaticConditionVariable>;
-
 /// A static allocation variant of Mutex.
 ///
 /// Use Mutex instead unless you need static allocation.
@@ -612,9 +443,10 @@ public:
 
   /// See Mutex::lock
   template <typename CriticalSection>
-  auto withLock(CriticalSection criticalSection) -> decltype(criticalSection()){
-    StaticScopedLock guard(*this);
-    return criticalSection();
+  void withLock(CriticalSection criticalSection) {
+    lock();
+    criticalSection();
+    unlock();
   }
 
   /// See Mutex::withLockOrWait
@@ -630,23 +462,21 @@ public:
 
   /// See Mutex::withLockThenNotifyOne
   template <typename CriticalSection>
-  auto withLockThenNotifyOne(StaticConditionVariable &condition,
-                             CriticalSection criticalSection)
-      -> decltype(criticalSection()) {
-    return withLock([&] {
-      StaticScopedNotifyOne guard(condition);
-      return criticalSection();
+  void withLockThenNotifyOne(StaticConditionVariable &condition,
+                             CriticalSection criticalSection) {
+    withLock([&] {
+      criticalSection();
+      condition.notifyOne();
     });
   }
 
   /// See Mutex::withLockThenNotifyAll
   template <typename CriticalSection>
-  auto withLockThenNotifyAll(StaticConditionVariable &condition,
-                             CriticalSection criticalSection)
-      -> decltype(criticalSection()) {
-    return withLock([&] {
-      StaticScopedNotifyAll guard(condition);
-      return criticalSection();
+  void withLockThenNotifyAll(StaticConditionVariable &condition,
+                             CriticalSection criticalSection) {
+    withLock([&] {
+      criticalSection();
+      condition.notifyAll();
     });
   }
 
@@ -696,18 +526,18 @@ public:
 
   /// See ReadWriteLock::withReadLock
   template <typename CriticalSection>
-  auto withReadLock(CriticalSection criticalSection)
-      -> decltype(criticalSection()) {
-    StaticScopedReadLock guard(*this);
-    return criticalSection();
+  void withReadLock(CriticalSection criticalSection) {
+    readLock();
+    criticalSection();
+    readUnlock();
   }
 
   /// See ReadWriteLock::withWriteLock
   template <typename CriticalSection>
-  auto withWriteLock(CriticalSection criticalSection)
-      -> decltype(criticalSection()) {
-    StaticScopedWriteLock guard(*this);
-    return criticalSection();
+  void withWriteLock(CriticalSection criticalSection) {
+    writeLock();
+    criticalSection();
+    writeUnlock();
   }
 
 private:
@@ -761,6 +591,127 @@ public:
 private:
   MutexHandle Handle;
 };
+
+/// Compile time adjusted stack based object that locks/unlocks the supplied
+/// Mutex type. Use the provided typedefs instead of this directly.
+template <typename T, bool Inverted> class ScopedLockT {
+
+  ScopedLockT() = delete;
+  ScopedLockT(const ScopedLockT &) = delete;
+  ScopedLockT &operator=(const ScopedLockT &) = delete;
+  ScopedLockT(ScopedLockT &&) = delete;
+  ScopedLockT &operator=(ScopedLockT &&) = delete;
+
+public:
+  explicit ScopedLockT(T &l) : Lock(l) {
+    if (Inverted) {
+      Lock.unlock();
+    } else {
+      Lock.lock();
+    }
+  }
+
+  ~ScopedLockT() {
+    if (Inverted) {
+      Lock.lock();
+    } else {
+      Lock.unlock();
+    }
+  }
+
+private:
+  T &Lock;
+};
+
+/// A stack based object that locks the supplied mutex on construction
+/// and unlocks it on destruction.
+///
+/// Precondition: Mutex unlocked by this thread, undefined otherwise.
+typedef ScopedLockT<Mutex, false> ScopedLock;
+typedef ScopedLockT<StaticMutex, false> StaticScopedLock;
+
+/// A stack based object that unlocks the supplied mutex on construction
+/// and relocks it on destruction.
+///
+/// Precondition: Mutex locked by this thread, undefined otherwise.
+typedef ScopedLockT<Mutex, true> ScopedUnlock;
+typedef ScopedLockT<StaticMutex, true> StaticScopedUnlock;
+
+/// Compile time adjusted stack based object that locks/unlocks the supplied
+/// ReadWriteLock type. Use the provided typedefs instead of this directly.
+template <typename T, bool Read, bool Inverted> class ScopedRWLockT {
+
+  ScopedRWLockT() = delete;
+  ScopedRWLockT(const ScopedRWLockT &) = delete;
+  ScopedRWLockT &operator=(const ScopedRWLockT &) = delete;
+  ScopedRWLockT(ScopedRWLockT &&) = delete;
+  ScopedRWLockT &operator=(ScopedRWLockT &&) = delete;
+
+public:
+  explicit ScopedRWLockT(T &l) : Lock(l) {
+    if (Inverted) {
+      if (Read) {
+        Lock.readUnlock();
+      } else {
+        Lock.writeUnlock();
+      }
+    } else {
+      if (Read) {
+        Lock.readLock();
+      } else {
+        Lock.writeLock();
+      }
+    }
+  }
+
+  ~ScopedRWLockT() {
+    if (Inverted) {
+      if (Read) {
+        Lock.readLock();
+      } else {
+        Lock.writeLock();
+      }
+    } else {
+      if (Read) {
+        Lock.readUnlock();
+      } else {
+        Lock.writeUnlock();
+      }
+    }
+  }
+
+private:
+  T &Lock;
+};
+
+/// A stack based object that unlocks the supplied ReadWriteLock on
+/// construction and locks it for reading on destruction.
+///
+/// Precondition: ReadWriteLock unlocked by this thread, undefined otherwise.
+typedef ScopedRWLockT<ReadWriteLock, true, false> ScopedReadLock;
+typedef ScopedRWLockT<StaticReadWriteLock, true, false> StaticScopedReadLock;
+
+/// A stack based object that unlocks the supplied ReadWriteLock on
+/// construction and locks it for reading on destruction.
+///
+/// Precondition: ReadWriteLock unlocked by this thread, undefined
+/// otherwise.
+typedef ScopedRWLockT<ReadWriteLock, true, true> ScopedReadUnlock;
+typedef ScopedRWLockT<StaticReadWriteLock, true, true> StaticScopedReadUnlock;
+
+/// A stack based object that unlocks the supplied ReadWriteLock on
+/// construction and locks it for reading on destruction.
+///
+/// Precondition: ReadWriteLock unlocked by this thread, undefined otherwise.
+typedef ScopedRWLockT<ReadWriteLock, false, false> ScopedWriteLock;
+typedef ScopedRWLockT<StaticReadWriteLock, false, false> StaticScopedWriteLock;
+
+/// A stack based object that unlocks the supplied ReadWriteLock on
+/// construction and locks it for writing on destruction.
+///
+/// Precondition: ReadWriteLock unlocked by this thread, undefined otherwise.
+typedef ScopedRWLockT<ReadWriteLock, false, true> ScopedWriteUnlock;
+typedef ScopedRWLockT<StaticReadWriteLock, false, true> StaticScopedWriteUnlock;
 
 // Enforce literal requirements for static variants.
 #if SWIFT_MUTEX_SUPPORTS_CONSTEXPR

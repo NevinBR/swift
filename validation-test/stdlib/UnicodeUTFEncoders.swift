@@ -1,12 +1,8 @@
 // RUN: %empty-directory(%t)
 // RUN: %target-build-swift %s -o %t/a.out -O
-// RUN: %target-codesign %t/a.out
 // RUN: %target-run %t/a.out
 // REQUIRES: executable_test
 // REQUIRES: objc_interop
-
-// With a non-optimized stdlib the test takes very long.
-// REQUIRES: optimized_stdlib
 
 import SwiftPrivate
 import StdlibUnittest
@@ -66,7 +62,7 @@ func nthUnicodeScalar(_ n: UInt32) -> UnicodeScalar {
       return UnicodeScalar(r.upperBound - (count - n))!
     }
   }
-  preconditionFailure("Index out of range")
+  _preconditionFailure("Index out of range")
 }
 
 // `buffer` should have a length >= 4
@@ -77,7 +73,7 @@ func nsEncode<CodeUnit>(
   _ used: inout Int
 ) {
   var c = c
-  precondition(buffer.count >= 4, "buffer is not large enough")
+  _precondition(buffer.count >= 4, "buffer is not large enough")
 
   let s = NSString(
     bytes: &c,

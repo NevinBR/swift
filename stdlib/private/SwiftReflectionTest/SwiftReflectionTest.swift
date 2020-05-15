@@ -24,16 +24,15 @@ import Darwin
 let RequestInstanceKind = "k"
 let RequestInstanceAddress = "i"
 let RequestReflectionInfos = "r"
-let RequestImages = "m"
 let RequestReadBytes = "b"
 let RequestSymbolAddress = "s"
 let RequestStringLength = "l"
 let RequestDone = "d"
 let RequestPointerSize = "p"
 
-internal func debugLog(_ message: @autoclosure () -> String) {
+internal func debugLog(_ message: String) {
 #if DEBUG_LOG
-  fputs("Child: \(message())\n", stderr)
+  fputs("Child: \(message)\n", stderr)
   fflush(stderr)
 #endif
 }
@@ -44,8 +43,6 @@ public enum InstanceKind : UInt8 {
   case Existential
   case ErrorExistential
   case Closure
-  case Enum
-  case EnumValue
 }
 
 /// Represents a section in a loaded image in this process.
@@ -107,14 +104,14 @@ internal func getSectionInfo(_ name: String,
 
 /// Get the Swift Reflection section locations for a loaded image.
 ///
-/// An image of interest must have the following sections in the __TEXT
+/// An image of interest must have the following sections in the __DATA
 /// segment:
-/// - __swift5_fieldmd
-/// - __swift5_assocty
-/// - __swift5_builtin
-/// - __swift5_capture
-/// - __swift5_typeref
-/// - __swift5_reflstr (optional, may have been stripped out)
+/// - __swift3_fieldmd
+/// - __swift3_assocty
+/// - __swift3_builtin
+/// - __swift3_capture
+/// - __swift3_typeref
+/// - __swift3_reflstr (optional, may have been stripped out)
 ///
 /// - Parameter i: The index of the loaded image as reported by Dyld.
 /// - Returns: A `ReflectionInfo` containing the locations of all of the
@@ -125,12 +122,12 @@ internal func getReflectionInfoForImage(atIndex i: UInt32) -> ReflectionInfo? {
     to: UnsafePointer<MachHeader>.self)
 
   let imageName = _dyld_get_image_name(i)!
-  let fieldmd = getSectionInfo("__swift5_fieldmd", header)
-  let assocty = getSectionInfo("__swift5_assocty", header)
-  let builtin = getSectionInfo("__swift5_builtin", header)
-  let capture = getSectionInfo("__swift5_capture", header)
-  let typeref = getSectionInfo("__swift5_typeref", header)
-  let reflstr = getSectionInfo("__swift5_reflstr", header)
+  let fieldmd = getSectionInfo("__swift3_fieldmd", header)
+  let assocty = getSectionInfo("__swift3_assocty", header)
+  let builtin = getSectionInfo("__swift3_builtin", header)
+  let capture = getSectionInfo("__swift3_capture", header)
+  let typeref = getSectionInfo("__swift3_typeref", header)
+  let reflstr = getSectionInfo("__swift3_reflstr", header)
   return ReflectionInfo(imageName: String(validatingUTF8: imageName)!,
                         fieldmd: fieldmd,
                         assocty: assocty,
@@ -138,21 +135,6 @@ internal func getReflectionInfoForImage(atIndex i: UInt32) -> ReflectionInfo? {
                         capture: capture,
                         typeref: typeref,
                         reflstr: reflstr)
-}
-
-/// Get the TEXT segment location and size for a loaded image.
-///
-/// - Parameter i: The index of the loaded image as reported by Dyld.
-/// - Returns: The image name, address, and size.
-internal func getAddressInfoForImage(atIndex i: UInt32) ->
-  (name: String, address: UnsafeMutablePointer<UInt8>?, size: UInt) {
-  debugLog("BEGIN \(#function)"); defer { debugLog("END \(#function)") }
-  let header = unsafeBitCast(_dyld_get_image_header(i),
-    to: UnsafePointer<MachHeader>.self)
-  let name = String(validatingUTF8: _dyld_get_image_name(i)!)!
-  var size: UInt = 0
-  let address = getsegmentdata(header, "__TEXT", &size)
-  return (name, address, size)
 }
 
 internal func sendBytes<T>(from address: UnsafePointer<T>, count: Int) {
@@ -197,7 +179,7 @@ internal func readUInt() -> UInt {
 /// process.
 internal func sendReflectionInfos() {
   debugLog("BEGIN \(#function)"); defer { debugLog("END \(#function)") }
-  let infos = (0..<_dyld_image_count()).compactMap(getReflectionInfoForImage)
+  let infos = (0..<_dyld_image_count()).flatMap(getReflectionInfoForImage)
 
   var numInfos = infos.count
   debugLog("\(numInfos) reflection info bundles.")
@@ -209,21 +191,6 @@ internal func sendReflectionInfos() {
       sendValue(section?.startAddress)
       sendValue(section?.size ?? 0)
     }
-  }
-}
-
-/// Send all loadedimages loaded in the current process.
-internal func sendImages() {
-  debugLog("BEGIN \(#function)"); defer { debugLog("END \(#function)") }
-  let infos = (0..<_dyld_image_count()).map(getAddressInfoForImage)
-
-  debugLog("\(infos.count) reflection info bundles.")
-  precondition(infos.count >= 1)
-  sendValue(infos.count)
-  for (name, address, size) in infos {
-    debugLog("Sending info for \(name)")
-    sendValue(address)
-    sendValue(size)
   }
 }
 
@@ -273,10 +240,7 @@ internal func sendStringLength() {
   debugLog("BEGIN \(#function)"); defer { debugLog("END \(#function)") }
   let address = readUInt()
   let cString = UnsafePointer<CChar>(bitPattern: address)!
-  var count = 0
-  while cString[count] != CChar(0) {
-    count = count + 1
-  }
+  let count = String(validatingUTF8: cString)!.utf8.count
   sendValue(count)
 }
 
@@ -292,7 +256,8 @@ internal func sendPointerSize() {
 /// This is the main "run loop" of the test harness.
 ///
 /// The parent will necessarily need to:
-/// - Get the addresses of any swift dylibs that are loaded, where applicable.
+/// - Get the addresses of all of the reflection sections for any swift dylibs
+///   that are loaded, where applicable.
 /// - Get the address of the `instance`
 /// - Get the pointer size of this process, which affects assumptions about the
 ///   the layout of runtime structures with pointer-sized fields.
@@ -310,8 +275,6 @@ internal func reflect(instanceAddress: UInt, kind: InstanceKind) {
       sendValue(instanceAddress)
     case String(validatingUTF8: RequestReflectionInfos)!:
       sendReflectionInfos()
-    case String(validatingUTF8: RequestImages)!:
-      sendImages()
     case String(validatingUTF8: RequestReadBytes)!:
       sendBytes()
     case String(validatingUTF8: RequestSymbolAddress)!:
@@ -392,13 +355,13 @@ public func reflect(object: AnyObject) {
 /// The test doesn't care about the witness tables - we only care
 /// about what's in the buffer, so we always put these values into
 /// an Any existential.
-public func reflect<T>(any: T, kind: InstanceKind = .Existential) {
+public func reflect<T>(any: T) {
   let any: Any = any
   let anyPointer = UnsafeMutablePointer<Any>.allocate(capacity: MemoryLayout<Any>.size)
   anyPointer.initialize(to: any)
   let anyPointerValue = UInt(bitPattern: anyPointer)
-  reflect(instanceAddress: anyPointerValue, kind: kind)
-  anyPointer.deallocate()
+  reflect(instanceAddress: anyPointerValue, kind: .Existential)
+  anyPointer.deallocate(capacity: MemoryLayout<Any>.size)
 }
 
 // Reflect an `Error`, a.k.a. an "error existential".
@@ -427,18 +390,6 @@ public func reflect<T: Error>(error: T) {
   let error: Error = error
   let errorPointerValue = unsafeBitCast(error, to: UInt.self)
   reflect(instanceAddress: errorPointerValue, kind: .ErrorExistential)
-}
-
-// Reflect an `Enum`
-//
-// These are handled like existentials, but
-// the test driver verifies a different set of data.
-public func reflect<T>(enum value: T) {
-  reflect(any: value, kind: .Enum)
-}
-
-public func reflect<T>(enumValue value: T) {
-  reflect(any: value, kind: .EnumValue)
 }
 
 /// Wraps a thick function with arity 0.
@@ -480,7 +431,7 @@ public func reflect(function: @escaping () -> Void) {
 
   reflect(instanceAddress: contextPointer, kind: .Object)
 
-  fn.deallocate()
+  fn.deallocate(capacity: MemoryLayout<ThickFunction0>.size)
 }
 
 /// Reflect a closure context. The given function must be a Swift-native
@@ -498,7 +449,7 @@ public func reflect(function: @escaping (Int) -> Void) {
 
   reflect(instanceAddress: contextPointer, kind: .Object)
 
-  fn.deallocate()
+  fn.deallocate(capacity: MemoryLayout<ThickFunction1>.size)
 }
 
 /// Reflect a closure context. The given function must be a Swift-native
@@ -515,7 +466,7 @@ public func reflect(function: @escaping (Int, String) -> Void) {
 
   reflect(instanceAddress: contextPointer, kind: .Object)
 
-  fn.deallocate()
+  fn.deallocate(capacity: MemoryLayout<ThickFunction2>.size)
 }
 
 /// Reflect a closure context. The given function must be a Swift-native
@@ -532,7 +483,7 @@ public func reflect(function: @escaping (Int, String, AnyObject?) -> Void) {
 
   reflect(instanceAddress: contextPointer, kind: .Object)
 
-  fn.deallocate()
+  fn.deallocate(capacity: MemoryLayout<ThickFunction3>.size)
 }
 
 /// Call this function to indicate to the parent that there are

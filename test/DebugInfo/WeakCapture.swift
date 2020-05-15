@@ -5,7 +5,7 @@ class A {
 
 class B { }
 
-// CHECK: define {{.*}} @"$s11WeakCapture8functionyyF"()
+// CHECK: define {{.*}} @_T011WeakCapture8functionyyF()
 func function() {
     let b = B()
 
@@ -15,7 +15,7 @@ func function() {
   // CHECK: call void @llvm.dbg.{{.*}}(metadata %swift.weak*
   // CHECK-NOT:                        metadata [[B]]
   // CHECK: call
-    A(handler: { [weak b] in
+    A(handler: { [weak b] _ in
             if b != nil { }
         })
 }

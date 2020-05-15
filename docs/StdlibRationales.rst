@@ -1,5 +1,7 @@
 :orphan:
 
+.. @raise litre.TestsAreMissing
+
 =================================================
 Rationales for the Swift standard library designs
 =================================================

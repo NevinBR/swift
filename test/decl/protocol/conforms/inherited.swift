@@ -7,10 +7,7 @@ protocol P1 {
 
 // Never inheritable: property with 'Self' in its signature.
 protocol P2 {
-  var prop2: Self { get set }
-}
-protocol P2a {
-  var prop2a: Self { get set }
+  var prop2: Self { get }
 }
 
 // Never inheritable: subscript with 'Self' in its result type.
@@ -26,9 +23,6 @@ protocol P4 {
 // Potentially inheritable: method returning Self
 protocol P5 {
   func f5() -> Self
-}
-protocol P5a {
-  func f5a() -> Self
 }
 
 // Inheritable: method returning Self
@@ -55,9 +49,6 @@ protocol P9 {
 // Never inheritable: method with 'Self' in a non-contravariant position.
 protocol P10 {
   func f10(_ arr: [Self])
-}
-protocol P10a {
-  func f10a(_ arr: [Self])
 }
 
 // Never inheritable: method with 'Self' in curried position.
@@ -95,18 +86,11 @@ class A : P1, P2, P3, P4, P5, P6, P7, P8, P9, P10 {
 
   // P2
   var prop2: A { // expected-error{{protocol 'P2' requirement 'prop2' cannot be satisfied by a non-final class ('A') because it uses 'Self' in a non-parameter, non-result type position}}
-    get { return self }
-    set {}
-  }
-
-  // P2a
-  var prop2a: A { // expected-note {{'prop2a' declared here}}
-    get { return self }
-    set {}
+    return self
   }
 
   // P3
-  subscript (i: Int) -> A { // expected-error{{protocol 'P3' requirement 'subscript(_:)' cannot be satisfied by a non-final class ('A') because it uses 'Self' in a non-parameter, non-result type position}}
+  subscript (i: Int) -> A { // expected-error{{protocol 'P3' requirement 'subscript' cannot be satisfied by a non-final class ('A') because it uses 'Self' in a non-parameter, non-result type position}}
     get {
      return self
     }
@@ -120,10 +104,7 @@ class A : P1, P2, P3, P4, P5, P6, P7, P8, P9, P10 {
   }
 
   // P5
-  func f5() -> A { return self } // expected-error{{method 'f5()' in non-final class 'A' must return 'Self' to conform to protocol 'P5'}}
-
-  // P5a
-  func f5a() -> A { return self } // expected-note {{'f5a()' declared here}}
+  func f5() -> A { return self } // expected-error{{method 'f5()' in non-final class 'A' must return `Self` to conform to protocol 'P5'}}
 
   // P6
   func f6() -> Self { return self }
@@ -137,17 +118,9 @@ class A : P1, P2, P3, P4, P5, P6, P7, P8, P9, P10 {
   // P10
   func f10(_ arr: [A]) { } // expected-error{{protocol 'P10' requirement 'f10' cannot be satisfied by a non-final class ('A') because it uses 'Self' in a non-parameter, non-result type position}}
 
-  // P10a
-  func f10a(_ arr: [A]) { } // expected-note {{'f10a' declared here}}
-
   // P11
   func f11() -> (_ x: A) -> Int { return { x in 5 } }
 }
-
-extension A: P2a, P5a, P10a {}
-// expected-error@-1 {{protocol 'P2a' requirement 'prop2a' cannot be satisfied by a non-final class ('A') because it uses 'Self' in a non-parameter, non-result type position}}
-// expected-error@-2 {{method 'f5a()' in non-final class 'A' must return 'Self' to conform to protocol 'P5a'}}
-// expected-error@-3 {{protocol 'P10a' requirement 'f10a' cannot be satisfied by a non-final class ('A') because it uses 'Self' in a non-parameter, non-result type position}}
 
 // P9
 func ==(x: A, y: A) -> Bool { return true }
@@ -200,8 +173,7 @@ final class A9 : P1, P2, P3, P4, P5, P6, P7, P8, P9, P10 {
 
   // P2
   var prop2: A9 {
-    get { return self }
-    set {}
+    return self
   }
 
   // P3

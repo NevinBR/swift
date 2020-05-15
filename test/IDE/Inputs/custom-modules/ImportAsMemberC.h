@@ -1,5 +1,3 @@
-@import ObjectiveC;
-
 typedef const void *CFTypeRef __attribute__((objc_bridge(id)));
 
 typedef const struct __attribute__((objc_bridge(id))) CCPowerSupply *CCPowerSupplyRef;
@@ -13,20 +11,20 @@ _Nonnull CCPowerSupplyRef CCPowerSupplyCreate(double watts)
 _Nonnull CCRefrigeratorRef CCRefrigeratorCreate(CCPowerSupplyRef _Nonnull power)
   __attribute__((swift_name("CCRefrigerator.init(powerSupply:)")));
 
-void CCRefrigeratorOpen(_Null_unspecified CCRefrigeratorRef fridge)
+void CCRefrigeratorOpen(CCRefrigeratorRef fridge)
   __attribute__((swift_name("CCRefrigerator.open(self:)")));
 
 _Nonnull CCMutableRefrigeratorRef CCRefrigeratorCreateMutable(_Nonnull CCPowerSupplyRef power)
   __attribute__((swift_name("CCMutableRefrigerator.init(powerSupply:)")));
 
-_Nonnull CCPowerSupplyRef CCRefrigeratorGetPowerSupply(_Null_unspecified CCRefrigeratorRef fridge)
+_Nonnull CCPowerSupplyRef CCRefrigeratorGetPowerSupply(CCRefrigeratorRef fridge)
   __attribute__((swift_name("getter:CCRefrigerator.powerSupply(self:)")));
 
-void CCRefrigeratorSetPowerSupply(_Null_unspecified CCRefrigeratorRef fridge,
+void CCRefrigeratorSetPowerSupply(CCRefrigeratorRef fridge,
                                   CCPowerSupplyRef _Nonnull powerSupply)
   __attribute__((swift_name("setter:CCRefrigerator.powerSupply(self:_:)")));
 
-extern const _Null_unspecified CCPowerSupplyRef kCCPowerSupplySemiModular
+extern const CCPowerSupplyRef kCCPowerSupplySemiModular
   __attribute__((swift_name("CCPowerSupplyRef.semiModular")));
 
 _Nonnull CCPowerSupplyRef CCPowerSupplyCreateDangerous(void)

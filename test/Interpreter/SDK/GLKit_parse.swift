@@ -3,7 +3,6 @@
 
 // REQUIRES: objc_interop
 // UNSUPPORTED: OS=watchos
-// UNSUPPORTED: OS=tvos
 
 import GLKit
 

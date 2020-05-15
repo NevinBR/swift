@@ -23,11 +23,12 @@ class DestructorAnalysis : public SILAnalysis {
   SILModule *Mod;
   llvm::DenseMap<CanType, bool> Cached;
 public:
+
   DestructorAnalysis(SILModule *M)
-      : SILAnalysis(SILAnalysisKind::Destructor), Mod(M) {}
+      : SILAnalysis(AnalysisKind::Destructor), Mod(M) {}
 
   static bool classof(const SILAnalysis *S) {
-    return S->getKind() == SILAnalysisKind::Destructor;
+    return S->getKind() == AnalysisKind::Destructor;
   }
 
   /// Returns true if destruction of T may store to memory.
@@ -46,11 +47,11 @@ public:
   }
 
   /// Notify the analysis about a newly created function.
-  virtual void notifyAddedOrModifiedFunction(SILFunction *F) override {}
+  virtual void notifyAddFunction(SILFunction *F) override { }
 
   /// Notify the analysis about a function which will be deleted from the
   /// module.
-  virtual void notifyWillDeleteFunction(SILFunction *F) override {}
+  virtual void notifyDeleteFunction(SILFunction *F) override { }
 
   /// Notify the analysis about changed witness or vtables.
   virtual void invalidateFunctionTables() override { }

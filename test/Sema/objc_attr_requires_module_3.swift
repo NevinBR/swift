@@ -1,4 +1,4 @@
-// RUN: %target-swift-frontend -typecheck -verify -enable-objc-interop %s
+// RUN: %target-build-swift -typecheck %s -Xfrontend -verify
 
 class TestClass1 {
 #if false

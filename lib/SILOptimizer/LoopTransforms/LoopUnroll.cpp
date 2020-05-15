@@ -19,7 +19,6 @@
 #include "swift/SILOptimizer/Analysis/LoopAnalysis.h"
 #include "swift/SILOptimizer/PassManager/Passes.h"
 #include "swift/SILOptimizer/PassManager/Transforms.h"
-#include "swift/SILOptimizer/Utils/PerformanceInlinerUtils.h"
 #include "swift/SILOptimizer/Utils/SILInliner.h"
 #include "swift/SILOptimizer/Utils/SILSSAUpdater.h"
 
@@ -29,16 +28,15 @@ using namespace swift::PatternMatch;
 using llvm::DenseMap;
 using llvm::MapVector;
 
+static const uint64_t SILLoopUnrollThreshold = 250;
 
 namespace {
 
 /// Clone the basic blocks in a loop.
-///
-/// Currently invalidates the DomTree.
 class LoopCloner : public SILCloner<LoopCloner> {
   SILLoop *Loop;
 
-  friend class SILInstructionVisitor<LoopCloner>;
+  friend class SILVisitor<LoopCloner>;
   friend class SILCloner<LoopCloner>;
 
 public:
@@ -48,20 +46,22 @@ public:
   /// Clone the basic blocks in the loop.
   void cloneLoop();
 
-  // Update SSA helper.
-  void collectLoopLiveOutValues(
-      DenseMap<SILValue, SmallVector<SILValue, 8>> &LoopLiveOutValues);
+  /// Get a map from basic blocks or the original loop to the cloned loop.
+  MapVector<SILBasicBlock *, SILBasicBlock *> &getBBMap() { return BBMap; }
+
+  DenseMap<SILValue, SILValue> &getValueMap() { return ValueMap; }
+  DenseMap<SILInstruction *, SILInstruction *> &getInstMap() {
+    return InstructionMap;
+  }
 
 protected:
-  // SILCloner CRTP override.
-  SILValue getMappedValue(SILValue V) {
+  SILValue remapValue(SILValue V) {
     if (auto *BB = V->getParentBlock()) {
       if (!Loop->contains(BB))
         return V;
     }
-    return SILCloner<LoopCloner>::getMappedValue(V);
+    return SILCloner<LoopCloner>::remapValue(V);
   }
-  // SILCloner CRTP override.
   void postProcess(SILInstruction *Orig, SILInstruction *Cloned) {
     SILCloner<LoopCloner>::postProcess(Orig, Cloned);
   }
@@ -70,11 +70,34 @@ protected:
 } // end anonymous namespace
 
 void LoopCloner::cloneLoop() {
+  auto *Header = Loop->getHeader();
+  auto *CurFun = Loop->getHeader()->getParent();
+
   SmallVector<SILBasicBlock *, 16> ExitBlocks;
   Loop->getExitBlocks(ExitBlocks);
+  for (auto *ExitBB : ExitBlocks)
+    BBMap[ExitBB] = ExitBB;
 
-  // Clone the entire loop.
-  cloneReachableBlocks(Loop->getHeader(), ExitBlocks);
+  auto *ClonedHeader = CurFun->createBasicBlock();
+  BBMap[Header] = ClonedHeader;
+
+  // Clone the arguments.
+  for (auto *Arg : Header->getArguments()) {
+    SILValue MappedArg = ClonedHeader->createPHIArgument(
+        getOpType(Arg->getType()), ValueOwnershipKind::Owned);
+    ValueMap.insert(std::make_pair(Arg, MappedArg));
+  }
+
+  // Clone the instructions in this basic block and recursively clone
+  // successor blocks.
+  getBuilder().setInsertionPoint(ClonedHeader);
+  visitSILBasicBlock(Header);
+  // Fix-up terminators.
+  for (auto BBPair : BBMap)
+    if (BBPair.first != BBPair.second) {
+      getBuilder().setInsertionPoint(BBPair.second);
+      visit(BBPair.first->getTerminator());
+    }
 }
 
 /// Determine the number of iterations the loop is at most executed. The loop
@@ -99,57 +122,42 @@ static Optional<uint64_t> getMaxLoopTripCount(SILLoop *Loop,
     return None;
 
   // Match an add 1 recurrence.
-
-  auto *Cmp = dyn_cast<BuiltinInst>(CondBr->getCondition());
-  if (!Cmp)
-    return None;
+  SILPHIArgument *RecArg;
+  IntegerLiteralInst *End;
+  SILValue RecNext;
 
   unsigned Adjust = 0;
-  SILBasicBlock *Exit = CondBr->getTrueBB();
 
-  switch (Cmp->getBuiltinInfo().ID) {
-    case BuiltinValueKind::ICMP_EQ:
-    case BuiltinValueKind::ICMP_SGE:
-      break;
-    case BuiltinValueKind::ICMP_SGT:
-      Adjust = 1;
-      break;
-    case BuiltinValueKind::ICMP_SLE:
-      Exit = CondBr->getFalseBB();
-      Adjust = 1;
-      break;
-    case BuiltinValueKind::ICMP_NE:
-    case BuiltinValueKind::ICMP_SLT:
-      Exit = CondBr->getFalseBB();
-      break;
-    default:
+  if (!match(CondBr->getCondition(),
+             m_BuiltinInst(BuiltinValueKind::ICMP_EQ, m_SILValue(RecNext),
+                           m_IntegerLiteralInst(End))) &&
+      !match(CondBr->getCondition(),
+             m_BuiltinInst(BuiltinValueKind::ICMP_SGE, m_SILValue(RecNext),
+                           m_IntegerLiteralInst(End)))) {
+    if (!match(CondBr->getCondition(),
+               m_BuiltinInst(BuiltinValueKind::ICMP_SGT, m_SILValue(RecNext),
+                             m_IntegerLiteralInst(End))))
       return None;
+    // Otherwise, we have a greater than comparison.
+    else
+      Adjust = 1;
   }
 
-  if (Loop->contains(Exit))
-    return None;
-
-  auto *End = dyn_cast<IntegerLiteralInst>(Cmp->getArguments()[1]);
-  if (!End)
-    return None;
-
-  SILValue RecNext = Cmp->getArguments()[0];
-  SILPhiArgument *RecArg;
-  if (!match(RecNext, m_TupleExtractOperation(
-                          m_ApplyInst(BuiltinValueKind::SAddOver,
-                                      m_SILPhiArgument(RecArg), m_One()),
-                          0)))
+  if (!match(RecNext,
+             m_TupleExtractInst(m_ApplyInst(BuiltinValueKind::SAddOver,
+                                            m_SILPHIArgument(RecArg), m_One()),
+                                0)))
     return None;
 
   if (RecArg->getParent() != Header)
     return None;
 
   auto *Start = dyn_cast_or_null<IntegerLiteralInst>(
-      RecArg->getIncomingPhiValue(Preheader));
+      RecArg->getIncomingValue(Preheader));
   if (!Start)
     return None;
 
-  if (RecNext != RecArg->getIncomingPhiValue(OrigLatch))
+  if (RecNext != RecArg->getIncomingValue(OrigLatch))
     return None;
 
   auto StartVal = Start->getValue();
@@ -177,27 +185,12 @@ static bool canAndShouldUnrollLoop(SILLoop *Loop, uint64_t TripCount) {
 
   // We can unroll a loop if we can duplicate the instructions it holds.
   uint64_t Cost = 0;
-  // Average number of instructions per basic block.
-  // It is used to estimate the cost of the callee
-  // inside a loop.
-  const uint64_t InsnsPerBB = 4;
-  // Use command-line threshold for unrolling.
-  const uint64_t SILLoopUnrollThreshold = Loop->getBlocks().empty() ? 0 : 
-    (Loop->getBlocks())[0]->getParent()->getModule().getOptions().UnrollThreshold;
   for (auto *BB : Loop->getBlocks()) {
     for (auto &Inst : *BB) {
       if (!Loop->canDuplicate(&Inst))
         return false;
       if (instructionInlineCost(Inst) != InlineCost::Free)
         ++Cost;
-      if (auto AI = FullApplySite::isa(&Inst)) {
-        auto Callee = AI.getCalleeFunction();
-        if (Callee && getEligibleFunction(AI, InlineSelection::Everything)) {
-          // If callee is rather big and potentialy inlinable, it may be better
-          // not to unroll, so that the body of the calle can be inlined later.
-          Cost += Callee->size() * InsnsPerBB;
-        }
-      }
       if (Cost * TripCount > SILLoopUnrollThreshold)
         return false;
   }
@@ -209,7 +202,7 @@ static bool canAndShouldUnrollLoop(SILLoop *Loop, uint64_t TripCount) {
 /// iterations header or if this is the last iteration remove the backedge to
 /// the header.
 static void redirectTerminator(SILBasicBlock *Latch, unsigned CurLoopIter,
-                               unsigned LastLoopIter, SILBasicBlock *CurrentHeader,
+                               unsigned LastLoopIter, SILBasicBlock *OrigHeader,
                                SILBasicBlock *NextIterationsHeader) {
 
   auto *CurrentTerminator = Latch->getTerminator();
@@ -239,18 +232,18 @@ static void redirectTerminator(SILBasicBlock *Latch, unsigned CurLoopIter,
       auto *CondBr = cast<CondBranchInst>(
           Latch->getSinglePredecessorBlock()->getTerminator());
       if (CondBr->getTrueBB() != Latch)
-        SILBuilderWithScope(CondBr).createBranch(
-            CondBr->getLoc(), CondBr->getTrueBB(), CondBr->getTrueArgs());
+        SILBuilder(CondBr).createBranch(CondBr->getLoc(), CondBr->getTrueBB(),
+                                        CondBr->getTrueArgs());
       else
-        SILBuilderWithScope(CondBr).createBranch(
-            CondBr->getLoc(), CondBr->getFalseBB(), CondBr->getFalseArgs());
+        SILBuilder(CondBr).createBranch(CondBr->getLoc(), CondBr->getFalseBB(),
+                                        CondBr->getFalseArgs());
       CondBr->eraseFromParent();
       return;
     }
 
     // Otherwise, branch to the next iteration's header.
-    SILBuilderWithScope(Br).createBranch(Br->getLoc(), NextIterationsHeader,
-                                         Br->getArgs());
+    SILBuilder(Br).createBranch(Br->getLoc(), NextIterationsHeader,
+                                Br->getArgs());
     Br->eraseFromParent();
     return;
   }
@@ -260,26 +253,23 @@ static void redirectTerminator(SILBasicBlock *Latch, unsigned CurLoopIter,
   // On the last iteration change the conditional exit to an unconditional
   // one.
   if (CurLoopIter == LastLoopIter) {
-    if (CondBr->getTrueBB() == CurrentHeader) {
-      SILBuilderWithScope(CondBr).createBranch(
-          CondBr->getLoc(), CondBr->getFalseBB(), CondBr->getFalseArgs());
-    } else {
-      assert(CondBr->getFalseBB() == CurrentHeader);
-      SILBuilderWithScope(CondBr).createBranch(
-          CondBr->getLoc(), CondBr->getTrueBB(), CondBr->getTrueArgs());
-    }
+    if (CondBr->getTrueBB() != OrigHeader)
+      SILBuilder(CondBr).createBranch(CondBr->getLoc(), CondBr->getTrueBB(),
+                                      CondBr->getTrueArgs());
+    else
+      SILBuilder(CondBr).createBranch(CondBr->getLoc(), CondBr->getFalseBB(),
+                                      CondBr->getFalseArgs());
     CondBr->eraseFromParent();
     return;
   }
 
   // Otherwise, branch to the next iteration's header.
-  if (CondBr->getTrueBB() == CurrentHeader) {
-    SILBuilderWithScope(CondBr).createCondBranch(
+  if (CondBr->getTrueBB() == OrigHeader) {
+    SILBuilder(CondBr).createCondBranch(
         CondBr->getLoc(), CondBr->getCondition(), NextIterationsHeader,
         CondBr->getTrueArgs(), CondBr->getFalseBB(), CondBr->getFalseArgs());
   } else {
-    assert(CondBr->getFalseBB() == CurrentHeader);
-    SILBuilderWithScope(CondBr).createCondBranch(
+    SILBuilder(CondBr).createCondBranch(
         CondBr->getLoc(), CondBr->getCondition(), CondBr->getTrueBB(),
         CondBr->getTrueArgs(), NextIterationsHeader, CondBr->getFalseArgs());
   }
@@ -288,8 +278,10 @@ static void redirectTerminator(SILBasicBlock *Latch, unsigned CurLoopIter,
 
 /// Collect all the loop live out values in the map that maps original live out
 /// value to live out value in the cloned loop.
-void LoopCloner::collectLoopLiveOutValues(
-    DenseMap<SILValue, SmallVector<SILValue, 8>> &LoopLiveOutValues) {
+static void collectLoopLiveOutValues(
+    DenseMap<SILValue, SmallVector<SILValue, 8>> &LoopLiveOutValues,
+    SILLoop *Loop, DenseMap<SILValue, SILValue> &ClonedValues,
+    DenseMap<SILInstruction *, SILInstruction *> &ClonedInstructions) {
   for (auto *Block : Loop->getBlocks()) {
     // Look at block arguments.
     for (auto *Arg : Block->getArguments()) {
@@ -297,25 +289,25 @@ void LoopCloner::collectLoopLiveOutValues(
         // Is this use outside the loop?
         if (!Loop->contains(Op->getUser())) {
           auto ArgumentValue = SILValue(Arg);
+          assert(ClonedValues.count(ArgumentValue) && "Unmapped Argument!");
+
           if (!LoopLiveOutValues.count(ArgumentValue))
             LoopLiveOutValues[ArgumentValue].push_back(
-                getMappedValue(ArgumentValue));
+              ClonedValues[ArgumentValue]);
         }
       }
     }
     // And the instructions.
     for (auto &Inst : *Block) {
-      for (SILValue result : Inst.getResults()) {
-        for (auto *Op : result->getUses()) {
-          // Ignore uses inside the loop.
-          if (Loop->contains(Op->getUser()))
-            continue;
-
+      for (auto *Op : Inst.getUses()) {
+        // Is this use outside the loop.
+        if (!Loop->contains(Op->getUser())) {
           auto UsedValue = Op->get();
-          assert(UsedValue == result && "Instructions must match");
+          assert(UsedValue == &Inst && "Instructions must match");
+          assert(ClonedInstructions.count(&Inst) && "Unmapped instruction!");
 
           if (!LoopLiveOutValues.count(UsedValue))
-            LoopLiveOutValues[UsedValue].push_back(getMappedValue(result));
+            LoopLiveOutValues[UsedValue].push_back(ClonedInstructions[&Inst]);
         }
       }
     }
@@ -323,7 +315,7 @@ void LoopCloner::collectLoopLiveOutValues(
 }
 
 static void
-updateSSA(SILModule &M, SILLoop *Loop,
+updateSSA(SILLoop *Loop,
           DenseMap<SILValue, SmallVector<SILValue, 8>> &LoopLiveOutValues) {
   SILSSAUpdater SSAUp;
   for (auto &MapEntry : LoopLiveOutValues) {
@@ -353,7 +345,6 @@ static bool tryToUnrollLoop(SILLoop *Loop) {
   auto *Preheader = Loop->getLoopPreheader();
   if (!Preheader)
     return false;
-  SILModule &M = Preheader->getParent()->getModule();
 
   auto *Latch = Loop->getLoopLatch();
   if (!Latch)
@@ -377,9 +368,8 @@ static bool tryToUnrollLoop(SILLoop *Loop) {
     if (!isa<CondBranchInst>(Exit->getTerminator()))
       return false;
 
-  LLVM_DEBUG(llvm::dbgs() << "Unrolling loop in "
-                          << Header->getParent()->getName()
-                          << " " << *Loop << "\n");
+  DEBUG(llvm::dbgs() << "Unrolling loop in " << Header->getParent()->getName()
+                     << " " << *Loop << "\n");
 
   SmallVector<SILBasicBlock *, 16> Headers;
   Headers.push_back(Header);
@@ -392,21 +382,28 @@ static bool tryToUnrollLoop(SILLoop *Loop) {
   // Copy the body MaxTripCount-1 times.
   for (uint64_t Cnt = 1; Cnt < *MaxTripCount; ++Cnt) {
     // Clone the blocks in the loop.
-    LoopCloner cloner(Loop);
-    cloner.cloneLoop();
-    Headers.push_back(cloner.getOpBasicBlock(Header));
-    Latches.push_back(cloner.getOpBasicBlock(Latch));
+    LoopCloner Cloner(Loop);
+    Cloner.cloneLoop();
+    Headers.push_back(Cloner.getBBMap()[Header]);
+    Latches.push_back(Cloner.getBBMap()[Latch]);
 
     // Collect values defined in the loop but used outside. On the first
     // iteration we populate the map from original loop to cloned loop. On
     // subsequent iterations we only need to update this map with the values
     // from the new iteration's clone.
     if (Cnt == 1)
-      cloner.collectLoopLiveOutValues(LoopLiveOutValues);
+      collectLoopLiveOutValues(LoopLiveOutValues, Loop, Cloner.getValueMap(),
+                               Cloner.getInstMap());
     else {
       for (auto &MapEntry : LoopLiveOutValues) {
-        // Look it up in the value map.
-        SILValue MappedValue = cloner.getOpValue(MapEntry.first);
+        // If this is an argument look up the value in the value map.
+        SILValue MappedValue;
+        if (isa<SILArgument>(MapEntry.first))
+          MappedValue = Cloner.getValueMap()[MapEntry.first];
+        // Otherwise, consult the instruction map.
+        else
+          MappedValue = Cloner
+                  .getInstMap()[cast<SILInstruction>(MapEntry.first)];
         MapEntry.second.push_back(MappedValue);
         assert(MapEntry.second.size() == Cnt);
       }
@@ -419,16 +416,16 @@ static bool tryToUnrollLoop(SILLoop *Loop) {
        ++Iteration) {
     auto *CurrentLatch = Latches[Iteration];
     auto LastIteration = End - 1;
-    auto *CurrentHeader = Headers[Iteration];
+    auto *OriginalHeader = Headers[0];
     auto *NextIterationsHeader =
         Iteration == LastIteration ? nullptr : Headers[Iteration + 1];
 
-    redirectTerminator(CurrentLatch, Iteration, LastIteration, CurrentHeader,
+    redirectTerminator(CurrentLatch, Iteration, LastIteration, OriginalHeader,
                        NextIterationsHeader);
   }
 
   // Fixup SSA form for loop values used outside the loop.
-  updateSSA(M, Loop, LoopLiveOutValues);
+  updateSSA(Loop, LoopLiveOutValues);
   return true;
 }
 

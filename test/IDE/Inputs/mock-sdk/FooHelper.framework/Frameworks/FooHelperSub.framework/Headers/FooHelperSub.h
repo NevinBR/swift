@@ -1,7 +1,3 @@
-
-#ifndef FooHelperSub_FooHelperSub_h
-#define FooHelperSub_FooHelperSub_h
-
 int fooHelperSubFunc1(int a);
 
 enum FooHelperSubEnum1 {
@@ -12,6 +8,4 @@ enum FooHelperSubEnum1 {
 enum {
   FooHelperSubUnnamedEnumeratorA1
 };
-
-#endif
 

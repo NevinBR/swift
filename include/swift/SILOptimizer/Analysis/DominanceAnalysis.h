@@ -32,17 +32,17 @@ protected:
 
 public:
   DominanceAnalysis()
-      : FunctionAnalysisBase<DominanceInfo>(SILAnalysisKind::Dominance) {}
+  : FunctionAnalysisBase<DominanceInfo>(AnalysisKind::Dominance) {}
 
   DominanceAnalysis(const DominanceAnalysis &) = delete;
   DominanceAnalysis &operator=(const DominanceAnalysis &) = delete;
 
   static bool classof(const SILAnalysis *S) {
-    return S->getKind() == SILAnalysisKind::Dominance;
+    return S->getKind() == AnalysisKind::Dominance;
   }
 
-  std::unique_ptr<DominanceInfo> newFunctionAnalysis(SILFunction *F) override {
-    return std::make_unique<DominanceInfo>(F);
+  DominanceInfo *newFunctionAnalysis(SILFunction *F) override {
+    return new DominanceInfo(F);
   }
 
   virtual bool shouldInvalidate(SILAnalysis::InvalidationKind K) override {
@@ -60,19 +60,17 @@ protected:
 
 public:
   PostDominanceAnalysis()
-      : FunctionAnalysisBase<PostDominanceInfo>(
-            SILAnalysisKind::PostDominance) {}
+  : FunctionAnalysisBase<PostDominanceInfo>(AnalysisKind::PostDominance) {}
 
   PostDominanceAnalysis(const PostDominanceAnalysis &) = delete;
   PostDominanceAnalysis &operator=(const PostDominanceAnalysis &) = delete;
 
   static bool classof(const SILAnalysis *S) {
-    return S->getKind() == SILAnalysisKind::PostDominance;
+    return S->getKind() == AnalysisKind::PostDominance;
   }
 
-  std::unique_ptr<PostDominanceInfo>
-  newFunctionAnalysis(SILFunction *F) override {
-    return std::make_unique<PostDominanceInfo>(F);
+  PostDominanceInfo *newFunctionAnalysis(SILFunction *F) override {
+    return new PostDominanceInfo(F);
   }
 
   virtual bool shouldInvalidate(SILAnalysis::InvalidationKind K) override {

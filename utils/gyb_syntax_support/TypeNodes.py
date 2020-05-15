@@ -2,61 +2,6 @@ from Child import Child
 from Node import Node  # noqa: I201
 
 TYPE_NODES = [
-    # simple-type-identifier -> identifier generic-argument-clause?
-    Node('SimpleTypeIdentifier', kind='Type',
-         children=[
-             Child('Name', kind='Token', classification='TypeIdentifier',
-                   token_choices=[
-                       'IdentifierToken',
-                       'CapitalSelfToken',
-                       'AnyToken',
-                   ]),
-             Child('GenericArgumentClause', kind='GenericArgumentClause',
-                   is_optional=True),
-         ]),
-
-    # member-type-identifier -> type '.' identifier generic-argument-clause?
-    Node('MemberTypeIdentifier', kind='Type',
-         children=[
-             Child('BaseType', kind='Type'),
-             Child('Period', kind='Token',
-                   token_choices=[
-                       'PeriodToken',
-                       'PrefixPeriodToken',
-                   ]),
-             Child('Name', kind='Token', classification='TypeIdentifier',
-                   token_choices=[
-                       'IdentifierToken',
-                       'CapitalSelfToken',
-                       'AnyToken',
-                   ]),
-             Child('GenericArgumentClause', kind='GenericArgumentClause',
-                   is_optional=True),
-         ]),
-
-    # class-restriction-type -> 'class'
-    Node('ClassRestrictionType', kind='Type',
-         children=[
-             Child('ClassKeyword', kind='ClassToken'),
-         ]),
-    # array-type -> '[' type ']'
-    Node('ArrayType', kind='Type',
-         children=[
-             Child('LeftSquareBracket', kind='LeftSquareBracketToken'),
-             Child('ElementType', kind='Type'),
-             Child('RightSquareBracket', kind='RightSquareBracketToken'),
-         ]),
-
-    # dictionary-type -> '[' type ':' type ']'
-    Node('DictionaryType', kind='Type',
-         children=[
-             Child('LeftSquareBracket', kind='LeftSquareBracketToken'),
-             Child('KeyType', kind='Type'),
-             Child('Colon', kind='ColonToken'),
-             Child('ValueType', kind='Type'),
-             Child('RightSquareBracket', kind='RightSquareBracketToken'),
-         ]),
-
     # metatype-type -> type '.' 'Type'
     #                | type '.' 'Protocol
     Node('MetatypeType', kind='Type',
@@ -70,124 +15,96 @@ TYPE_NODES = [
                    ]),
          ]),
 
-    # optional-type -> type '?'
-    Node('OptionalType', kind='Type',
+    # dictionary-type -> '[' type ':' type ']'
+    Node('DictionaryType', kind='Type',
          children=[
-             Child('WrappedType', kind='Type'),
-             Child('QuestionMark', kind='PostfixQuestionMarkToken'),
-         ]),
-
-    # some type -> some 'type'
-    Node('SomeType', kind='Type',
-         children=[
-             Child('SomeSpecifier', kind='IdentifierToken',
-                   classification='Keyword',
-                   text_choices=['some']),
-             Child('BaseType', kind='Type'),
-         ]),
-
-    # implicitly-unwrapped-optional-type -> type '!'
-    Node('ImplicitlyUnwrappedOptionalType', kind='Type',
-         children=[
-             Child('WrappedType', kind='Type'),
-             Child('ExclamationMark', kind='ExclamationMarkToken'),
-         ]),
-
-    # composition-type-element -> type '&'
-    Node('CompositionTypeElement', kind='Syntax',
-         children=[
-             Child('Type', kind='Type'),
-             Child('Ampersand', kind='Token',
-                   text_choices=['&'],
-                   is_optional=True),
-         ]),
-
-    # composition-typeelement-list -> composition-type-element
-    #   composition-type-element-list?
-    Node('CompositionTypeElementList', kind='SyntaxCollection',
-         element='CompositionTypeElement'),
-
-    # composition-type -> composition-type-element-list
-    Node('CompositionType', kind='Type',
-         children=[
-             Child('Elements', kind='CompositionTypeElementList',
-                   collection_element_name='Element'),
-         ]),
-
-    # tuple-type-element -> identifier? ':'? type-annotation ','?
-    Node('TupleTypeElement', kind='Syntax',
-         traits=['WithTrailingComma'],
-         children=[
-             Child('InOut', kind='InoutToken',
-                   is_optional=True),
-             Child('Name', kind='Token',
-                   is_optional=True,
-                   token_choices=[
-                       'IdentifierToken',
-                       'WildcardToken'
-                   ]),
-             Child('SecondName', kind='Token',
-                   is_optional=True,
-                   token_choices=[
-                       'IdentifierToken',
-                       'WildcardToken'
-                   ]),
-             Child('Colon', kind='ColonToken',
-                   is_optional=True),
-             Child('Type', kind='Type'),
-             Child('Ellipsis', kind='EllipsisToken',
-                   is_optional=True),
-             Child('Initializer', kind='InitializerClause',
-                   is_optional=True),
-             Child('TrailingComma', kind='CommaToken',
-                   is_optional=True),
-         ]),
-
-    # tuple-type-element-list -> tuple-type-element tuple-type-element-list?
-    Node('TupleTypeElementList', kind='SyntaxCollection',
-         element='TupleTypeElement'),
-
-    # tuple-type -> '(' tuple-type-element-list ')'
-    Node('TupleType', kind='Type',
-         traits=['Parenthesized'],
-         children=[
-             Child('LeftParen', kind='LeftParenToken'),
-             Child('Elements', kind='TupleTypeElementList',
-                   collection_element_name='Element'),
-             Child('RightParen', kind='RightParenToken'),
+             Child('LeftSquareBracket', kind='LeftSquareBracketToken'),
+             Child('KeyType', kind='Type'),
+             Child('Colon', kind='ColonToken'),
+             Child('ValueType', kind='Type'),
+             Child('RightSquareBracket', kind='RightSquareBracketToken'),
          ]),
 
     # throwing-specifier -> 'throws' | 'rethrows'
     # function-type -> attribute-list '(' function-type-argument-list ')'
     #   throwing-specifier? '->'? type?
     Node('FunctionType', kind='Type',
-         traits=['Parenthesized'],
          children=[
+             Child('TypeAttributes', kind='AttributeList'),
              Child('LeftParen', kind='LeftParenToken'),
-             Child('Arguments', kind='TupleTypeElementList',
-                   collection_element_name='Argument'),
+             Child('ArgumentList', kind='FunctionTypeArgumentList'),
              Child('RightParen', kind='RightParenToken'),
              Child('ThrowsOrRethrowsKeyword', kind='Token',
                    is_optional=True,
                    token_choices=[
                        'ThrowsToken',
                        'RethrowsToken',
-                       'ThrowToken',
                    ]),
-             Child('Arrow', kind='ArrowToken'),
-             Child('ReturnType', kind='Type'),
+             Child('Arrow', kind='ArrowToken',
+                   is_optional=True),
+             Child('ReturnType', kind='Type',
+                   is_optional=True),
          ]),
 
-    # attributed-type -> type-specifier? attribute-list? type
-    # type-specifiyer -> 'inout' | '__owned' | '__unowned'
-    Node('AttributedType', kind='Type',
+    # tuple-type -> '(' tuple-type-element-list ')'
+    Node('TupleType', kind='Type',
          children=[
-             Child('Specifier', kind='Token',
-                   text_choices=['inout', '__shared', '__owned'],
+             Child('LeftParen', kind='LeftParenToken'),
+             Child('Elements', kind='TupleTypeElementList'),
+             Child('RightParen', kind='RightParenToken'),
+         ]),
+
+    # tuple-type-element -> identifier? ':'? type-annotation ','?
+    Node('TupleTypeElement', kind='Syntax',
+         children=[
+             Child('Label', kind='IdentifierToken',
                    is_optional=True),
-             Child('Attributes', kind='AttributeList',
-                   collection_element_name='Attribute', is_optional=True),
-             Child('BaseType', kind='Type'),
+             Child('Colon', kind='ColonToken',
+                   is_optional=True),
+             Child('TypeAnnotation', kind='TypeAnnotation'),
+             Child('Comma', kind='CommaToken',
+                   is_optional=True),
+         ]),
+
+    # array-type -> '[' type ']'
+    Node('ArrayType', kind='Type',
+         children=[
+             Child('LeftSquareBracket', kind='LeftSquareBracketToken'),
+             Child('ElementType', kind='Type'),
+             Child('RightSquareBracket', kind='RightSquareBracketToken'),
+         ]),
+
+    # type-annotation -> attribute-list 'inout'? type
+    Node('TypeAnnotation', kind='Syntax',
+         children=[
+             Child('Attributes', kind='AttributeList'),
+             Child('InOutKeyword', kind='InoutToken',
+                   is_optional=True),
+             Child('Type', kind='Type'),
+         ]),
+
+    # protocol-composition-element-list -> protocol-composition-element
+    #   protocol-composition-element-list?
+    Node('ProtocolCompositionElementList', kind='SyntaxCollection',
+         element='ProtocolCompositionElement'),
+
+    # tuple-type-element-list -> tuple-type-element tuple-type-element-list?
+    Node('TupleTypeElementList', kind='SyntaxCollection',
+         element='TupleTypeElement'),
+
+    # implicitly-unwrapped-optional-type -> type '!'
+    Node('ImplicitlyUnwrappedOptionalType', kind='Type',
+         children=[
+             Child('ValueType', kind='Type'),
+             Child('ExclamationMark', kind='ExclamationMarkToken'),
+         ]),
+
+    # protocol-composition-element -> type-identifier '&'
+    Node('ProtocolCompositionElement', kind='Syntax',
+         children=[
+             Child('ProtocolType', kind='TypeIdentifier'),
+             Child('Ampersand', kind='AmpersandToken',
+                   is_optional=True),
          ]),
 
     # generic-argument-list -> generic-argument generic-argument-list?
@@ -198,7 +115,6 @@ TYPE_NODES = [
     # Dictionary<Int, String>
     #            ^~~~ ^~~~~~
     Node('GenericArgument', kind='Syntax',
-         traits=['WithTrailingComma'],
          children=[
              Child('ArgumentType', kind='Type'),
              Child('TrailingComma', kind='CommaToken',
@@ -209,8 +125,53 @@ TYPE_NODES = [
     Node('GenericArgumentClause', kind='Syntax',
          children=[
              Child('LeftAngleBracket', kind='LeftAngleToken'),
-             Child('Arguments', kind='GenericArgumentList',
-                   collection_element_name='Argument'),
+             Child('Arguments', kind='GenericArgumentList'),
              Child('RightAngleBracket', kind='RightAngleToken'),
+         ]),
+
+    # function-type-argument -> identifier? identifier? ':'
+    #   type-annotation ','?
+    Node('FunctionTypeArgument', kind='Syntax',
+         children=[
+             Child('ExternalName', kind='IdentifierToken',
+                   is_optional=True),
+             Child('LocalName', kind='IdentifierToken',
+                   is_optional=True),
+             Child('Colon', kind='ColonToken',
+                   is_optional=True),
+             Child('TypeAnnotation', kind='TypeAnnotation'),
+             Child('TrailingComma', kind='CommaToken',
+                   is_optional=True),
+         ]),
+
+    # optional-type -> type '?'
+    Node('OptionalType', kind='Type',
+         children=[
+             Child('ValueType', kind='Type'),
+             Child('QuestionMark', kind='PostfixQuestionMarkToken'),
+         ]),
+
+    # type-identifier -> identifier generic-argument-clause? '.'?
+    #   type-identifier?
+    Node('TypeIdentifier', kind='Type',
+         children=[
+             Child('TypeName', kind='IdentifierToken'),
+             Child('GenericArgumentClause', kind='GenericArgumentClause',
+                   is_optional=True),
+             Child('Period', kind='PeriodToken',
+                   is_optional=True),
+             Child('TypeIdentifier', kind='TypeIdentifier',
+                   is_optional=True),
+         ]),
+
+    # function-type-argument-list -> function-type-argument
+    #   function-type-argument-list?
+    Node('FunctionTypeArgumentList', kind='SyntaxCollection',
+         element='FunctionTypeArgument'),
+
+    # protocol-composition-type -> protocol-composition-elements
+    Node('ProtocolCompositionType', kind='Type',
+         children=[
+             Child('Elements', kind='ProtocolCompositionElementList'),
          ]),
 ]

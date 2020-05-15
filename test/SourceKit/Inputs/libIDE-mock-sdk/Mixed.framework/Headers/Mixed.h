@@ -6,9 +6,6 @@ struct PureClangType {
 #ifndef SWIFT_CLASS_EXTRA
 #  define SWIFT_CLASS_EXTRA
 #endif
-#ifndef SWIFT_PROTOCOL_EXTRA
-#  define SWIFT_PROTOCOL_EXTRA
-#endif
 
 #ifndef SWIFT_CLASS
 #  define SWIFT_CLASS(SWIFT_NAME) SWIFT_CLASS_EXTRA
@@ -24,14 +21,13 @@ struct PureClangType {
     __attribute__((swift_name(SWIFT_NAME))) SWIFT_PROTOCOL_EXTRA
 #endif
 
-#pragma clang attribute push( \
-  __attribute__((external_source_symbol(language="Swift", \
-                 defined_in="Mixed",generated_declaration))), \
-  apply_to=any(function,enum,objc_interface,objc_category,objc_protocol))
-
 SWIFT_CLASS("SwiftClass")
 __attribute__((objc_root_class))
 @interface SwiftClass
+@end
+
+@interface SwiftClass (Category)
+- (void)categoryMethod:(struct PureClangType)arg;
 @end
 
 SWIFT_PROTOCOL_NAMED("CustomNameType")
@@ -40,18 +36,12 @@ SWIFT_PROTOCOL_NAMED("CustomNameType")
 
 SWIFT_CLASS_NAMED("CustomNameClass")
 __attribute__((objc_root_class))
-@interface SwiftClassWithCustomName<SwiftProtoWithCustomName>
+@interface SwiftClassWithCustomName <SwiftProtoWithCustomName>
 @end
 
-id<SwiftProtoWithCustomName> _Nonnull
-convertToProto(SwiftClassWithCustomName *_Nonnull obj);
+id <SwiftProtoWithCustomName> __nonnull convertToProto(SwiftClassWithCustomName * __nonnull obj);
+
 
 SWIFT_CLASS("BOGUS")
 @interface BogusClass
-@end
-
-# pragma clang attribute pop
-
-@interface SwiftClass (Category)
-- (void)categoryMethod:(struct PureClangType)arg;
 @end

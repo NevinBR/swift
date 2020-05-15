@@ -1,3 +1,5 @@
+.. @raise litre.TestsAreMissing
+
 =============================
 Stored and Computed Variables
 =============================

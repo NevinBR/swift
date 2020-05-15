@@ -10,7 +10,7 @@ class Derived : Base {
 	}
 }
 
-public struct MyStruct : MyProto {
+private struct MyStruct : MyProto {
 
 	var x: Int
 
@@ -21,10 +21,6 @@ public struct MyStruct : MyProto {
 
 @_transparent public func transparentfunc(_ x: Int) -> Int {
 	return x + 3
-}
-
-public func mutateMyStructArray(_ arr: inout [MyStruct], _ x: MyStruct) {
-  arr.append(x)
 }
 
 public var g1 = 234

@@ -2,7 +2,8 @@
 
 // REQUIRES: OS=macosx
 
-typealias Handler<T> = (T?, Error?) -> Void
+typealias Result<T> = (T?, Error?)
+typealias Handler<T> = (Result<T>) -> Void
 
 func foo<T>(_ handler: Handler<T>?) {}
 

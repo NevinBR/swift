@@ -2,7 +2,7 @@
 // REQUIRES: executable_test
 
 // FIXME: rdar://problem/19648117 Needs splitting objc parts out
-// REQUIRES: objc_interop
+// XFAIL: linux
 
 import Foundation
 

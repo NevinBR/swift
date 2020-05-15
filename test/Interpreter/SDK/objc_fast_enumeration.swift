@@ -45,18 +45,18 @@ autoreleasepool {
 
   print("iterating array")
 
-  // CHECK-DAG: 1
+  // CHECK: 1
   for x in b {
     (x as! Canary).chirp()
     break
   }
 
-  // CHECK-DAG: exiting
+  // CHECK: exiting
   print("exiting")
 }
-// CHECK-DAG: dead 1
-// CHECK-DAG: dead 2
-// CHECK-DAG: dead 3
+// CHECK: dead
+// CHECK: dead
+// CHECK: dead
 // CHECK: exited
 print("exited")
 
@@ -86,7 +86,7 @@ for x in s_m {
   print(x)
 }
 
-// Enumeration over a __SwiftDeferredNSArray
+// Enumeration over a _SwiftDeferredNSArray
 // CHECK: 3
 // CHECK: 2
 // CHECK: 1

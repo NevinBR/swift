@@ -14,6 +14,7 @@ import collections
 import os
 import re
 import subprocess
+
 from operator import itemgetter
 
 categories = [
@@ -21,7 +22,7 @@ categories = [
     ["CPP", re.compile('^(__Z|_+swift)')],
 
     # Objective-C
-    ["ObjC", re.compile(r'^[+-]\[')],
+    ["ObjC", re.compile('^[+-]\[')],
 
     # Swift
     ["Partial Apply", re.compile('^__(TPA|T0.*T[aA]$)')],
@@ -80,7 +81,7 @@ def read_sizes(sizes, file_name, function_details, group_by_prefix):
     architectures = subprocess.check_output(
         ["otool", "-V", "-f", file_name]).split("\n")
     arch = None
-    arch_pattern = re.compile(r'architecture ([\S]+)')
+    arch_pattern = re.compile('architecture ([\S]+)')
     for architecture in architectures:
         arch_match = arch_pattern.match(architecture)
         if arch_match:
@@ -115,10 +116,10 @@ def read_sizes(sizes, file_name, function_details, group_by_prefix):
     start_addr = None
     end_addr = None
 
-    section_pattern = re.compile(r' +sectname ([\S]+)')
-    size_pattern = re.compile(r' +size ([\da-fx]+)')
-    asmline_pattern = re.compile(r'^([0-9a-fA-F]+)\s')
-    label_pattern = re.compile(r'^((\-*\[[^\]]*\])|[^\/\s]+):$')
+    section_pattern = re.compile(' +sectname ([\S]+)')
+    size_pattern = re.compile(' +size ([\da-fx]+)')
+    asmline_pattern = re.compile('^([0-9a-fA-F]+)\s')
+    label_pattern = re.compile('^((\-*\[[^\]]*\])|[^\/\s]+):$')
 
     for line in content:
         asmline_match = asmline_pattern.match(line)
@@ -151,50 +152,31 @@ def read_sizes(sizes, file_name, function_details, group_by_prefix):
     add_function(sizes, curr_func, start_addr, end_addr, group_by_prefix)
 
 
-def compare_sizes(old_sizes, new_sizes, name_key, title, total_size_key="",
-                  csv=None):
+def compare_sizes(old_sizes, new_sizes, name_key, title, total_size_key=""):
     old_size = old_sizes[name_key]
     new_size = new_sizes[name_key]
-
     if total_size_key:
         old_total_size = old_sizes[total_size_key]
         new_total_size = new_sizes[total_size_key]
-
     if old_size is not None and new_size is not None:
         if old_size != 0:
             perc = "%.1f%%" % (
-                (float(new_size) / float(old_size) - 1.0) * 100.0)
+                (1.0 - float(new_size) / float(old_size)) * 100.0)
         else:
             perc = "- "
-
         if total_size_key:
-            if csv:
-                csv.writerow([title, name_key,
-                              old_size, old_size * 100.0 / old_total_size,
-                              new_size, new_size * 100.0 / new_total_size,
-                              perc])
-            else:
-                print("%-26s%16s: %8d (%2d%%)  %8d (%2d%%)  %7s" %
-                      (title, name_key,
-                       old_size, old_size * 100.0 / old_total_size,
-                       new_size, new_size * 100.0 / new_total_size,
-                       perc))
+            print("%-26s%16s: %8d (%2d%%)  %8d (%2d%%)  %7s" %
+                  (title, name_key, old_size,
+                   old_size * 100.0 / old_total_size,
+                   new_size, new_size * 100.0 / new_total_size, perc))
         else:
-            if csv:
-                csv.writerow([title, name_key,
-                              old_size, "",
-                              new_size, "",
-                              perc])
-            else:
-                print("%-26s%16s: %14d  %14d  %7s" %
-                      (title, name_key, old_size, new_size, perc))
+            print("%-26s%16s: %14d  %14d  %7s" %
+                  (title, name_key, old_size, new_size, perc))
 
 
-def compare_sizes_of_file(old_files, new_files, all_sections, list_categories,
-                          csv=None):
+def compare_sizes_of_file(old_files, new_files, all_sections, list_categories):
     old_sizes = collections.defaultdict(int)
     new_sizes = collections.defaultdict(int)
-
     for old_file in old_files:
         read_sizes(old_sizes, old_file, list_categories, True)
     for new_file in new_files:
@@ -209,33 +191,25 @@ def compare_sizes_of_file(old_files, new_files, all_sections, list_categories,
     else:
         title = "old-new"
 
-    compare_sizes(old_sizes, new_sizes, "__text", title, "", csv=csv)
-
+    compare_sizes(old_sizes, new_sizes, "__text", title, "")
     if list_categories:
         for cat in categories:
             cat_name = cat[0]
-            compare_sizes(old_sizes, new_sizes, cat_name, "", "__text",
-                          csv=csv)
+            compare_sizes(old_sizes, new_sizes, cat_name, "", "__text")
 
     if all_sections:
         section_title = "    section"
-
-        compare_sizes(old_sizes, new_sizes, "__textcoal_nt", section_title,
-                      csv=csv)
-        compare_sizes(old_sizes, new_sizes, "__stubs", section_title, csv=csv)
-        compare_sizes(old_sizes, new_sizes, "__const", section_title, csv=csv)
-        compare_sizes(old_sizes, new_sizes, "__cstring", section_title,
-                      csv=csv)
-        compare_sizes(old_sizes, new_sizes, "__objc_methname", section_title,
-                      csv=csv)
-        compare_sizes(old_sizes, new_sizes, "__const", section_title, csv=csv)
-        compare_sizes(old_sizes, new_sizes, "__objc_const", section_title,
-                      csv=csv)
-        compare_sizes(old_sizes, new_sizes, "__data", section_title, csv=csv)
-        compare_sizes(old_sizes, new_sizes, "__swift5_proto", section_title,
-                      csv=csv)
-        compare_sizes(old_sizes, new_sizes, "__common", section_title, csv=csv)
-        compare_sizes(old_sizes, new_sizes, "__bss", section_title, csv=csv)
+        compare_sizes(old_sizes, new_sizes, "__textcoal_nt", section_title)
+        compare_sizes(old_sizes, new_sizes, "__stubs", section_title)
+        compare_sizes(old_sizes, new_sizes, "__const", section_title)
+        compare_sizes(old_sizes, new_sizes, "__cstring", section_title)
+        compare_sizes(old_sizes, new_sizes, "__objc_methname", section_title)
+        compare_sizes(old_sizes, new_sizes, "__const", section_title)
+        compare_sizes(old_sizes, new_sizes, "__objc_const", section_title)
+        compare_sizes(old_sizes, new_sizes, "__data", section_title)
+        compare_sizes(old_sizes, new_sizes, "__swift1_proto", section_title)
+        compare_sizes(old_sizes, new_sizes, "__common", section_title)
+        compare_sizes(old_sizes, new_sizes, "__bss", section_title)
 
 
 def list_function_sizes(size_array):
@@ -245,7 +219,7 @@ def list_function_sizes(size_array):
         yield "%8d %s" % (size, name)
 
 
-def compare_function_sizes(old_files, new_files, csv=None):
+def compare_function_sizes(old_files, new_files):
     old_sizes = collections.defaultdict(int)
     new_sizes = collections.defaultdict(int)
     for name in old_files:
@@ -276,41 +250,23 @@ def compare_function_sizes(old_files, new_files, csv=None):
             only_in_file2size += new_size
 
     if only_in_file1:
-        if csv:
-            csv.writerow(["Only in old", "", "", ""])
-            for name, size in sorted(only_in_file1, key=itemgetter(1)):
-                csv.writerow([size, name, "", ""])
-            csv.writerow(["Total size only in old", only_in_file1size, "", ""])
-        else:
-            print("Only in old file(s)")
-            print(os.linesep.join(list_function_sizes(only_in_file1)))
-            print("Total size of functions only in old file: {}".format(
-                only_in_file1size))
-            print()
+        print("Only in old file(s)")
+        print(os.linesep.join(list_function_sizes(only_in_file1)))
+        print("Total size of functions only in old file: {}".format(
+            only_in_file1size))
+        print()
 
     if only_in_file2:
-        if csv:
-            csv.writerow(["Only in new", "", "", ""])
-            for name, size in sorted(only_in_file2, key=itemgetter(1)):
-                csv.writerow([size, name, "", ""])
-            csv.writerow(["Total size only in new", only_in_file2size, "", ""])
-        else:
-            print("Only in new files(s)")
-            print(os.linesep.join(list_function_sizes(only_in_file2)))
-            print("Total size of functions only in new file: {}".format(
-                only_in_file2size))
-            print()
+        print("Only in new files(s)")
+        print(os.linesep.join(list_function_sizes(only_in_file2)))
+        print("Total size of functions only in new file: {}".format(
+            only_in_file2size))
+        print()
 
     if in_both:
         size_increase = 0
         size_decrease = 0
-
-        header = ("old", "new", "diff")
-        if csv:
-            csv.writerow(list(header) + ["function"])
-        else:
-            print("%8s %8s %8s" % header)
-
+        print("%8s %8s %8s" % ("old", "new", "diff"))
         for triple in sorted(
                 in_both,
                 key=lambda tup: (tup[2] - tup[1], tup[1])):
@@ -318,31 +274,19 @@ def compare_function_sizes(old_files, new_files, csv=None):
             old_size = triple[1]
             new_size = triple[2]
             diff = new_size - old_size
-
             if diff > 0:
                 size_increase += diff
             else:
                 size_decrease -= diff
             if diff == 0:
                 in_both_size += new_size
-
-            if csv:
-                csv.writerow([old_size, new_size, new_size - old_size, func])
-            else:
-                print("%8d %8d %8d %s" %
-                      (old_size, new_size, new_size - old_size, func))
-
-        if csv:
-            csv.writerow(["Total size in both", "Total size smaller",
-                          "Total size bigger", "Total size change in both"])
-            csv.writerow([in_both_size, size_decrease, size_increase,
-                          (size_increase - size_decrease)])
-        else:
-            print("Total size of functions " +
-                  "with the same size in both files: {}".format(in_both_size))
-            print("Total size of functions " +
-                  "that got smaller: {}".format(size_decrease))
-            print("Total size of functions " +
-                  "that got bigger: {}".format(size_increase))
-            print("Total size change of functions present " +
-                  "in both files: {}".format(size_increase - size_decrease))
+            print("%8d %8d %8d %s" %
+                  (old_size, new_size, new_size - old_size, func))
+        print("Total size of functions " +
+              "with the same size in both files: {}".format(in_both_size))
+        print("Total size of functions " +
+              "that got smaller: {}".format(size_decrease))
+        print("Total size of functions " +
+              "that got bigger: {}".format(size_increase))
+        print("Total size change of functions present " +
+              "in both files: {}".format(size_increase - size_decrease))

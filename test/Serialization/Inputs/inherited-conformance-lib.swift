@@ -13,11 +13,3 @@ public protocol ProtoUser {
   var end: Impl { get }
   subscript(_: Impl) -> Element { get }
 }
-
-private protocol PrivateProto {
-  func foo()
-}
-
-open class ConformsToPrivateProto : PrivateProto {
-  func foo() {}
-}

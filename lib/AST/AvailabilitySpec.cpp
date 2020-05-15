@@ -26,8 +26,7 @@ SourceRange AvailabilitySpec::getSourceRange() const {
     return cast<PlatformVersionConstraintAvailabilitySpec>(this)->getSourceRange();
 
  case AvailabilitySpecKind::LanguageVersionConstraint:
- case AvailabilitySpecKind::PackageDescriptionVersionConstraint:
-   return cast<PlatformAgnosticVersionConstraintAvailabilitySpec>(this)->getSourceRange();
+   return cast<LanguageVersionConstraintAvailabilitySpec>(this)->getSourceRange();
 
   case AvailabilitySpecKind::OtherPlatform:
     return cast<OtherPlatformAvailabilitySpec>(this)->getSourceRange();
@@ -55,18 +54,13 @@ void PlatformVersionConstraintAvailabilitySpec::print(raw_ostream &OS,
                     << ')';
 }
 
-SourceRange PlatformAgnosticVersionConstraintAvailabilitySpec::getSourceRange() const {
-  return SourceRange(PlatformAgnosticNameLoc, VersionSrcRange.End);
+SourceRange LanguageVersionConstraintAvailabilitySpec::getSourceRange() const {
+  return SourceRange(SwiftLoc, VersionSrcRange.End);
 }
 
-void PlatformAgnosticVersionConstraintAvailabilitySpec::print(raw_ostream &OS,
+void LanguageVersionConstraintAvailabilitySpec::print(raw_ostream &OS,
                                                       unsigned Indent) const {
-  OS.indent(Indent) << '('
-                    << "platform_agnostic_version_constraint_availability_spec"
-                    << " kind='"
-                    << (isLanguageVersionSpecific() ?
-                         "swift" : "package_description")
-                    << "'"
+  OS.indent(Indent) << '(' << "language_version_constraint_availability_spec"
                     << " version='" << getVersion() << "'"
                     << ')';
 }

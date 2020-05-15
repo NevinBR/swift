@@ -17,7 +17,6 @@
 #ifndef SWIFT_IRGEN_CALLEMISSION_H
 #define SWIFT_IRGEN_CALLEMISSION_H
 
-#include "Temporary.h"
 #include "Callee.h"
 
 namespace llvm {
@@ -27,6 +26,7 @@ namespace llvm {
 namespace swift {
 namespace irgen {
 
+class Address;
 class Explosion;
 class LoadableTypeInfo;
 struct WitnessMetadata;
@@ -40,16 +40,10 @@ private:
   /// The builtin/special arguments to pass to the call.
   SmallVector<llvm::Value*, 8> Args;
 
-  /// Temporaries required by the call.
-  TemporarySet Temporaries;
-
   /// The function we're going to call.
   Callee CurCallee;
 
   unsigned LastArgWritten;
-
-  /// Whether this is a coroutine invocation.
-  bool IsCoroutine;
 
   /// Whether we've emitted the call for the current callee yet.  This
   /// is just for debugging purposes --- e.g. the destructor asserts
@@ -60,8 +54,7 @@ private:
   void setFromCallee();
   void emitToUnmappedMemory(Address addr);
   void emitToUnmappedExplosion(Explosion &out);
-  void emitYieldsToExplosion(Explosion &out);
-  llvm::CallInst *emitCallSite();
+  llvm::CallSite emitCallSite();
 
 public:
   CallEmission(IRGenFunction &IGF, Callee &&callee)
@@ -75,32 +68,21 @@ public:
 
   const Callee &getCallee() const { return CurCallee; }
 
-  SubstitutionMap getSubstitutions() const {
+  SubstitutionList getSubstitutions() const {
     return CurCallee.getSubstitutions();
   }
 
   /// Set the arguments to the function from an explosion.
-  void setArgs(Explosion &arg, bool isOutlined,
-               WitnessMetadata *witnessMetadata = nullptr);
-
+  void setArgs(Explosion &arg, WitnessMetadata *witnessMetadata = nullptr);
+  
   void addAttribute(unsigned Index, llvm::Attribute::AttrKind Attr);
 
-  void emitToMemory(Address addr, const LoadableTypeInfo &substResultTI,
-                    bool isOutlined);
-  void emitToExplosion(Explosion &out, bool isOutlined);
-
-  TemporarySet claimTemporaries() {
-    // Move the actual temporary set out.
-    auto result = std::move(Temporaries);
-
-    // Flag that we've cleared the set.
-    Temporaries.clear();
-
-    return result;
-  }
+  void emitToMemory(Address addr, const LoadableTypeInfo &substResultTI);
+  void emitToExplosion(Explosion &out);
 };
 
-} // end namespace irgen
-} // end namespace swift
+
+}
+}
 
 #endif

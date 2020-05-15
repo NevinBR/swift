@@ -29,9 +29,7 @@ func foo6(a : A) {
 
 func foo7(b : [B]) {}
 func foo8(a : [A]) {
-  // TODO(diagnostics): Since `A` and `B` are related it would make sense to suggest forced downcast.
-  foo7(b : a) // expected-error {{cannot convert value of type '[A]' to expected argument type '[B]'}}
-  // expected-note@-1 {{arguments to generic parameter 'Element' ('A' and 'B') are expected to be equal}}
+  foo7(b : a) // expected-error {{cannot convert value of type '[A]' to expected argument type '[B]'}} {{13-13= as! [B]}}
 }
 
 protocol P1 {}
@@ -68,7 +66,3 @@ var o = C()
 var p: UnsafeMutablePointer<C>? = nil
 
 _ = p =*= &o
-
-
-func rdar25963182(_ bytes: [UInt8] = nil) {}
-// expected-error@-1 {{nil default argument value cannot be converted to type}}

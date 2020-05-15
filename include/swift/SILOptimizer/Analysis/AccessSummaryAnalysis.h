@@ -62,8 +62,7 @@ public:
 
     /// Returns a description of the summary. For debugging and testing
     /// purposes.
-    std::string getDescription(SILType BaseType, SILModule &M,
-                               TypeExpansionContext context) const;
+    std::string getDescription(SILType BaseType, SILModule &M) const;
   };
 
   typedef llvm::SmallDenseMap<const IndexTrieNode *, SubAccessSummary, 8>
@@ -86,8 +85,7 @@ public:
 
     /// Returns a description of the summary. For debugging and testing
     /// purposes.
-    std::string getDescription(SILType BaseType, SILModule &M,
-                               TypeExpansionContext context) const;
+    std::string getDescription(SILType BaseType, SILModule &M) const;
 
     /// Returns the accesses that the function performs to subpaths of the
     /// argument.
@@ -175,18 +173,22 @@ private:
 
   /// A trie of integer indices that gives pointer identity to a path of
   /// projections. This is shared between all functions in the module.
-  std::unique_ptr<IndexTrieNode> SubPathTrie;
+  IndexTrieNode *SubPathTrie;
 
 public:
-  AccessSummaryAnalysis() : BottomUpIPAnalysis(SILAnalysisKind::AccessSummary) {
-    SubPathTrie.reset(new IndexTrieNode());
+  AccessSummaryAnalysis() : BottomUpIPAnalysis(AnalysisKind::AccessSummary) {
+    SubPathTrie = new IndexTrieNode();
+  }
+
+  ~AccessSummaryAnalysis() {
+    delete SubPathTrie;
   }
 
   /// Returns a summary of the accesses performed by the given function.
   const FunctionSummary &getOrCreateSummary(SILFunction *Fn);
 
   IndexTrieNode *getSubPathTrieRoot() {
-    return SubPathTrie.get();
+    return SubPathTrie;
   }
 
   /// Returns an IndexTrieNode that represents the single subpath accessed from
@@ -196,22 +198,21 @@ public:
   virtual void initialize(SILPassManager *PM) override {}
   virtual void invalidate() override;
   virtual void invalidate(SILFunction *F, InvalidationKind K) override;
-  virtual void notifyAddedOrModifiedFunction(SILFunction *F) override {}
-  virtual void notifyWillDeleteFunction(SILFunction *F) override {
+  virtual void notifyAddFunction(SILFunction *F) override {}
+  virtual void notifyDeleteFunction(SILFunction *F) override {
     invalidate(F, InvalidationKind::Nothing);
   }
   virtual void invalidateFunctionTables() override {}
 
   static bool classof(const SILAnalysis *S) {
-    return S->getKind() == SILAnalysisKind::AccessSummary;
+    return S->getKind() == AnalysisKind::AccessSummary;
   }
 
   /// Returns a description of the subpath suitable for use in diagnostics.
   /// The base type must be the type of the root of the path.
   static std::string getSubPathDescription(SILType BaseType,
                                            const IndexTrieNode *SubPath,
-                                           SILModule &M,
-                                           TypeExpansionContext context);
+                                           SILModule &M);
 
   /// Performs a lexicographic comparison of two subpaths, first by path length
   /// and then by index of the last path component. Returns true when lhs

@@ -11,7 +11,8 @@ func foo() {}
 
 struct B {}
 
-typealias C = D
+// If '#if' contains active non-decls, we don't support forward reference.
+typealias C = D // expected-error {{use of undeclared type 'D'}}
 
 #if true
 print("ok")

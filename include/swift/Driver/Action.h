@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2018 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See https://swift.org/LICENSE.txt for license information
@@ -13,13 +13,12 @@
 #ifndef SWIFT_DRIVER_ACTION_H
 #define SWIFT_DRIVER_ACTION_H
 
-#include "swift/Basic/FileTypes.h"
 #include "swift/Basic/LLVM.h"
+#include "swift/Driver/Types.h"
 #include "swift/Driver/Util.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/StringSwitch.h"
-#include "llvm/ADT/TinyPtrVector.h"
 #include "llvm/Support/Chrono.h"
 
 namespace llvm {
@@ -34,11 +33,11 @@ namespace driver {
 
 class Action {
 public:
-  using size_type = ArrayRef<const Action *>::size_type;
-  using iterator = ArrayRef<const Action *>::iterator;
-  using const_iterator = ArrayRef<const Action *>::const_iterator;
+  typedef ActionList::size_type size_type;
+  typedef ActionList::iterator iterator;
+  typedef ActionList::const_iterator const_iterator;
 
-  enum class Kind : unsigned {
+  enum ActionClass {
     Input = 0,
     CompileJob,
     InterpretJob,
@@ -47,40 +46,39 @@ public:
     ModuleWrapJob,
     AutolinkExtractJob,
     REPLJob,
-    DynamicLinkJob,
-    StaticLinkJob,
+    LinkJob,
     GenerateDSYMJob,
     VerifyDebugInfoJob,
     GeneratePCHJob,
 
-    JobFirst = CompileJob,
-    JobLast = GeneratePCHJob
+    JobFirst=CompileJob,
+    JobLast=GeneratePCHJob
   };
 
-  static const char *getClassName(Kind AC);
+  static const char *getClassName(ActionClass AC);
 
 private:
-  unsigned RawKind : 4;
-  unsigned Type : 28;
-
-  friend class Compilation;
-  /// Actions must be created through Compilation::createAction.
-  void *operator new(size_t size) { return ::operator new(size); };
+  unsigned OwnsInputs : 1;
+  unsigned Kind : 4;
+  unsigned Type : 27;
 
 protected:
-  Action(Kind K, file_types::ID Type)
-      : RawKind(unsigned(K)), Type(Type) {
-    assert(K == getKind() && "not enough bits");
+  Action(ActionClass Kind, types::ID Type)
+    : OwnsInputs(true), Kind(Kind), Type(Type) {
+    assert(Kind == getKind() && "not enough bits");
     assert(Type == getType() && "not enough bits");
   }
+
+  bool getOwnsInputs() const { return OwnsInputs; }
+  void setOwnsInputs(bool Value) { OwnsInputs = Value; }
 
 public:
   virtual ~Action() = default;
 
   const char *getClassName() const { return Action::getClassName(getKind()); }
 
-  Kind getKind() const { return static_cast<Kind>(RawKind); }
-  file_types::ID getType() const { return static_cast<file_types::ID>(Type); }
+  ActionClass getKind() const { return static_cast<ActionClass>(Kind); }
+  types::ID getType() const { return static_cast<types::ID>(Type); }
 };
 
 class InputAction : public Action {
@@ -88,26 +86,30 @@ class InputAction : public Action {
   const llvm::opt::Arg &Input;
 
 public:
-  InputAction(const llvm::opt::Arg &Input, file_types::ID Type)
-      : Action(Action::Kind::Input, Type), Input(Input) {}
+  InputAction(const llvm::opt::Arg &Input, types::ID Type)
+      : Action(Action::Input, Type), Input(Input) {}
   const llvm::opt::Arg &getInputArg() const { return Input; }
 
   static bool classof(const Action *A) {
-    return A->getKind() == Action::Kind::Input;
+    return A->getKind() == Action::Input;
   }
 };
 
 class JobAction : public Action {
-  TinyPtrVector<const Action *> Inputs;
+  ActionList Inputs;
   virtual void anchor();
 protected:
-  JobAction(Kind Kind, ArrayRef<const Action *> Inputs,
-            file_types::ID Type)
-      : Action(Kind, Type), Inputs(Inputs) {}
+  JobAction(ActionClass Kind, ArrayRef<Action *> Inputs, types::ID Type)
+      : Action(Kind, Type), Inputs(Inputs.begin(), Inputs.end()) {}
 
 public:
-  ArrayRef<const Action *> getInputs() const { return Inputs; }
-  void addInput(const Action *Input) { Inputs.push_back(Input); }
+  ~JobAction() override;
+
+  bool getOwnsInputs() const { return Action::getOwnsInputs(); }
+  void setOwnsInputs(bool Value) { Action::setOwnsInputs(Value); }
+
+  ArrayRef<Action *> getInputs() const { return Inputs; }
+  void addInput(Action *Input) { Inputs.push_back(Input); }
 
   size_type size() const { return Inputs.size(); }
 
@@ -119,11 +121,11 @@ public:
   // Returns the index of the Input action's output file which is used as
   // (single) input to this action. Most actions produce only a single output
   // file, so we return 0 by default.
-  virtual size_t getInputIndex() const { return 0; }
+  virtual int getInputIndex() const { return 0; }
 
   static bool classof(const Action *A) {
-    return (A->getKind() >= Kind::JobFirst &&
-            A->getKind() <= Kind::JobLast);
+    return (A->getKind() >= ActionClass::JobFirst &&
+            A->getKind() <= ActionClass::JobLast);
   }
 };
 
@@ -153,12 +155,12 @@ private:
   InputInfo inputInfo;
 
 public:
-  CompileJobAction(file_types::ID OutputType)
-      : JobAction(Action::Kind::CompileJob, None, OutputType),
-        inputInfo() {}
+  CompileJobAction(types::ID OutputType)
+      : JobAction(Action::CompileJob, None, OutputType), inputInfo() {}
 
-  CompileJobAction(Action *Input, file_types::ID OutputType, InputInfo info)
-      : JobAction(Action::Kind::CompileJob, Input, OutputType),
+  CompileJobAction(Action *Input, types::ID OutputType,
+                   InputInfo info)
+      : JobAction(Action::CompileJob, Input, OutputType),
         inputInfo(info) {}
 
   InputInfo getInputInfo() const {
@@ -166,27 +168,7 @@ public:
   }
 
   static bool classof(const Action *A) {
-    return A->getKind() == Action::Kind::CompileJob;
-  }
-
-  /// Return a _single_ TY_Swift InputAction, if one exists;
-  /// if 0 or >1 such inputs exist, return nullptr.
-  const InputAction *findSingleSwiftInput() const {
-    auto Inputs = getInputs();
-    const InputAction *IA = nullptr;
-    for (auto const *I : Inputs) {
-      if (auto const *S = dyn_cast<InputAction>(I)) {
-        if (S->getType() == file_types::TY_Swift) {
-          if (IA == nullptr) {
-            IA = S;
-          } else {
-            // Already found one, two is too many.
-            return nullptr;
-          }
-        }
-      }
-    }
-    return IA;
+    return A->getKind() == Action::CompileJob;
   }
 };
 
@@ -196,11 +178,10 @@ private:
 
 public:
   explicit InterpretJobAction()
-      : JobAction(Action::Kind::InterpretJob, llvm::None,
-                  file_types::TY_Nothing) {}
+      : JobAction(Action::InterpretJob, llvm::None, types::TY_Nothing) {}
 
   static bool classof(const Action *A) {
-    return A->getKind() == Action::Kind::InterpretJob;
+    return A->getKind() == Action::InterpretJob;
   }
 };
 
@@ -211,17 +192,16 @@ private:
   // In case of multi-threaded compilation, the compile-action produces multiple
   // output bitcode-files. For each bitcode-file a BackendJobAction is created.
   // This index specifies which of the files to select for the input.
-  size_t InputIndex;
+  int InputIndex;
 public:
-  BackendJobAction(const Action *Input, file_types::ID OutputType,
-                   size_t InputIndex)
-      : JobAction(Action::Kind::BackendJob, Input, OutputType),
+  BackendJobAction(Action *Input, types::ID OutputType, int InputIndex)
+      : JobAction(Action::BackendJob, Input, OutputType),
         InputIndex(InputIndex) {}
   static bool classof(const Action *A) {
-    return A->getKind() == Action::Kind::BackendJob;
+    return A->getKind() == Action::BackendJob;
   }
   
-  virtual size_t getInputIndex() const { return InputIndex; }
+  virtual int getInputIndex() const { return InputIndex; }
 };
 
 class REPLJobAction : public JobAction {
@@ -236,74 +216,68 @@ private:
   Mode RequestedMode;
 public:
   REPLJobAction(Mode mode)
-      : JobAction(Action::Kind::REPLJob, llvm::None,
-                  file_types::TY_Nothing),
-        RequestedMode(mode) {}
+    : JobAction(Action::REPLJob, llvm::None, types::TY_Nothing),
+      RequestedMode(mode) {}
 
   Mode getRequestedMode() const { return RequestedMode; }
 
   static bool classof(const Action *A) {
-    return A->getKind() == Action::Kind::REPLJob;
+    return A->getKind() == Action::REPLJob;
   }
 };
 
 class MergeModuleJobAction : public JobAction {
   virtual void anchor();
 public:
-  MergeModuleJobAction(ArrayRef<const Action *> Inputs)
-      : JobAction(Action::Kind::MergeModuleJob, Inputs,
-                  file_types::TY_SwiftModuleFile) {}
+  MergeModuleJobAction(ArrayRef<Action *> Inputs)
+      : JobAction(Action::MergeModuleJob, Inputs, types::TY_SwiftModuleFile) {}
 
   static bool classof(const Action *A) {
-    return A->getKind() == Action::Kind::MergeModuleJob;
+    return A->getKind() == Action::MergeModuleJob;
   }
 };
 
 class ModuleWrapJobAction : public JobAction {
   virtual void anchor();
 public:
-  ModuleWrapJobAction(ArrayRef<const Action *> Inputs)
-      : JobAction(Action::Kind::ModuleWrapJob, Inputs,
-                  file_types::TY_Object) {}
+  ModuleWrapJobAction(ArrayRef<Action *> Inputs)
+      : JobAction(Action::ModuleWrapJob, Inputs, types::TY_Object) {}
 
   static bool classof(const Action *A) {
-    return A->getKind() == Action::Kind::ModuleWrapJob;
+    return A->getKind() == Action::ModuleWrapJob;
   }
 };
 
 class AutolinkExtractJobAction : public JobAction {
   virtual void anchor();
 public:
-  AutolinkExtractJobAction(ArrayRef<const Action *> Inputs)
-      : JobAction(Action::Kind::AutolinkExtractJob, Inputs,
-                  file_types::TY_AutolinkFile) {}
+  AutolinkExtractJobAction(ArrayRef<Action *> Inputs)
+      : JobAction(Action::AutolinkExtractJob, Inputs, types::TY_AutolinkFile) {}
 
   static bool classof(const Action *A) {
-    return A->getKind() == Action::Kind::AutolinkExtractJob;
+    return A->getKind() == Action::AutolinkExtractJob;
   }
 };
 
 class GenerateDSYMJobAction : public JobAction {
   virtual void anchor();
 public:
-  explicit GenerateDSYMJobAction(const Action *Input)
-      : JobAction(Action::Kind::GenerateDSYMJob, Input,
-                  file_types::TY_dSYM) {}
+  explicit GenerateDSYMJobAction(Action *Input)
+    : JobAction(Action::GenerateDSYMJob, Input, types::TY_dSYM) {}
 
   static bool classof(const Action *A) {
-    return A->getKind() == Action::Kind::GenerateDSYMJob;
+    return A->getKind() == Action::GenerateDSYMJob;
   }
 };
 
 class VerifyDebugInfoJobAction : public JobAction {
   virtual void anchor();
 public:
-  explicit VerifyDebugInfoJobAction(const Action *Input)
-      : JobAction(Action::Kind::VerifyDebugInfoJob, Input,
-                  file_types::TY_Nothing) {}
+  explicit VerifyDebugInfoJobAction(Action *Input)
+    : JobAction(Action::VerifyDebugInfoJob, Input, types::TY_Nothing) {}
 
   static bool classof(const Action *A) {
-    return A->getKind() == Action::Kind::VerifyDebugInfoJob;
+    return A->getKind() == Action::VerifyDebugInfoJob;
   }
 };
   
@@ -312,49 +286,33 @@ class GeneratePCHJobAction : public JobAction {
 
   virtual void anchor();
 public:
-  GeneratePCHJobAction(const Action *Input, StringRef persistentPCHDir)
-      : JobAction(Action::Kind::GeneratePCHJob, Input,
-                  persistentPCHDir.empty() ? file_types::TY_PCH
-                                           : file_types::TY_Nothing),
-        PersistentPCHDir(persistentPCHDir) {}
+  GeneratePCHJobAction(Action *Input, StringRef persistentPCHDir)
+    : JobAction(Action::GeneratePCHJob, Input,
+                persistentPCHDir.empty() ? types::TY_PCH : types::TY_Nothing),
+      PersistentPCHDir(persistentPCHDir) {}
 
   bool isPersistentPCH() const { return !PersistentPCHDir.empty(); }
   StringRef getPersistentPCHDir() const { return PersistentPCHDir; }
 
   static bool classof(const Action *A) {
-    return A->getKind() == Action::Kind::GeneratePCHJob;
+    return A->getKind() == Action::GeneratePCHJob;
   }
 };
 
-class DynamicLinkJobAction : public JobAction {
+class LinkJobAction : public JobAction {
   virtual void anchor();
   LinkKind Kind;
 
 public:
-  DynamicLinkJobAction(ArrayRef<const Action *> Inputs, LinkKind K)
-      : JobAction(Action::Kind::DynamicLinkJob, Inputs, file_types::TY_Image),
-        Kind(K) {
-    assert(Kind != LinkKind::None && Kind != LinkKind::StaticLibrary);
+  LinkJobAction(ArrayRef<Action *> Inputs, LinkKind K)
+      : JobAction(Action::LinkJob, Inputs, types::TY_Image), Kind(K) {
+    assert(Kind != LinkKind::None);
   }
 
   LinkKind getKind() const { return Kind; }
 
   static bool classof(const Action *A) {
-    return A->getKind() == Action::Kind::DynamicLinkJob;
-  }
-};
-
-class StaticLinkJobAction : public JobAction {
-  virtual void anchor();
-
-public:
-  StaticLinkJobAction(ArrayRef<const Action *> Inputs, LinkKind K)
-      : JobAction(Action::Kind::StaticLinkJob, Inputs, file_types::TY_Image) {
-    assert(K == LinkKind::StaticLibrary);
-  }
-
-  static bool classof(const Action *A) {
-    return A->getKind() == Action::Kind::StaticLinkJob;
+    return A->getKind() == Action::LinkJob;
   }
 };
 

@@ -11,7 +11,7 @@
 //===----------------------------------------------------------------------===//
 //
 /// \file
-/// This file defines diagnostics for IR generation.
+/// \brief This file defines diagnostics for IR generation.
 //
 //===----------------------------------------------------------------------===//
 

@@ -23,3 +23,5 @@ func qux() {}
 // CHECK1: {{^}}  func qux() {
 // CHECK1: {{^}}  }
 // CHECK1: {{^}}#endif
+// CHECK1: {{^}}func qux() {
+// CHECK1: {{^}}}

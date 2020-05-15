@@ -18,7 +18,6 @@
 
 namespace swift {
   class ValueDecl;
-  class EnumDecl;
   class EnumElementDecl;
 
 namespace objc_translation {
@@ -29,8 +28,6 @@ namespace objc_translation {
 
   StringRef getNameForObjC(const ValueDecl *VD,
                            CustomNamesOnly_t customNamesOnly = Normal);
-
-  std::string getErrorDomainStringForObjC(const EnumDecl *ED);
 
   /// Print the ObjC name of an enum element decl to OS, also allowing the client
   /// to specify a preferred name other than the decl's original name.
@@ -50,7 +47,7 @@ namespace objc_translation {
 
   /// Returns true if the given value decl D is visible to ObjC of its
   /// own accord (i.e. without considering its context)
-  bool isVisibleToObjC(const ValueDecl *VD, AccessLevel minRequiredAccess,
+  bool isVisibleToObjC(const ValueDecl *VD, Accessibility minRequiredAccess,
                        bool checkParent = true);
 
 } // end namespace objc_translation

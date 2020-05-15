@@ -110,15 +110,12 @@
 // RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=IF_LET_BIND_1 | %FileCheck %s -check-prefix=FOOSTRUCT_DOT_BOOL
 // RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=IF_LET_BIND_2 | %FileCheck %s -check-prefix=FOOSTRUCT_DOT_BOOL
 // RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=IF_LET_BIND_3 | %FileCheck %s -check-prefix=FOOSTRUCT_DOT
-// RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=IF_LET_BIND_4 | %FileCheck %s -check-prefix=FOOSTRUCT_NODOT
 // RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=GUARD_LET_BIND_1 | %FileCheck %s -check-prefix=FOOSTRUCT_DOT_BOOL
 // RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=GUARD_LET_BIND_2 | %FileCheck %s -check-prefix=FOOSTRUCT_DOT_BOOL
 // RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=GUARD_LET_BIND_3 | %FileCheck %s -check-prefix=FOOSTRUCT_DOT_BOOL
 // RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=GUARD_LET_BIND_4 | %FileCheck %s -check-prefix=FOOSTRUCT_DOT_BOOL
 // RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=GUARD_LET_BIND_5 | %FileCheck %s -check-prefix=FOOSTRUCT_DOT
-// RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=GUARD_LET_BIND_6 | %FileCheck %s -check-prefix=FOOSTRUCT_NODOT
-// RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=GUARD_LET_BIND_7 | %FileCheck %s -check-prefix=FOOSTRUCT_LOCALVAL
-// RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=GUARD_LET_BIND_8 | %FileCheck %s -check-prefix=FOOSTRUCT_LOCALVAL
+
 
 struct FooStruct {
   var instanceVar : Int
@@ -499,10 +496,10 @@ func testSwitchCaseWhereExprIJ1(_ fooObject: FooStruct) {
 // COND-WITH-RELATION-DAG: Decl[LocalVar]/Local:        localInt[#Int#]{{; name=.+$}}
 // COND-WITH-RELATION-DAG: Decl[LocalVar]/Local:        localFooObject[#FooStruct#]{{; name=.+$}}
 // COND-WITH-RELATION-DAG: Decl[Struct]/CurrModule:     FooStruct[#FooStruct#]{{; name=.+$}}
-// COND-WITH-RELATION-DAG: Decl[FreeFunction]/CurrModule/TypeRelation[Invalid]: testIf2({#(fooObject): FooStruct#})[#Void#]{{; name=.+$}}
-// COND-WITH-RELATION-DAG: Decl[FreeFunction]/CurrModule/TypeRelation[Invalid]: testWhile3({#(fooObject): FooStruct#})[#Void#]{{; name=.+$}}
-// COND-WITH-RELATION-DAG: Decl[FreeFunction]/CurrModule/TypeRelation[Invalid]: testIfElseIf5({#(fooObject): FooStruct#})[#Void#]{{; name=.+$}}
-// COND-WITH-RELATION-DAG: Decl[FreeFunction]/CurrModule/TypeRelation[Invalid]: testCStyleForIncrIE1({#(fooObject): FooStruct#})[#Void#]{{; name=.+$}}
+// COND-WITH-RELATION-DAG: Decl[FreeFunction]/CurrModule/NotRecommended/TypeRelation[Invalid]: testIf2({#(fooObject): FooStruct#})[#Void#]{{; name=.+$}}
+// COND-WITH-RELATION-DAG: Decl[FreeFunction]/CurrModule/NotRecommended/TypeRelation[Invalid]: testWhile3({#(fooObject): FooStruct#})[#Void#]{{; name=.+$}}
+// COND-WITH-RELATION-DAG: Decl[FreeFunction]/CurrModule/NotRecommended/TypeRelation[Invalid]: testIfElseIf5({#(fooObject): FooStruct#})[#Void#]{{; name=.+$}}
+// COND-WITH-RELATION-DAG: Decl[FreeFunction]/CurrModule/NotRecommended/TypeRelation[Invalid]: testCStyleForIncrIE1({#(fooObject): FooStruct#})[#Void#]{{; name=.+$}}
 
 // COND-WITH-RELATION1: Begin completions
 // COND-WITH-RELATION1-DAG: Decl[InstanceVar]/CurrNominal:      instanceVar[#Int#]{{; name=.+$}}
@@ -519,7 +516,7 @@ func testSwitchCaseWhereExprIJ1(_ fooObject: FooStruct) {
 enum A { case aaa }
 enum B { case bbb }
 // UNRESOLVED_B-NOT: aaa
-// UNRESOLVED_B: Decl[EnumElement]/CurrNominal/TypeRelation[Identical]:     bbb[#B#]; name=bbb
+// UNRESOLVED_B: Decl[EnumElement]/ExprSpecific:     bbb[#B#]; name=bbb
 // UNRESOLVED_B-NOT: aaa
 
 struct AA {
@@ -585,9 +582,6 @@ func testIfLetBinding2(x: FooStruct?) {
 func testIfLetBinding3(x: FooStruct?) {
   if let y = x, let z = y.#^IF_LET_BIND_3^# {}
 }
-func testIfLetBinding3(x: FooStruct?) {
-  if let y = x, let z = y#^IF_LET_BIND_4^# {}
-}
 func testGuardLetBinding1(x: FooStruct?) {
   guard let y = x, y.#^GUARD_LET_BIND_1^# else {}
 }
@@ -603,16 +597,6 @@ func testGuardLetBinding4(x: FooStruct?) {
 func testGuardLetBinding5(x: FooStruct?) {
   guard let y = x, let z = y.#^GUARD_LET_BIND_5^# else {}
 }
-func testGuardLetBinding5(x: FooStruct?) {
-  guard let y = x, z = y#^GUARD_LET_BIND_6^# else {}
-}
-func testGuardLetBinding7(x: FooStruct?) {
-  guard let boundVal = x, let other = #^GUARD_LET_BIND_7^# else {}
-}
-func testGuardLetBinding8(_ x: FooStruct?) {
-  guard let boundVal = x, let other = testGuardLetBinding8(#^GUARD_LET_BIND_8^#) else {}
-}
-
 
 // FOOSTRUCT_DOT: Begin completions
 // FOOSTRUCT_DOT-DAG: Decl[InstanceVar]/CurrNominal:      instanceVar[#Int#];
@@ -625,13 +609,3 @@ func testGuardLetBinding8(_ x: FooStruct?) {
 // FOOSTRUCT_DOT_BOOL-DAG: Decl[InstanceMethod]/CurrNominal/TypeRelation[Identical]: boolGen()[#Bool#];
 // FOOSTRUCT_DOT_BOOL-DAG: Decl[InstanceMethod]/CurrNominal:   intGen()[#Int#];
 // FOOSTRUCT_DOT_BOOL: End completions
-
-// FOOSTRUCT_NODOT: Begin completions
-// FOOSTRUCT_NODOT-DAG: Decl[InstanceVar]/CurrNominal:      .instanceVar[#Int#];
-// FOOSTRUCT_NODOT-DAG: Decl[InstanceMethod]/CurrNominal:   .boolGen()[#Bool#];
-// FOOSTRUCT_NODOT-DAG: Decl[InstanceMethod]/CurrNominal:   .intGen()[#Int#];
-// FOOSTRUCT_NODOT: End completions
-
-// FOOSTRUCT_LOCALVAL: Begin completions
-// FOOSTRUCT_LOCALVAL-DAG: Decl[LocalVar]/Local{{(/TypeRelation\[Convertible\])?}}: boundVal[#FooStruct#];
-// FOOSTRUCT_LOCALVAL: End completions

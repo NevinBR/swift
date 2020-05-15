@@ -21,68 +21,6 @@ import TestsUtils
 let sequenceCount = 4096
 let prefixCount = sequenceCount - 1024
 let sumCount = prefixCount * (prefixCount - 1) / 2
-let array: [Int] = Array(0..<sequenceCount)
-
-public let Prefix = [
-  BenchmarkInfo(
-    name: "PrefixCountableRange",
-    runFunction: run_PrefixCountableRange,
-    tags: [.validation, .api]),
-  BenchmarkInfo(
-    name: "PrefixSequence",
-    runFunction: run_PrefixSequence,
-    tags: [.validation, .api]),
-  BenchmarkInfo(
-    name: "PrefixAnySequence",
-    runFunction: run_PrefixAnySequence,
-    tags: [.validation, .api]),
-  BenchmarkInfo(
-    name: "PrefixAnySeqCntRange",
-    runFunction: run_PrefixAnySeqCntRange,
-    tags: [.validation, .api]),
-  BenchmarkInfo(
-    name: "PrefixAnySeqCRangeIter",
-    runFunction: run_PrefixAnySeqCRangeIter,
-    tags: [.validation, .api]),
-  BenchmarkInfo(
-    name: "PrefixAnyCollection",
-    runFunction: run_PrefixAnyCollection,
-    tags: [.validation, .api]),
-  BenchmarkInfo(
-    name: "PrefixArray",
-    runFunction: run_PrefixArray,
-    tags: [.validation, .api, .Array],
-    setUpFunction: { blackHole(array) }),
-  BenchmarkInfo(
-    name: "PrefixCountableRangeLazy",
-    runFunction: run_PrefixCountableRangeLazy,
-    tags: [.validation, .api]),
-  BenchmarkInfo(
-    name: "PrefixSequenceLazy",
-    runFunction: run_PrefixSequenceLazy,
-    tags: [.validation, .api]),
-  BenchmarkInfo(
-    name: "PrefixAnySequenceLazy",
-    runFunction: run_PrefixAnySequenceLazy,
-    tags: [.validation, .api]),
-  BenchmarkInfo(
-    name: "PrefixAnySeqCntRangeLazy",
-    runFunction: run_PrefixAnySeqCntRangeLazy,
-    tags: [.validation, .api]),
-  BenchmarkInfo(
-    name: "PrefixAnySeqCRangeIterLazy",
-    runFunction: run_PrefixAnySeqCRangeIterLazy,
-    tags: [.validation, .api]),
-  BenchmarkInfo(
-    name: "PrefixAnyCollectionLazy",
-    runFunction: run_PrefixAnyCollectionLazy,
-    tags: [.validation, .api]),
-  BenchmarkInfo(
-    name: "PrefixArrayLazy",
-    runFunction: run_PrefixArrayLazy,
-    tags: [.validation, .api, .Array],
-    setUpFunction: { blackHole(array) }),
-]
 
 @inline(never)
 public func run_PrefixCountableRange(_ N: Int) {
@@ -152,7 +90,7 @@ public func run_PrefixAnyCollection(_ N: Int) {
 }
 @inline(never)
 public func run_PrefixArray(_ N: Int) {
-  let s = array
+  let s = Array(0..<sequenceCount)
   for _ in 1...20*N {
     var result = 0
     for element in s.prefix(prefixCount) {
@@ -229,7 +167,7 @@ public func run_PrefixAnyCollectionLazy(_ N: Int) {
 }
 @inline(never)
 public func run_PrefixArrayLazy(_ N: Int) {
-  let s = (array).lazy
+  let s = (Array(0..<sequenceCount)).lazy
   for _ in 1...20*N {
     var result = 0
     for element in s.prefix(prefixCount) {
@@ -238,7 +176,3 @@ public func run_PrefixArrayLazy(_ N: Int) {
     CheckResults(result == sumCount)
   }
 }
-
-// Local Variables:
-// eval: (read-only-mode 1)
-// End:

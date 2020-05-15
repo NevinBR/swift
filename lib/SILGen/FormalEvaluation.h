@@ -23,11 +23,10 @@ namespace Lowering {
 
 class SILGenFunction;
 class LogicalPathComponent;
-class FormalEvaluationScope;
 
 class FormalAccess {
 public:
-  enum Kind { Shared, Exclusive, Owned, Unenforced };
+  enum Kind { Shared, Exclusive, Owned };
 
 private:
   unsigned allocatedSize;
@@ -72,10 +71,6 @@ protected:
   virtual void finishImpl(SILGenFunction &SGF) = 0;
 };
 
-// FIXME: Misnomer. This is not used for borrowing a formal memory location
-// (ExclusiveBorrowFormalAccess is always used for that). This is only used for
-// formal access from a +0 value, which requires producing a "borrowed"
-// SILValue.
 class SharedBorrowFormalAccess : public FormalAccess {
   SILValue originalValue;
   SILValue borrowedValue;
@@ -109,9 +104,6 @@ private:
 
 class FormalEvaluationContext {
   DiverseStack<FormalAccess, 128> stack;
-  FormalEvaluationScope *innermostScope = nullptr;
-
-  friend class FormalEvaluationScope;
 
 public:
   using stable_iterator = decltype(stack)::stable_iterator;
@@ -128,7 +120,7 @@ public:
 
   ~FormalEvaluationContext() {
     assert(stack.empty() &&
-           "entries remaining on formal evaluation cleanup stack at end of function!");
+           "entries remaining on writeback stack at end of function!");
   }
 
   iterator begin() { return stack.begin(); }
@@ -138,10 +130,6 @@ public:
   }
   stable_iterator stable_begin() { return stabilize(begin()); }
   iterator find(stable_iterator iter) { return stack.find(iter); }
-
-  FormalAccess &findAndAdvance(stable_iterator &stable) {
-    return stack.findAndAdvance(stable);
-  }
 
   template <class U, class... ArgTypes> void push(ArgTypes &&... args) {
     stack.push<U>(std::forward<ArgTypes>(args)...);
@@ -153,34 +141,26 @@ public:
   /// is the top element of the stack.
   void pop(stable_iterator stable_iter) { stack.pop(stable_iter); }
 
-  bool isInFormalEvaluationScope() const { return innermostScope != nullptr; }
-
   void dump(SILGenFunction &SGF);
-
-#ifndef NDEBUG
-  void checkCleanupDeactivation(CleanupHandle handle);
-#endif
 };
 
-/// A scope associated with the beginning of the evaluation of an lvalue.
+/// A scope associated with the beginning of the formal evaluation of an lvalue.
 ///
-/// The evaluation of an l-value is split into two stages: its formal
-/// evaluation, which evaluates any independent r-values embedded in the l-value
-/// expression (e.g. class references and subscript indices), and its formal
-/// access duration, which delimits the span of time for which the referenced
-/// storage is actually accessed.
+/// A formal evaluation of an lvalue occurs when emitting:
 ///
-/// Note that other evaluations can be interleaved between the formal evaluation
-/// and the beginning of the formal access.  For example, in a simple assignment
-/// statement, the left-hand side of the assignment is first formally evaluated
-/// as an l-value, then the right-hand side is evaluated as an r-value, and only
-/// then does the write access begin to the l-value.
+///   1. accessors.
+///   2. getters.
+///   3. materializeForSets.
 ///
-/// Note also that the formal evaluation of an l-value will sometimes require
-/// its component l-values to be formally accessed.  For example, the formal
-/// access of the l-value `x?.prop` will initiate an access to `x` immediately
-/// because the downstream evaluation must be skipped if `x` has no value, which
-/// cannot be determined without beginning the access.
+/// for lvalues. The general form of such an evaluation is:
+///
+///   formally evaluate the lvalue "x" into memory
+///   begin formal access to "x"
+///   end formal access to "x"
+///   ... *more formal access*
+///   begin formal access to "x"
+///   end formal access to "x"
+///   end formal evaluation of lvalue into memory
 ///
 /// *NOTE* All formal access contain a pointer to a cleanup in the normal
 /// cleanup stack. This is to ensure that when SILGen calls
@@ -196,13 +176,8 @@ public:
 class FormalEvaluationScope {
   SILGenFunction &SGF;
   llvm::Optional<FormalEvaluationContext::stable_iterator> savedDepth;
-
-  /// The immediate outer evaluation scope.  This scope is only inserted
-  /// into the chain if it wasn't in an inout conversion scope on creation.
-  FormalEvaluationScope *previous;
+  bool wasInWritebackScope;
   bool wasInInOutConversionScope;
-
-  friend class FormalEvaluationContext;
 
 public:
   FormalEvaluationScope(SILGenFunction &SGF);
@@ -218,7 +193,7 @@ public:
     if (wasInInOutConversionScope)
       return;
 
-    assert(!isPopped() && "popping an already-popped scope!");
+    assert(!isPopped() && "popping an already-popped writeback scope!");
     popImpl();
     savedDepth.reset();
   }
@@ -236,16 +211,6 @@ public:
 private:
   void popImpl();
 };
-
-#ifndef NDEBUG
-inline void
-FormalEvaluationContext::checkCleanupDeactivation(CleanupHandle handle) {
-  for (auto &access : *this) {
-    assert((access.isFinished() || access.getCleanup() != handle) &&
-           "popping active formal-evaluation cleanup");
-  }
-}
-#endif
 
 } // namespace Lowering
 } // namespace swift

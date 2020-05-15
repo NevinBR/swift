@@ -1,4 +1,4 @@
-// RUN: %target-typecheck-verify-swift
+// RUN: %target-swift-frontend -typecheck -verify %s
 
 func dict() -> [AnyHashable: Any] {
    return ["x": "y"]
@@ -18,6 +18,6 @@ func test() {
 
 func testLValueCoerce() {
 	var lvalue = "lvalue"
-	let map: [AnyHashable : Any] = [lvalue: lvalue]
+	var map: [AnyHashable : Any] = [lvalue: lvalue]
 	lvalue = map[lvalue] as! String
 }

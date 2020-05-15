@@ -31,7 +31,9 @@ func makeCollection(elements: [OpaqueValue<Int>])
   let endIndex = base.index(
     base.startIndex,
     offsetBy: numericCast(prefix.count + elements.count))
-  return Slice(base: base, bounds: startIndex..<endIndex)
+  return Slice(
+    base: base,
+    bounds: startIndex..<endIndex)
 }
 
 func makeCollectionOfEquatable(elements: [MinimalEquatableValue])
@@ -46,7 +48,9 @@ func makeCollectionOfEquatable(elements: [MinimalEquatableValue])
   let endIndex = base.index(
     base.startIndex,
     offsetBy: numericCast(prefix.count + elements.count))
-  return Slice(base: base, bounds: startIndex..<endIndex)
+  return Slice(
+    base: base,
+    bounds: startIndex..<endIndex)
 }
 
 func makeCollectionOfComparable(elements: [MinimalComparableValue])
@@ -61,7 +65,9 @@ func makeCollectionOfComparable(elements: [MinimalComparableValue])
   let endIndex = base.index(
     base.startIndex,
     offsetBy: numericCast(prefix.count + elements.count))
-  return Slice(base: base, bounds: startIndex..<endIndex)
+  return Slice(
+    base: base,
+    bounds: startIndex..<endIndex)
 }
 
 var resiliencyChecks = CollectionMisuseResiliencyChecks.all

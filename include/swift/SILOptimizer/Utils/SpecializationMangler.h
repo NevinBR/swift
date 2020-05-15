@@ -48,8 +48,7 @@ protected:
 protected:
   SpecializationMangler(SpecializationPass P, IsSerialized_t Serialized,
                         SILFunction *F)
-      : Pass(P), Serialized(Serialized), Function(F),
-        ArgOpBuffer(ArgOpStorage) {}
+      : Pass(P), Serialized(Serialized), Function(F), ArgOpBuffer(ArgOpStorage) {}
 
   SILFunction *getFunction() const { return Function; }
 
@@ -66,19 +65,19 @@ protected:
 // The mangler for specialized generic functions.
 class GenericSpecializationMangler : public SpecializationMangler {
 
-  SubstitutionMap SubMap;
+  SubstitutionList Subs;
   bool isReAbstracted;
-  bool isInlined;
 
 public:
-  GenericSpecializationMangler(SILFunction *F, SubstitutionMap SubMap,
-                               IsSerialized_t Serialized, bool isReAbstracted,
-                               bool isInlined = false)
-      : SpecializationMangler(SpecializationPass::GenericSpecializer,
-                              Serialized, F),
-        SubMap(SubMap), isReAbstracted(isReAbstracted), isInlined(isInlined) {}
 
-  std::string mangle(GenericSignature Sig = GenericSignature());
+  GenericSpecializationMangler(SILFunction *F,
+                               SubstitutionList Subs,
+                               IsSerialized_t Serialized,
+                               bool isReAbstracted)
+    : SpecializationMangler(SpecializationPass::GenericSpecializer, Serialized, F),
+      Subs(Subs), isReAbstracted(isReAbstracted) {}
+
+  std::string mangle();
 };
 
 class PartialSpecializationMangler : public SpecializationMangler {
@@ -89,10 +88,10 @@ class PartialSpecializationMangler : public SpecializationMangler {
 public:
   PartialSpecializationMangler(SILFunction *F,
                                CanSILFunctionType SpecializedFnTy,
-                               IsSerialized_t Serialized, bool isReAbstracted)
-      : SpecializationMangler(SpecializationPass::GenericSpecializer,
-                              Serialized, F),
-        SpecializedFnTy(SpecializedFnTy), isReAbstracted(isReAbstracted) {}
+                               IsSerialized_t Serialized,
+                               bool isReAbstracted)
+    : SpecializationMangler(SpecializationPass::GenericSpecializer, Serialized, F),
+      SpecializedFnTy(SpecializedFnTy), isReAbstracted(isReAbstracted) {}
 
   std::string mangle();
 };
@@ -128,8 +127,6 @@ class FunctionSignatureSpecializationMangler : public SpecializationMangler {
     Dead=32,
     OwnedToGuaranteed=64,
     SROA=128,
-    GuaranteedToOwned=256,
-    ExistentialToGeneric=512,
     First_OptionSetEntry=32, LastOptionSetEntry=32768,
   };
 
@@ -152,14 +149,12 @@ public:
                               ThinToThickFunctionInst *TTTFI);
   void setArgumentDead(unsigned OrigArgIdx);
   void setArgumentOwnedToGuaranteed(unsigned OrigArgIdx);
-  void setArgumentGuaranteedToOwned(unsigned OrigArgIdx);
-  void setArgumentExistentialToGeneric(unsigned OrigArgIdx);
   void setArgumentSROA(unsigned OrigArgIdx);
   void setArgumentBoxToValue(unsigned OrigArgIdx);
   void setArgumentBoxToStack(unsigned OrigArgIdx);
   void setReturnValueOwnedToUnowned();
 
-  std::string mangle();
+  std::string mangle(int UniqueID = 0);
   
 private:
   void mangleConstantProp(LiteralInst *LI);

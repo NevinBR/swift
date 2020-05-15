@@ -14,7 +14,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "swift/Runtime/ExistentialContainer.h"
 #include "swift/Runtime/Metadata.h"
 #include <cstdlib>
 

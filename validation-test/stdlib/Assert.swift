@@ -1,10 +1,7 @@
 // RUN: %empty-directory(%t)
-// RUN: %target-build-swift %s -Xfrontend -disable-access-control -o %t/Assert_Debug -Onone
+// RUN: %target-build-swift %s -Xfrontend -disable-access-control -o %t/Assert_Debug
 // RUN: %target-build-swift %s -Xfrontend -disable-access-control -o %t/Assert_Release -O
 // RUN: %target-build-swift %s -Xfrontend -disable-access-control -o %t/Assert_Unchecked -Ounchecked
-// RUN: %target-codesign %t/Assert_Debug
-// RUN: %target-codesign %t/Assert_Release
-// RUN: %target-codesign %t/Assert_Unchecked
 //
 // RUN: %target-run %t/Assert_Debug
 // RUN: %target-run %t/Assert_Release
@@ -26,11 +23,11 @@ func testTrapsAreNoreturn(i: Int) -> Int {
   case 2:
     preconditionFailure("cannot happen")
   case 3:
-    preconditionFailure("cannot happen")
+    _preconditionFailure("cannot happen")
   case 4:
     _debugPreconditionFailure("cannot happen")
   case 5:
-    _internalInvariantFailure("cannot happen")
+    _sanityCheckFailure("cannot happen")
 
   default:
     return 0
@@ -152,26 +149,26 @@ Assert.test("fatalError/StringInterpolation")
 // characters, and that use NSString-backed String.
 // We had to rewrite a part of fatalError() in the indexing effort.
 
-Assert.test("precondition")
+Assert.test("_precondition")
   .xfail(.custom(
     { _isFastAssertConfiguration() },
     reason: "preconditions are disabled in Unchecked mode"))
   .crashOutputMatches(_isDebugAssertConfiguration() ? "this should fail" : "")
   .code {
   var x = 2
-  precondition(x * 21 == 42, "should not fail")
+  _precondition(x * 21 == 42, "should not fail")
   expectCrashLater()
-  precondition(x == 42, "this should fail")
+  _precondition(x == 42, "this should fail")
 }
 
-Assert.test("preconditionFailure")
+Assert.test("_preconditionFailure")
   .skip(.custom(
     { _isFastAssertConfiguration() },
     reason: "optimizer assumes that the code path is unreachable"))
   .crashOutputMatches(_isDebugAssertConfiguration() ? "this should fail" : "")
   .code {
   expectCrashLater()
-  preconditionFailure("this should fail")
+  _preconditionFailure("this should fail")
 }
 
 Assert.test("_debugPrecondition")
@@ -196,26 +193,26 @@ Assert.test("_debugPreconditionFailure")
   _debugPreconditionFailure("this should fail")
 }
 
-Assert.test("_internalInvariant")
+Assert.test("_sanityCheck")
   .xfail(.custom(
     { !_isStdlibInternalChecksEnabled() },
-    reason: "internal invariant checks are disabled in this build of stdlib"))
+    reason: "sanity checks are disabled in this build of stdlib"))
   .crashOutputMatches("this should fail")
   .code {
   var x = 2
-  _internalInvariant(x * 21 == 42, "should not fail")
+  _sanityCheck(x * 21 == 42, "should not fail")
   expectCrashLater()
-  _internalInvariant(x == 42, "this should fail")
+  _sanityCheck(x == 42, "this should fail")
 }
 
-Assert.test("_internalInvariantFailure")
+Assert.test("_sanityCheckFailure")
   .skip(.custom(
     { !_isStdlibInternalChecksEnabled() },
     reason: "optimizer assumes that the code path is unreachable"))
   .crashOutputMatches("this should fail")
   .code {
   expectCrashLater()
-  _internalInvariantFailure("this should fail")
+  _sanityCheckFailure("this should fail")
 }
 
 runAllTests()

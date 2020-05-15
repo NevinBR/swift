@@ -38,31 +38,16 @@ typedef CCRefrigeratorRef CCFridgeRef;
 typedef const void *CCOpaqueTypeRef __attribute__((objc_bridge(id)));
 CCOpaqueTypeRef CCRetain(CCOpaqueTypeRef typeRef);
 void CCRelease(CCOpaqueTypeRef typeRef);
-CCOpaqueTypeRef CCMungeAndRetain(CCOpaqueTypeRef typeRef) __attribute__((swift_name("CCMungeAndRetain(_:)")));
 
 // Nullability
-void CCRefrigeratorOpenDoSomething(_Nonnull CCRefrigeratorRef fridge);
-void CCRefrigeratorOpenMaybeDoSomething(_Nullable CCRefrigeratorRef fridge);
+void CCRefrigeratorOpenDoSomething(__nonnull CCRefrigeratorRef fridge);
+void CCRefrigeratorOpenMaybeDoSomething(__nullable CCRefrigeratorRef fridge);
 
 // Out parameters
-void CCRefrigeratorCreateIndirect(CCRefrigeratorRef *_Nullable
-                                  __attribute__((cf_returns_retained))
-                                  outFridge);
+void CCRefrigeratorCreateIndirect(CCRefrigeratorRef * __nullable __attribute__((cf_returns_retained)) outFridge);
 // Note that the fridge parameter is incorrectly annotated.
-void CCRefrigeratorGetPowerSupplyIndirect(
-    CCRefrigeratorRef __attribute__((cf_returns_not_retained)) fridge,
-    CCPowerSupplyRef *_Nonnull __attribute__((cf_returns_not_retained))
-    outPower);
+void CCRefrigeratorGetPowerSupplyIndirect(CCRefrigeratorRef __attribute__((cf_returns_not_retained)) fridge, CCPowerSupplyRef * __nonnull __attribute__((cf_returns_not_retained)) outPower);
 void CCRefrigeratorGetItemUnaudited(CCRefrigeratorRef fridge, unsigned index, CCItemRef *outItem);
 
 typedef void *CFNonConstVoidRef __attribute__((objc_bridge(id)));
 CFNonConstVoidRef CFNonConstBottom();
-
-typedef struct IceCube {
-    float width;
-    float height;
-    float depth;
-} IceCube;
-
-typedef IceCube IceCube;
-typedef IceCube BlockOfIce;

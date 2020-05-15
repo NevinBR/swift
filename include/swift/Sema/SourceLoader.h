@@ -13,7 +13,6 @@
 #ifndef SWIFT_SEMA_SOURCELOADER_H
 #define SWIFT_SEMA_SOURCELOADER_H
 
-#include "swift/AST/ModuleDependencies.h"
 #include "swift/AST/ModuleLoader.h"
 
 namespace swift {
@@ -21,24 +20,26 @@ namespace swift {
 class ASTContext;
 class ModuleDecl;
   
-/// Imports serialized Swift modules into an ASTContext.
+/// \brief Imports serialized Swift modules into an ASTContext.
 class SourceLoader : public ModuleLoader {
 private:
   ASTContext &Ctx;
-  bool EnableLibraryEvolution;
+  bool SkipBodies;
+  bool EnableResilience;
 
   explicit SourceLoader(ASTContext &ctx,
+                        bool skipBodies,
                         bool enableResilience,
                         DependencyTracker *tracker)
     : ModuleLoader(tracker), Ctx(ctx),
-      EnableLibraryEvolution(enableResilience) {}
+      SkipBodies(skipBodies), EnableResilience(enableResilience) {}
 
 public:
   static std::unique_ptr<SourceLoader>
-  create(ASTContext &ctx, bool enableResilience,
+  create(ASTContext &ctx, bool skipBodies, bool enableResilience,
          DependencyTracker *tracker = nullptr) {
     return std::unique_ptr<SourceLoader>{
-      new SourceLoader(ctx, enableResilience, tracker)
+      new SourceLoader(ctx, skipBodies, enableResilience, tracker)
     };
   }
 
@@ -47,19 +48,14 @@ public:
   SourceLoader &operator=(const SourceLoader &) = delete;
   SourceLoader &operator=(SourceLoader &&) = delete;
 
-  /// Append visible module names to \p names. Note that names are possibly
-  /// duplicated, and not guaranteed to be ordered in any way.
-  void collectVisibleTopLevelModuleNames(
-      SmallVectorImpl<Identifier> &names) const override;
-
-  /// Check whether the module with a given name can be imported without
+  /// \brief Check whether the module with a given name can be imported without
   /// importing it.
   ///
   /// Note that even if this check succeeds, errors may still occur if the
   /// module is loaded in full.
-  virtual bool canImportModule(Located<Identifier> named) override;
+  virtual bool canImportModule(std::pair<Identifier, SourceLoc> named) override;
 
-  /// Import a module with the given module path.
+  /// \brief Import a module with the given module path.
   ///
   /// \param importLoc The location of the 'import' keyword.
   ///
@@ -70,9 +66,9 @@ public:
   /// returns NULL.
   virtual ModuleDecl *
   loadModule(SourceLoc importLoc,
-             ArrayRef<Located<Identifier>> path) override;
+             ArrayRef<std::pair<Identifier, SourceLoc>> path) override;
 
-  /// Load extensions to the given nominal type.
+  /// \brief Load extensions to the given nominal type.
   ///
   /// \param nominal The nominal type whose extensions should be loaded.
   ///
@@ -90,13 +86,6 @@ public:
                  llvm::TinyPtrVector<AbstractFunctionDecl *> &methods) override
   {
     // Parsing populates the Objective-C method tables.
-  }
-
-  Optional<ModuleDependencies> getModuleDependencies(
-      StringRef moduleName, ModuleDependenciesCache &cache,
-      SubASTContextDelegate &delegate) override {
-    // FIXME: Implement?
-    return None;
   }
 };
 

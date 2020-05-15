@@ -1,8 +1,8 @@
-// RUN: %target-swift-emit-silgen %s | %FileCheck %s
+// RUN: %target-swift-frontend -emit-silgen %s | %FileCheck %s
 
 func use<T>(_: T) {}
 
-// CHECK-LABEL: sil hidden [ossa] @$s22generic_local_property3foo1x1yyx_SitlF
+// CHECK-LABEL: sil hidden @_T022generic_local_property3fooyx1x_Si1ytlF
 func foo<T>(x: T, y: Int) {
   var mutable: Int {
     get {

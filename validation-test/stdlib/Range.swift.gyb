@@ -7,7 +7,13 @@ import StdlibCollectionUnittest
 extension Range {
   static var _isHalfOpen: Bool { return true }
 }
+extension CountableRange {
+  static var _isHalfOpen: Bool { return true }
+}
 extension ClosedRange {
+  static var _isHalfOpen: Bool { return false }
+}
+extension CountableClosedRange {
   static var _isHalfOpen: Bool { return false }
 }
 
@@ -49,7 +55,7 @@ func generateContainsTests() -> [ContainsTest] {
       for value in bounds {
         result.append(
           ContainsTest(
-             lowerBound: lowerBound, upperBound: upperBound,
+            lowerBound: lowerBound, upperBound: upperBound,
             value: value))
       }
     }
@@ -59,8 +65,8 @@ func generateContainsTests() -> [ContainsTest] {
 
 let containsTests: [ContainsTest] = generateContainsTests()
 
-infix operator ..<* : RangeFormationPrecedence
-infix operator ...* : RangeFormationPrecedence
+infix operator ..<* { associativity none precedence 135 }
+infix operator ...* { associativity none precedence 135 }
 
 enum VariantRange {
   case halfOpen(lowerBound: Int, upperBound: Int)
@@ -266,7 +272,7 @@ struct IndexDistanceTest {
       return c.endIndex
     }
     let iterations = rightIndex - IndexDistanceTest.start
-    precondition(iterations >= 0)
+    _precondition(iterations >= 0)
     var idx = c.startIndex
     for _ in 0..<iterations {
       idx = c.index(after: idx)
@@ -284,7 +290,7 @@ struct IndexDistanceTest {
     self.openDistance = distance
     // Only set closedDistance if testing against someRange.endIndex.
     if closedDistance != nil {
-      precondition(leftIndex == nil || rightIndex == nil)
+      _precondition(leftIndex == nil || rightIndex == nil)
     }
     self.closedDistance = closedDistance ?? distance
     self.loc = SourceLoc(file, line, comment: "distance(from:to:) tests for countable ranges")
@@ -313,24 +319,22 @@ let indexDistanceTests: [IndexDistanceTest] = [
 
 %{
 all_range_types = [
-   ('Range',       '..<', 'MinimalComparableValue', ''),
-   ('Range',       '..<', 'MinimalStrideableValue', 'Countable'),
-   ('ClosedRange', '...', 'MinimalComparableValue', ''),
-   ('ClosedRange', '...', 'MinimalStrideableValue', 'Countable'),
+   ('Range',                '..<', 'MinimalComparableValue'),
+   ('CountableRange',       '..<', 'MinimalStrideableValue'),
+   ('ClosedRange',          '...', 'MinimalComparableValue'),
+   ('CountableClosedRange', '...', 'MinimalStrideableValue'),
 ]
 }%
 
-% for (Self, op, Bound, Countable) in all_range_types:
-%     TestSuite = Countable + Self + 'TestSuite'
+% for (Self, op, Bound) in all_range_types:
+%   TestSuite = Self + 'TestSuite'
 
-% if Countable == '':
 // Check that the generic parameter is called 'Bound'.
 extension ${Self} where Bound : TestProtocol1 {
   var _elementIsTestProtocol1: Bool {
     fatalError("not implemented")
   }
 }
-% end
 
 var ${TestSuite} = TestSuite("${Self}")
 
@@ -346,7 +350,7 @@ ${TestSuite}.test("init(uncheckedBounds:)")
   expectEqual(upperInt, r.upperBound.value)
 }
 
-%   for (DestinationSelf, _, _, _) in all_range_types:
+%   for (DestinationSelf, _, _) in all_range_types:
 ${TestSuite}.test("init(${DestinationSelf})/whereBoundIsStrideable")
   .forEach(in: [(0, 0), (1, 2), (10, 20), (Int.min, Int.max)]) {
   (lowerInt, upperInt) in
@@ -446,7 +450,7 @@ ${TestSuite}.test("~=/staticDispatch") {
   expectEqual(51, ${Bound}.timesLessWasCalled.value)
 }
 
-%   if 'Strideable' in Bound:
+%   if 'Countable' in Self:
 ${TestSuite}.test("contains(_:)/dynamicDispatch") {
   let start = ${Bound}(10)
   let end = ${Bound}(20)
@@ -473,7 +477,7 @@ ${TestSuite}.test("contains(_:)/semantics, ~=/semantics")
 
   // Check both static and dynamic dispatch.
   let range: ${Self}<${Bound}> = ${Bound}(test.lowerBound)${op}${Bound}(test.upperBound)
-%   if 'Strideable' in Bound:
+%   if 'Countable' in Self:
   let loggingRange = LoggingCollection(wrapping: range)
 %   else:
   let loggingRange = range
@@ -489,7 +493,7 @@ ${TestSuite}.test("contains(_:)/semantics, ~=/semantics")
   expectEqual(expected, range ~= value)
 }
 
-%   for (OtherSelf, other_op, OtherBound, __elementIsTestProtocol1) in all_range_types:
+%   for (OtherSelf, other_op, OtherBound) in all_range_types:
 ${TestSuite}.test("overlaps(${OtherSelf})/semantics")
   .forEach(in: overlapsTests) {
   (test) in
@@ -544,7 +548,7 @@ ${TestSuite}.test("count/whereBoundIsStrideable") {
   expectEqual(0, Bound.timesAdvancedWasCalled.value)
 }
 
-%   if 'Strideable' in Bound:
+%   if 'Countable' in Self:
 ${TestSuite}.test("index(after:)/semantics").forEach(in: [3, 5, 10, 12, 86]) {
   (endValue) in
   let start = ${Bound}(0)
@@ -750,23 +754,25 @@ ${TestSuite}.test("CustomStringConvertible, CustomDebugStringConvertible, Custom
 % end
 
 CountableRangeTestSuite.test("AssociatedTypes") {
-  typealias Collection = Range<MinimalStrideableValue>
+  typealias Collection = CountableRange<MinimalStrideableValue>
   expectCollectionAssociatedTypes(
     collectionType: Collection.self,
-    iteratorType: Collection.Iterator.self,
+    iteratorType: IndexingIterator<Collection>.self,
     subSequenceType: Collection.self,
     indexType: MinimalStrideableValue.self,
+    indexDistanceType: MinimalStrideableValue.Stride.self,
     indicesType: Collection.self)
 }
 
 CountableClosedRangeTestSuite.test("AssociatedTypes") {
-  typealias Collection = ClosedRange<MinimalStrideableValue>
+  typealias Collection = CountableClosedRange<MinimalStrideableValue>
   expectCollectionAssociatedTypes(
     collectionType: Collection.self,
-    iteratorType: Collection.Iterator.self,
-    subSequenceType: Slice<Collection>.self,
-    indexType: Collection.Index.self,
-    indicesType: DefaultIndices<Collection>.self)
+    iteratorType: ClosedRangeIterator<MinimalStrideableValue>.self,
+    subSequenceType: RandomAccessSlice<Collection>.self,
+    indexType: ClosedRangeIndex<MinimalStrideableValue>.self,
+    indexDistanceType: MinimalStrideableValue.Stride.self,
+    indicesType: DefaultRandomAccessIndices<Collection>.self)
 }
 
 var MiscTestSuite = TestSuite("Misc")
@@ -780,18 +786,12 @@ MiscTestSuite.test("map()") {
 
 MiscTestSuite.test("reversed()") {
   var result = (0..<10).lazy.reversed()
-  typealias Expected = ReversedCollection<
-    LazyCollection<Range<Int>>>
+  typealias Expected = LazyRandomAccessCollection<
+    ReversedRandomAccessCollection<CountableRange<Int>>>
     expectType(Expected.self, &result)
   expectEqualSequence(
     [ 9, 8, 7, 6, 5, 4, 3, 2, 1, 0 ],
     result)
-}
-
-MiscTestSuite.test("Compatibility typealiases") {
-  let _: CountablePartialRangeFrom = 1...
-  let _: CountableRange = MinimalStrideableValue(3)..<MinimalStrideableValue(3)
-  let _: CountableClosedRange = MinimalStrideableValue(3)...MinimalStrideableValue(3)
 }
 
 runAllTests()

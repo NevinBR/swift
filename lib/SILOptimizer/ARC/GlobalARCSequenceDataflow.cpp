@@ -51,7 +51,7 @@ using ARCBBStateInfoHandle = ARCSequenceDataflowEvaluator::ARCBBStateInfoHandle;
 /// NestingDetected will be set to indicate that the block needs to be
 /// reanalyzed if code motion occurs.
 bool ARCSequenceDataflowEvaluator::processBBTopDown(ARCBBState &BBState) {
-  LLVM_DEBUG(llvm::dbgs() << ">>>> Top Down!\n");
+  DEBUG(llvm::dbgs() << ">>>> Top Down!\n");
 
   SILBasicBlock &BB = BBState.getBB();
 
@@ -78,7 +78,7 @@ bool ARCSequenceDataflowEvaluator::processBBTopDown(ARCBBState &BBState) {
   // For each instruction I in BB...
   for (auto &I : BB) {
 
-    LLVM_DEBUG(llvm::dbgs() << "VISITING:\n    " << I);
+    DEBUG(llvm::dbgs() << "VISITING:\n    " << I);
 
     auto Result = DataflowVisitor.visit(&I);
 
@@ -132,8 +132,8 @@ void ARCSequenceDataflowEvaluator::mergePredecessors(
     if (!PredDataHandle)
       continue;
 
-    LLVM_DEBUG(llvm::dbgs() << "    Merging Pred: " << PredDataHandle->getID()
-                            << "\n");
+    DEBUG(llvm::dbgs() << "    Merging Pred: " << PredDataHandle->getID()
+                       << "\n");
 
     // If the predecessor is the head of a backedge in our traversal, clear any
     // state we are tracking now and clear the state of the basic block. There
@@ -167,7 +167,7 @@ void ARCSequenceDataflowEvaluator::mergePredecessors(
 bool ARCSequenceDataflowEvaluator::processTopDown() {
   bool NestingDetected = false;
 
-  LLVM_DEBUG(llvm::dbgs() << "<<<< Processing Top Down! >>>>\n");
+  DEBUG(llvm::dbgs() << "<<<< Processing Top Down! >>>>\n");
 
   // For each BB in our reverse post order...
   for (auto *BB : POA->get(&F)->getReversePostOrder()) {
@@ -178,10 +178,9 @@ bool ARCSequenceDataflowEvaluator::processTopDown() {
     //
     // TODO: When data handles are introduced, print that instead. This code
     // should not be touching BBIDs directly.
-    LLVM_DEBUG(llvm::dbgs() << "Processing BB#: " << BBDataHandle.getID()
-                            << "\n");
+    DEBUG(llvm::dbgs() << "Processing BB#: " << BBDataHandle.getID() << "\n");
 
-    LLVM_DEBUG(llvm::dbgs() << "Merging Predecessors!\n");
+    DEBUG(llvm::dbgs() << "Merging Predecessors!\n");
     mergePredecessors(BBDataHandle);
 
     // Then perform the basic block optimization.
@@ -212,8 +211,6 @@ static bool isARCSignificantTerminator(TermInst *TI) {
   // against the operand or can use the value in some way.
   case TermKind::ThrowInst:
   case TermKind::ReturnInst:
-  case TermKind::UnwindInst:
-  case TermKind::YieldInst:
   case TermKind::TryApplyInst:
   case TermKind::SwitchValueInst:
   case TermKind::SwitchEnumInst:
@@ -245,7 +242,7 @@ static bool isARCSignificantTerminator(TermInst *TI) {
 /// the CFG.
 bool ARCSequenceDataflowEvaluator::processBBBottomUp(
     ARCBBState &BBState, bool FreezeOwnedArgEpilogueReleases) {
-  LLVM_DEBUG(llvm::dbgs() << ">>>> Bottom Up!\n");
+  DEBUG(llvm::dbgs() << ">>>> Bottom Up!\n");
   SILBasicBlock &BB = BBState.getBB();
 
   bool NestingDetected = false;
@@ -259,7 +256,7 @@ bool ARCSequenceDataflowEvaluator::processBBBottomUp(
     SILInstruction &I = *II;
     ++II;
 
-    LLVM_DEBUG(llvm::dbgs() << "VISITING:\n    " << I);
+    DEBUG(llvm::dbgs() << "VISITING:\n    " << I);
 
     auto Result = DataflowVisitor.visit(&I);
 
@@ -373,7 +370,7 @@ bool ARCSequenceDataflowEvaluator::processBottomUp(
     bool FreezeOwnedArgEpilogueReleases) {
   bool NestingDetected = false;
 
-  LLVM_DEBUG(llvm::dbgs() << "<<<< Processing Bottom Up! >>>>\n");
+  DEBUG(llvm::dbgs() << "<<<< Processing Bottom Up! >>>>\n");
 
   // For each BB in our post order...
   for (auto *BB : POA->get(&F)->getPostOrder()) {
@@ -382,10 +379,9 @@ bool ARCSequenceDataflowEvaluator::processBottomUp(
 
     // This will always succeed since we have an entry for each BB in our post
     // order.
-    LLVM_DEBUG(llvm::dbgs() << "Processing BB#: " << BBDataHandle.getID()
-                            << "\n");
+    DEBUG(llvm::dbgs() << "Processing BB#: " << BBDataHandle.getID() << "\n");
 
-    LLVM_DEBUG(llvm::dbgs() << "Merging Successors!\n");
+    DEBUG(llvm::dbgs() << "Merging Successors!\n");
     mergeSuccessors(BBDataHandle);
 
     // Then perform the basic block optimization.
@@ -419,9 +415,11 @@ bool ARCSequenceDataflowEvaluator::run(bool FreezeOwnedReleases) {
   return NestingDetected;
 }
 
-// We put the destructor here so we don't need to expose the type of
-// BBStateInfo to the outside world.
-ARCSequenceDataflowEvaluator::~ARCSequenceDataflowEvaluator() = default;
+ARCSequenceDataflowEvaluator::~ARCSequenceDataflowEvaluator() {
+  // We use a malloced pointer here so we don't need to expose the type to the
+  // outside world.
+  delete BBStateInfo;
+}
 
 void ARCSequenceDataflowEvaluator::clear() { BBStateInfo->clear(); }
 

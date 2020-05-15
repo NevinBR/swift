@@ -1,3 +1,4 @@
+// RUN: %target-swift-frontend -module-name main -typecheck -swift-version 3 %s
 // RUN: %target-swift-frontend -module-name main -typecheck -swift-version 4 %s
 
 // These tests are split out to ensure that we run the AST verifier's
@@ -30,9 +31,4 @@ func testVariations(
   _ = withoutActuallyEscaping(no_escape) {
     return takesFn($0)
   }
-}
-
-func testBlock(f: @convention(block) () -> ()) {
-  let escape: (@escaping @convention(block) () -> ()) -> () = { _ in }
-  let _: () = withoutActuallyEscaping(f, do: escape)
 }

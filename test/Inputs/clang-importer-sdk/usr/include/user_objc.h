@@ -1,5 +1,4 @@
 @import Foundation;
-#include <MacTypes.h>
 
 #define MAKE_ENUM(name) \
   typedef NS_ENUM(NSInteger, name) { \

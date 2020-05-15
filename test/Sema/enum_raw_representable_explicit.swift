@@ -1,4 +1,4 @@
-// RUN: %target-typecheck-verify-swift
+// RUN: %target-swift-frontend -typecheck -verify %s
 
 enum Foo: Int, RawRepresentable { case A }
 

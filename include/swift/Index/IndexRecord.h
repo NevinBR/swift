@@ -36,9 +36,6 @@ namespace index {
 /// \param indexSystemModules If true, emit index data for imported serialized
 /// swift system modules.
 ///
-/// \param skipStdlib If indexing system modules, don't index the standard
-/// library.
-///
 /// \param isDebugCompilation true for non-optimized compiler invocation.
 ///
 /// \param targetTriple The target for this compilation.
@@ -46,8 +43,7 @@ namespace index {
 /// \param dependencyTracker The set of dependencies seen while building.
 bool indexAndRecord(SourceFile *primarySourceFile, StringRef indexUnitToken,
                     StringRef indexStorePath, bool indexSystemModules,
-                    bool skipStdlib, bool isDebugCompilation,
-                    StringRef targetTriple,
+                    bool isDebugCompilation, StringRef targetTriple,
                     const DependencyTracker &dependencyTracker);
 
 /// Index the given module and store the results to \p indexStorePath.
@@ -68,9 +64,6 @@ bool indexAndRecord(SourceFile *primarySourceFile, StringRef indexUnitToken,
 /// \param indexSystemModules If true, emit index data for imported serialized
 /// swift system modules.
 ///
-/// \param skipStdlib If indexing system modules, don't index the standard
-/// library.
-///
 /// \param isDebugCompilation true for non-optimized compiler invocation.
 ///
 /// \param targetTriple The target for this compilation.
@@ -78,8 +71,8 @@ bool indexAndRecord(SourceFile *primarySourceFile, StringRef indexUnitToken,
 /// \param dependencyTracker The set of dependencies seen while building.
 bool indexAndRecord(ModuleDecl *module, ArrayRef<std::string> indexUnitTokens,
                     StringRef moduleUnitToken, StringRef indexStorePath,
-                    bool indexSystemModules, bool skipStdlib,
-                    bool isDebugCompilation, StringRef targetTriple,
+                    bool indexSystemModules, bool isDebugCompilation,
+                    StringRef targetTriple,
                     const DependencyTracker &dependencyTracker);
 // FIXME: indexUnitTokens could be StringRef, but that creates an impedance
 // mismatch in the caller.

@@ -1,4 +1,5 @@
-// RUN: %scale-test --sum-multi --begin 5 --end 16 --step 5 --select InterfaceTypeRequest %s
+// RUN: %scale-test --sum-multi --typecheck --begin 5 --end 16 --step 5 --select validateDecl %s
+// REQUIRES: OS=macosx
 // REQUIRES: asserts
 
 struct Struct${N} {
@@ -13,4 +14,6 @@ struct Struct${N} {
     static var prop = 0
     subscript(n: Int) -> Int { return 0 }
 % end
+
+    struct Nested {}
 }

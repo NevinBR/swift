@@ -49,12 +49,6 @@ TEST(TriviaTests, Empty) {
     Trivia::docBlockComment("").print(OS);
     ASSERT_EQ(OS.str().str(), "");
   }, "");
-  ASSERT_DEATH({
-    llvm::SmallString<1> Scratch;
-    llvm::raw_svector_ostream OS(Scratch);
-    Trivia::garbageText("").print(OS);
-    ASSERT_EQ(OS.str().str(), "");
-  }, "");
 #endif
   {
     llvm::SmallString<1> Scratch;
@@ -71,6 +65,13 @@ TEST(TriviaTests, EmptyEquivalence) {
   ASSERT_EQ(Trivia(), Trivia::tabs(0));
   ASSERT_EQ(Trivia(), Trivia::newlines(0));
   ASSERT_EQ(Trivia() + Trivia(), Trivia());
+}
+
+TEST(TriviaTests, Backtick) {
+  llvm::SmallString<1> Scratch;
+  llvm::raw_svector_ostream OS(Scratch);
+  Trivia::backtick().print(OS);
+  ASSERT_EQ(OS.str().str(), "`");
 }
 
 TEST(TriviaTests, PrintingSpaces) {
@@ -148,9 +149,10 @@ TEST(TriviaTests, PrintingCombinations) {
     llvm::raw_svector_ostream OS(Scratch);
     auto CCCCombo = Trivia::spaces(1) +
       Trivia::tabs(1) +
-      Trivia::newlines(1);
+      Trivia::newlines(1) +
+      Trivia::backtick();
     CCCCombo.print(OS);
-    ASSERT_EQ(OS.str().str(), " \t\n");
+    ASSERT_EQ(OS.str().str(), " \t\n`");
   }
 
   {
@@ -159,29 +161,31 @@ TEST(TriviaTests, PrintingCombinations) {
 }
 
 TEST(TriviaTests, Contains) {
+  ASSERT_FALSE(Trivia().contains(TriviaKind::Backtick));
   ASSERT_FALSE(Trivia().contains(TriviaKind::BlockComment));
   ASSERT_FALSE(Trivia().contains(TriviaKind::DocBlockComment));
   ASSERT_FALSE(Trivia().contains(TriviaKind::DocLineComment));
   ASSERT_FALSE(Trivia().contains(TriviaKind::Formfeed));
-  ASSERT_FALSE(Trivia().contains(TriviaKind::GarbageText));
   ASSERT_FALSE(Trivia().contains(TriviaKind::LineComment));
   ASSERT_FALSE(Trivia().contains(TriviaKind::Newline));
   ASSERT_FALSE(Trivia().contains(TriviaKind::Space));
 
+  ASSERT_TRUE(Trivia::backtick().contains(TriviaKind::Backtick));
   ASSERT_TRUE(Trivia::blockComment("/**/").contains(TriviaKind::BlockComment));
   ASSERT_TRUE(Trivia::docBlockComment("/***/")
               .contains(TriviaKind::DocBlockComment));
   ASSERT_TRUE(Trivia::docLineComment("///")
               .contains(TriviaKind::DocLineComment));
-  ASSERT_TRUE(Trivia::garbageText("#!swift").contains(TriviaKind::GarbageText));
   ASSERT_TRUE(Trivia::lineComment("//").contains(TriviaKind::LineComment));
   ASSERT_TRUE(Trivia::newlines(1).contains(TriviaKind::Newline));
   ASSERT_TRUE(Trivia::spaces(1).contains(TriviaKind::Space));
 
-  auto Combo = Trivia::spaces(1) + Trivia::newlines(3) + Trivia::spaces(1);
+  auto Combo = Trivia::spaces(1) + Trivia::backtick() + Trivia::newlines(3)
+    + Trivia::spaces(1);
 
   ASSERT_TRUE(Combo.contains(TriviaKind::Space));
   ASSERT_TRUE(Combo.contains(TriviaKind::Newline));
+  ASSERT_TRUE(Combo.contains(TriviaKind::Backtick));
   ASSERT_FALSE(Combo.contains(TriviaKind::Tab));
   ASSERT_FALSE(Combo.contains(TriviaKind::LineComment));
   ASSERT_FALSE(Combo.contains(TriviaKind::Formfeed));
@@ -207,23 +211,23 @@ TEST(TriviaTests, push_back) {
   llvm::SmallString<3> Scratch;
   llvm::raw_svector_ostream OS(Scratch);
   Trivia Triv;
-  Triv.push_back(TriviaPiece::newline());
-  Triv.push_back(TriviaPiece::newline());
-  Triv.push_back(TriviaPiece::newline());
+  Triv.push_back(TriviaPiece::backtick());
+  Triv.push_back(TriviaPiece::backtick());
+  Triv.push_back(TriviaPiece::backtick());
   Triv.print(OS);
-  ASSERT_EQ(OS.str().str(), "\n\n\n");
+  ASSERT_EQ(OS.str().str(), "```");
 }
 
 TEST(TriviaTests, push_front) {
   llvm::SmallString<3> Scratch;
   llvm::raw_svector_ostream OS(Scratch);
   Trivia Triv;
-  Triv.push_back(TriviaPiece::newline());
+  Triv.push_back(TriviaPiece::backtick());
   Triv.push_front(TriviaPiece::spaces(1));
   Triv.push_back(TriviaPiece::spaces(1));
-  Triv.push_front(TriviaPiece::newline());
+  Triv.push_front(TriviaPiece::backtick());
   Triv.print(OS);
-  ASSERT_EQ(OS.str().str(), "\n \n ");
+  ASSERT_EQ(OS.str().str(), "` ` ");
 }
 
 TEST(TriviaTests, front) {

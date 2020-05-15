@@ -1,4 +1,6 @@
-// RUN: %target-typecheck-verify-swift -enable-objc-interop -F %S/Inputs/mock-sdk
+// RUN: %target-typecheck-verify-swift -F %S/Inputs/mock-sdk
+
+// XFAIL: linux
 
 import Foo
 // Don't import 'FooHelper'.

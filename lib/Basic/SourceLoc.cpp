@@ -35,32 +35,8 @@ void SourceManager::verifyAllBuffers() const {
 }
 
 SourceLoc SourceManager::getCodeCompletionLoc() const {
-  if (CodeCompletionBufferID == 0U)
-    return SourceLoc();
-
   return getLocForBufferStart(CodeCompletionBufferID)
       .getAdvancedLoc(CodeCompletionOffset);
-}
-
-StringRef SourceManager::getDisplayNameForLoc(SourceLoc Loc) const {
-  // Respect #line first
-  if (auto VFile = getVirtualFile(Loc))
-    return VFile->Name;
-
-  // Next, try the stat cache
-  auto Ident = getIdentifierForBuffer(findBufferContainingLoc(Loc));
-  auto found = StatusCache.find(Ident);
-  if (found != StatusCache.end()) {
-    return found->second.getName();
-  }
-
-  // Populate the cache with a (virtual) stat.
-  if (auto Status = FileSystem->status(Ident)) {
-    return (StatusCache[Ident] = Status.get()).getName();
-  }
-
-  // Finally, fall back to the buffer identifier.
-  return Ident;
 }
 
 unsigned
@@ -105,7 +81,7 @@ bool SourceManager::openVirtualFile(SourceLoc loc, StringRef name,
   }
 
   CharSourceRange range = CharSourceRange(*this, loc, end);
-  VirtualFiles[end.Value.getPointer()] = {range, name.str(), lineOffset};
+  VirtualFiles[end.Value.getPointer()] = { range, name, lineOffset };
   CachedVFile = {nullptr, nullptr};
   return true;
 }
@@ -213,8 +189,7 @@ StringRef SourceManager::extractText(CharSourceRange Range,
                        Range.getByteLength());
 }
 
-Optional<unsigned>
-SourceManager::findBufferContainingLocInternal(SourceLoc Loc) const {
+unsigned SourceManager::findBufferContainingLoc(SourceLoc Loc) const {
   assert(Loc.isValid());
   // Search the buffers back-to front, so later alias buffers are
   // visited first.
@@ -227,35 +202,17 @@ SourceManager::findBufferContainingLocInternal(SourceLoc Loc) const {
         less_equal(Loc.Value.getPointer(), Buf->getBufferEnd()))
       return i;
   }
-  return None;
-}
-
-unsigned SourceManager::findBufferContainingLoc(SourceLoc Loc) const {
-  auto Id = findBufferContainingLocInternal(Loc);
-  if (Id.hasValue())
-    return *Id;
   llvm_unreachable("no buffer containing location found");
 }
 
-bool SourceManager::isOwning(SourceLoc Loc) const {
-  return findBufferContainingLocInternal(Loc).hasValue();
-}
-
-void SourceRange::widen(SourceRange Other) {
-  if (Other.Start.Value.getPointer() < Start.Value.getPointer())
-    Start = Other.Start;
-  if (Other.End.Value.getPointer() > End.Value.getPointer())
-    End = Other.End;
-}
-
-void SourceLoc::printLineAndColumn(raw_ostream &OS, const SourceManager &SM,
-                                   unsigned BufferID) const {
+void SourceLoc::printLineAndColumn(raw_ostream &OS,
+                                   const SourceManager &SM) const {
   if (isInvalid()) {
     OS << "<invalid loc>";
     return;
   }
 
-  auto LineAndCol = SM.getLineAndColumn(*this, BufferID);
+  auto LineAndCol = SM.getLineAndColumn(*this);
   OS << "line:" << LineAndCol.first << ':' << LineAndCol.second;
 }
 
@@ -317,7 +274,10 @@ void CharSourceRange::print(raw_ostream &OS, const SourceManager &SM,
     return;
 
   if (PrintText) {
-    OS << " RangeText=\"" << SM.extractText(*this) << '"';
+    OS << " RangeText=\""
+       << StringRef(Start.Value.getPointer(),
+                    getEnd().Value.getPointer() - Start.Value.getPointer() + 1)
+       << '"';
   }
 }
 
@@ -325,37 +285,21 @@ void CharSourceRange::dump(const SourceManager &SM) const {
   print(llvm::errs(), SM);
 }
 
-llvm::Optional<unsigned>
-SourceManager::resolveOffsetForEndOfLine(unsigned BufferId,
-                                         unsigned Line) const {
-  return resolveFromLineCol(BufferId, Line, ~0u);
-}
-
-llvm::Optional<unsigned>
-SourceManager::getLineLength(unsigned BufferId, unsigned Line) const {
-  auto BegOffset = resolveFromLineCol(BufferId, Line, 0);
-  auto EndOffset = resolveFromLineCol(BufferId, Line, ~0u);
-  if (BegOffset && EndOffset) {
-     return EndOffset.getValue() - BegOffset.getValue();
-  }
-  return None;
-}
-
 llvm::Optional<unsigned> SourceManager::resolveFromLineCol(unsigned BufferId,
                                                            unsigned Line,
                                                            unsigned Col) const {
-  if (Line == 0) {
+  if (Line == 0 || Col == 0) {
     return None;
   }
-  const bool LineEnd = Col == ~0u;
   auto InputBuf = getLLVMSourceMgr().getMemoryBuffer(BufferId);
   const char *Ptr = InputBuf->getBufferStart();
   const char *End = InputBuf->getBufferEnd();
   const char *LineStart = Ptr;
-  --Line;
-  for (; Line && (Ptr < End); ++Ptr) {
+  for (; Ptr < End; ++Ptr) {
     if (*Ptr == '\n') {
       --Line;
+      if (Line == 0)
+        break;
       LineStart = Ptr+1;
     }
   }
@@ -363,49 +307,13 @@ llvm::Optional<unsigned> SourceManager::resolveFromLineCol(unsigned BufferId,
     return None;
   }
   Ptr = LineStart;
-  if (Col == 0)   {
-      return Ptr - InputBuf->getBufferStart();
-  }
-  // The <= here is to allow for non-inclusive range end positions at EOF
-  for (; ; ++Ptr) {
+  for (; Ptr < End; ++Ptr) {
     --Col;
     if (Col == 0)
       return Ptr - InputBuf->getBufferStart();
-    if (*Ptr == '\n' || Ptr == End) {
-      if (LineEnd) {
-        return Ptr - InputBuf->getBufferStart();
-      } else {
-        break;
-      }
-    }
+    if (*Ptr == '\n')
+      break;
   }
   return None;
 }
 
-unsigned SourceManager::getExternalSourceBufferId(StringRef Path) {
-  auto It = BufIdentIDMap.find(Path);
-  if (It != BufIdentIDMap.end()) {
-    return It->getSecond();
-  }
-  unsigned Id = 0u;
-  auto InputFileOrErr = swift::vfs::getFileOrSTDIN(*getFileSystem(), Path);
-  if (InputFileOrErr) {
-    // This assertion ensures we can look up from the map in the future when
-    // using the same Path.
-    assert(InputFileOrErr.get()->getBufferIdentifier() == Path);
-    Id = addNewSourceBuffer(std::move(InputFileOrErr.get()));
-  }
-  return Id;
-}
-
-SourceLoc
-SourceManager::getLocFromExternalSource(StringRef Path, unsigned Line,
-                                        unsigned Col) {
-  auto BufferId = getExternalSourceBufferId(Path);
-  if (BufferId == 0u)
-    return SourceLoc();
-  auto Offset = resolveFromLineCol(BufferId, Line, Col);
-  if (!Offset.hasValue())
-    return SourceLoc();
-  return getLocForOffset(BufferId, *Offset);
-}

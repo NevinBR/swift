@@ -41,49 +41,47 @@
 NOMINALTYPEMETADATAKIND(Class, 0)
 
 /// A struct type.
-NOMINALTYPEMETADATAKIND(Struct, 0 | MetadataKindIsNonHeap)
+NOMINALTYPEMETADATAKIND(Struct, 1)
 
 /// An enum type.
 /// If we add reference enums, that needs to go here.
-NOMINALTYPEMETADATAKIND(Enum, 1 | MetadataKindIsNonHeap)
+NOMINALTYPEMETADATAKIND(Enum, 2)
 
 /// An optional type.
-NOMINALTYPEMETADATAKIND(Optional, 2 | MetadataKindIsNonHeap)
-
-/// A foreign class, such as a Core Foundation class.
-METADATAKIND(ForeignClass, 3 | MetadataKindIsNonHeap)
+NOMINALTYPEMETADATAKIND(Optional, 3)
 
 /// A type whose value is not exposed in the metadata system.
-METADATAKIND(Opaque, 0 | MetadataKindIsRuntimePrivate | MetadataKindIsNonHeap)
+METADATAKIND(Opaque, 8)
 
 /// A tuple.
-METADATAKIND(Tuple, 1 | MetadataKindIsRuntimePrivate | MetadataKindIsNonHeap)
+METADATAKIND(Tuple, 9)
 
 /// A monomorphic function.
-METADATAKIND(Function, 2 | MetadataKindIsRuntimePrivate | MetadataKindIsNonHeap)
+METADATAKIND(Function, 10)
 
 /// An existential type.
-METADATAKIND(Existential, 3 | MetadataKindIsRuntimePrivate | MetadataKindIsNonHeap)
+METADATAKIND(Existential, 12)
 
 /// A metatype.
-METADATAKIND(Metatype, 4 | MetadataKindIsRuntimePrivate | MetadataKindIsNonHeap)
+METADATAKIND(Metatype, 13)
 
 /// An ObjC class wrapper.
-METADATAKIND(ObjCClassWrapper, 5 | MetadataKindIsRuntimePrivate | MetadataKindIsNonHeap)
+METADATAKIND(ObjCClassWrapper, 14)
 
 /// An existential metatype.
-METADATAKIND(ExistentialMetatype, 6 | MetadataKindIsRuntimePrivate | MetadataKindIsNonHeap)
+METADATAKIND(ExistentialMetatype, 15)
+
+/// A foreign class, such as a Core Foundation class.
+METADATAKIND(ForeignClass, 16)
 
 /// A heap-allocated local variable using statically-generated metadata.
-METADATAKIND(HeapLocalVariable, 0 | MetadataKindIsNonType)
+METADATAKIND(HeapLocalVariable, 64)
 
 /// A heap-allocated local variable using runtime-instantiated metadata.
-METADATAKIND(HeapGenericLocalVariable,
-             0 | MetadataKindIsNonType | MetadataKindIsRuntimePrivate)
+METADATAKIND(HeapGenericLocalVariable, 65)
 
 /// A native error object.
-METADATAKIND(ErrorObject,
-             1 | MetadataKindIsNonType | MetadataKindIsRuntimePrivate)
+METADATAKIND(ErrorObject, 128)
 
 // getEnumeratedMetadataKind assumes that all the enumerated values here
 // will be <= LastEnumeratedMetadataKind.

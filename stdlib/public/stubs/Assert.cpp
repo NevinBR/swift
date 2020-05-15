@@ -21,11 +21,41 @@
 
 using namespace swift;
 
+bool swift::_swift_reportFatalErrorsToDebugger = true;
+
+static int swift_asprintf(char **strp, const char *fmt, ...) {
+  va_list args;
+  va_start(args, fmt);
+#if defined(_WIN32)
+  int len = _vscprintf(fmt, args);
+  if (len < 0) {
+    va_end(args);
+    return -1;
+  }
+  char *buffer = static_cast<char *>(malloc(len + 1));
+  if (!buffer) {
+    va_end(args);
+    return -1;
+  }
+  int result = vsprintf(buffer, fmt, args);
+  if (result < 0) {
+    va_end(args);
+    free(buffer);
+    return -1;
+  }
+  *strp = buffer;
+#else
+  int result = vasprintf(strp, fmt, args);
+#endif
+  va_end(args);
+  return result;
+}
+
 static void logPrefixAndMessageToDebugger(
     const unsigned char *prefix, int prefixLength,
     const unsigned char *message, int messageLength
 ) {
-  if (!_swift_shouldReportFatalErrorsToDebugger())
+  if (!_swift_reportFatalErrorsToDebugger)
     return;
 
   char *debuggerMessage;
@@ -46,6 +76,8 @@ void swift::_swift_stdlib_reportFatalErrorInFile(
     uint32_t line,
     uint32_t flags
 ) {
+  logPrefixAndMessageToDebugger(prefix, prefixLength, message, messageLength);
+
   char *log;
   swift_asprintf(
       &log, "%.*s: %.*s%sfile %.*s, line %" PRIu32 "\n",
@@ -57,8 +89,6 @@ void swift::_swift_stdlib_reportFatalErrorInFile(
 
   swift_reportError(flags, log);
   free(log);
-
-  logPrefixAndMessageToDebugger(prefix, prefixLength, message, messageLength);
 }
 
 void swift::_swift_stdlib_reportFatalError(
@@ -66,6 +96,8 @@ void swift::_swift_stdlib_reportFatalError(
     const unsigned char *message, int messageLength,
     uint32_t flags
 ) {
+  logPrefixAndMessageToDebugger(prefix, prefixLength, message, messageLength);
+
   char *log;
   swift_asprintf(
       &log, "%.*s: %.*s\n",
@@ -74,8 +106,6 @@ void swift::_swift_stdlib_reportFatalError(
 
   swift_reportError(flags, log);
   free(log);
-
-  logPrefixAndMessageToDebugger(prefix, prefixLength, message, messageLength);
 }
 
 void swift::_swift_stdlib_reportUnimplementedInitializerInFile(
@@ -88,7 +118,7 @@ void swift::_swift_stdlib_reportUnimplementedInitializerInFile(
   char *log;
   swift_asprintf(
       &log,
-      "%.*s: %" PRIu32 ": %" PRIu32 ": Fatal error: Use of unimplemented "
+      "%.*s: %" PRIu32 ": %" PRIu32 ": fatal error: use of unimplemented "
       "initializer '%.*s' for class '%.*s'\n",
       fileLength, file,
       line, column,
@@ -107,7 +137,7 @@ void swift::_swift_stdlib_reportUnimplementedInitializer(
   char *log;
   swift_asprintf(
       &log,
-      "Fatal error: Use of unimplemented "
+      "fatal error: use of unimplemented "
       "initializer '%.*s' for class '%.*s'\n",
       initNameLength, initName,
       classNameLength, className);

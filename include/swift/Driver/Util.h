@@ -13,7 +13,7 @@
 #ifndef SWIFT_DRIVER_UTIL_H
 #define SWIFT_DRIVER_UTIL_H
 
-#include "swift/Basic/FileTypes.h"
+#include "swift/Driver/Types.h"
 #include "swift/Basic/LLVM.h"
 #include "llvm/ADT/SmallVector.h"
 
@@ -26,16 +26,20 @@ namespace opt {
 namespace swift {
 
 namespace driver {
+  class Action;
+
+  /// Type used for list of Actions.
+  typedef SmallVector<Action *, 3> ActionList;
+
   /// An input argument from the command line and its inferred type.
-  using InputPair = std::pair<file_types::ID, const llvm::opt::Arg *>;
+  typedef std::pair<types::ID, const llvm::opt::Arg *> InputPair;
   /// Type used for a list of input arguments.
-  using InputFileList = SmallVector<InputPair, 16>;
+  typedef SmallVector<InputPair, 16> InputFileList;
 
   enum class LinkKind {
     None,
     Executable,
-    DynamicLibrary,
-    StaticLibrary
+    DynamicLibrary
   };
 
   /// Used by a Job to request a "filelist": a file containing a list of all
@@ -44,20 +48,13 @@ namespace driver {
   /// The Compilation is responsible for generating this file before running
   /// the Job this info is attached to.
   struct FilelistInfo {
-    enum class WhichFiles : unsigned {
-      InputJobs,
-      SourceInputActions,
-      InputJobsAndSourceInputActions,
-      Output,
-      /// Batch mode frontend invocations may have so many supplementary
-      /// outputs that they don't comfortably fit as command-line arguments.
-      /// In that case, add a FilelistInfo to record the path to the file.
-      /// The type is ignored.
-      SupplementaryOutput,
+    enum WhichFiles : bool {
+      Input,
+      Output
     };
 
     StringRef path;
-    file_types::ID type;
+    types::ID type;
     WhichFiles whichFiles;
   };
 

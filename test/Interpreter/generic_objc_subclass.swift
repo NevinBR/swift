@@ -2,7 +2,6 @@
 //
 // RUN: %target-clang -fobjc-arc %S/Inputs/ObjCClasses/ObjCClasses.m -c -o %t/ObjCClasses.o
 // RUN: %target-build-swift -I %S/Inputs/ObjCClasses/ -Xlinker %t/ObjCClasses.o %s -o %t/a.out
-// RUN: %target-codesign %t/a.out
 // RUN: %target-run %t/a.out | %FileCheck %s
 
 // REQUIRES: executable_test
@@ -291,37 +290,11 @@ class DependOnAlignOf<T> : HasHiddenIvars2 {
 let ad = DependOnAlignOf<Double>()
 let ai = DependOnAlignOf<Int>()
 
-do {
-  let fd = { (ad.x, ad.first, ad.second, ad.third) }
-  let fi = { (ai.x, ai.first, ai.second, ai.third) }
+let fd = { (ad.x, ad.first, ad.second, ad.third) }
+let fi = { (ai.x, ai.first, ai.second, ai.third) }
 
-  // CHECK: (nil, a.Foo, a.Bar, nil)
-  print(fd())
+// CHECK: (nil, a.Foo, a.Bar, nil)
+print(fd())
 
-  // CHECK: (nil, a.Foo, a.Bar, nil)
-  print(fi())
-}
-
-// Same as above, but there's another class in between the
-// Objective-C class and us
-class HasHiddenIvars3 : HasHiddenIvars2 { }
-
-class AlsoDependOnAlignOf<T> : HasHiddenIvars3 {
-  var first = Foo()
-  var second = Bar()
-  var third: T?
-}
-
-do {
-  let ad = AlsoDependOnAlignOf<Double>()
-  let ai = AlsoDependOnAlignOf<Int>()
-
-  let fd = { (ad.x, ad.first, ad.second, ad.third) }
-  let fi = { (ai.x, ai.first, ai.second, ai.third) }
-
-  // CHECK: (nil, a.Foo, a.Bar, nil)
-  print(fd())
-
-  // CHECK: (nil, a.Foo, a.Bar, nil)
-  print(fi())
-}
+// CHECK: (nil, a.Foo, a.Bar, nil)
+print(fi())

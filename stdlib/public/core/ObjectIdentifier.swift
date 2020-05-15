@@ -14,15 +14,23 @@
 ///
 /// In Swift, only class instances and metatypes have unique identities. There
 /// is no notion of identity for structs, enums, functions, or tuples.
-@frozen // trivial-implementation
-public struct ObjectIdentifier {
-  @usableFromInline // trivial-implementation
+public struct ObjectIdentifier : Hashable {
   internal let _value: Builtin.RawPointer
+
+  // FIXME: Better hashing algorithm
+  /// The identifier's hash value.
+  ///
+  /// The hash value is not guaranteed to be stable across different
+  /// invocations of the same program.  Do not persist the hash value across
+  /// program runs.
+  public var hashValue: Int {
+    return Int(Builtin.ptrtoint_Word(_value))
+  }
 
   /// Creates an instance that uniquely identifies the given class instance.
   ///
-  /// The following example creates an example class `IntegerRef` and compares
-  /// instances of the class using their object identifiers and the identical-to
+  /// The following example creates an example class `A` and compares instances
+  /// of the class using their object identifiers and the identical-to
   /// operator (`===`):
   ///
   ///     class IntegerRef {
@@ -47,7 +55,6 @@ public struct ObjectIdentifier {
   ///     // Prints "false"
   ///
   /// - Parameter x: An instance of a class.
-  @inlinable // trivial-implementation
   public init(_ x: AnyObject) {
     self._value = Builtin.bridgeToRawPointer(x)
   }
@@ -55,49 +62,31 @@ public struct ObjectIdentifier {
   /// Creates an instance that uniquely identifies the given metatype.
   ///
   /// - Parameter: A metatype.
-  @inlinable // trivial-implementation
   public init(_ x: Any.Type) {
     self._value = unsafeBitCast(x, to: Builtin.RawPointer.self)
   }
 }
 
-extension ObjectIdentifier: CustomDebugStringConvertible {
+extension ObjectIdentifier : CustomDebugStringConvertible {
   /// A textual representation of the identifier, suitable for debugging.
   public var debugDescription: String {
     return "ObjectIdentifier(\(_rawPointerToString(_value)))"
   }
 }
 
-extension ObjectIdentifier: Equatable {
-  @inlinable // trivial-implementation
-  public static func == (x: ObjectIdentifier, y: ObjectIdentifier) -> Bool {
-    return Bool(Builtin.cmp_eq_RawPointer(x._value, y._value))
-  }
-}
-
-extension ObjectIdentifier: Comparable {
-  @inlinable // trivial-implementation
+extension ObjectIdentifier : Comparable {
   public static func < (lhs: ObjectIdentifier, rhs: ObjectIdentifier) -> Bool {
     return UInt(bitPattern: lhs) < UInt(bitPattern: rhs)
   }
-}
 
-extension ObjectIdentifier: Hashable {
-  /// Hashes the essential components of this value by feeding them into the
-  /// given hasher.
-  ///
-  /// - Parameter hasher: The hasher to use when combining the components
-  ///   of this instance.
-  @inlinable
-  public func hash(into hasher: inout Hasher) {
-    hasher.combine(Int(Builtin.ptrtoint_Word(_value)))
+  public static func == (x: ObjectIdentifier, y: ObjectIdentifier) -> Bool {
+    return Bool(Builtin.cmp_eq_RawPointer(x._value, y._value))
   }
 }
 
 extension UInt {
   /// Creates an integer that captures the full value of the given object
   /// identifier.
-  @inlinable // trivial-implementation
   public init(bitPattern objectID: ObjectIdentifier) {
     self.init(Builtin.ptrtoint_Word(objectID._value))
   }
@@ -106,8 +95,29 @@ extension UInt {
 extension Int {
   /// Creates an integer that captures the full value of the given object
   /// identifier.
-  @inlinable // trivial-implementation
   public init(bitPattern objectID: ObjectIdentifier) {
     self.init(bitPattern: UInt(bitPattern: objectID))
   }
 }
+
+extension ObjectIdentifier {
+  @available(*, unavailable, message: "use the 'UInt(_:)' initializer")
+  public var uintValue: UInt {
+    Builtin.unreachable()
+  }
+}
+
+extension UInt {
+  @available(*, unavailable, renamed: "init(bitPattern:)")
+  public init(_ objectID: ObjectIdentifier) {
+    Builtin.unreachable()
+  }
+}
+
+extension Int {
+  @available(*, unavailable, renamed: "init(bitPattern:)")
+  public init(_ objectID: ObjectIdentifier) {
+    Builtin.unreachable()
+  }
+}
+

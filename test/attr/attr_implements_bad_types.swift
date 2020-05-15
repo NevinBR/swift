@@ -1,4 +1,4 @@
-// RUN: %target-typecheck-verify-swift
+// RUN: %target-swift-frontend -typecheck -verify %s
 
 protocol NeedsF0 {
   func f0() // expected-note {{protocol requires function 'f0()' with type '() -> ()'; do you want to add a stub?}}

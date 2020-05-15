@@ -10,6 +10,8 @@
 
 import ObjectiveC
 
+typealias MyTuple = (Int, AnyObject?)
+typealias MyNamedTuple = (a: Int, b: AnyObject?)
 typealias MyInt = Int
 typealias MyBlockWithEscapingParam = (@escaping () -> ()) -> Int
 typealias MyBlockWithNoescapeParam = (() -> ()) -> Int
@@ -58,6 +60,9 @@ typealias MyBlockWithNoescapeParam = (() -> ()) -> Int
   @objc func returnsBlockWithTwoInputs() -> ((NSObject, NSObject) -> ())? {
     return nil
   }
+
+  // CHECK-NEXT: - (void)blockWithTypealias:(NSInteger (^ _Nonnull)(NSInteger, id _Nullable))input;
+  @objc func blockWithTypealias(_ input: @escaping (MyTuple) -> MyInt) {}
   
   // CHECK-NEXT: - (void)blockWithSimpleTypealias:(NSInteger (^ _Nonnull)(NSInteger))input;
   @objc func blockWithSimpleTypealias(_ input: @escaping (MyInt) -> MyInt) {}
@@ -72,6 +77,9 @@ typealias MyBlockWithNoescapeParam = (() -> ()) -> Int
   @objc func returnsBlockWithNamedInput() -> ((_ object: NSObject) -> ())? {
     return nil
   }
+
+  // CHECK-NEXT: - (void)blockWithTypealiasWithNames:(SWIFT_NOESCAPE NSInteger (^ _Nonnull)(NSInteger a, id _Nullable b))input;
+  @objc func blockWithTypealiasWithNames(_ input: (MyNamedTuple) -> MyInt) {}
 
   // CHECK-NEXT: - (void)blockWithKeyword:(SWIFT_NOESCAPE NSInteger (^ _Nonnull)(NSInteger))_Nullable_;
   @objc func blockWithKeyword(_ _Nullable: (_ `class`: Int) -> Int) {}
@@ -113,9 +121,6 @@ typealias MyBlockWithNoescapeParam = (() -> ()) -> Int
     return input
   }
 
-  // CHECK-NEXT: - (void)blockWithConsumingArgument:(void (^ _Nonnull)(SWIFT_RELEASES_ARGUMENT NSObject * _Nonnull))block;
-  @objc func blockWithConsumingArgument(_ block: @escaping (__owned NSObject) -> ()) {}
-
   // CHECK-NEXT: @property (nonatomic, copy) NSInteger (^ _Nullable savedBlock)(NSInteger);
   @objc var savedBlock: ((Int) -> Int)?
   
@@ -138,9 +143,6 @@ typealias MyBlockWithNoescapeParam = (() -> ()) -> Int
   
   // CHECK-NEXT: @property (nonatomic, getter=class, setter=setClass:) NSInteger (* _Nonnull class_)(NSInteger);
   @objc var `class`: @convention(c) (_ function: Int) -> Int = { $0 }
-  
-  // CHECK-NEXT: init
-  @objc init() {}
 }
-
+// CHECK-NEXT: init
 // CHECK-NEXT: @end

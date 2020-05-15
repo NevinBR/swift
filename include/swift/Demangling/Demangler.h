@@ -23,6 +23,11 @@
 
 //#define NODE_FACTORY_DEBUGGING
 
+#ifdef NODE_FACTORY_DEBUGGING
+#include <iostream>
+#endif
+
+
 using namespace swift::Demangle;
 using llvm::StringRef;
 
@@ -64,77 +69,31 @@ class NodeFactory {
   }
 
   static void freeSlabs(Slab *slab);
-
-  /// If not null, the NodeFactory from which this factory borrowed free memory.
-  NodeFactory *BorrowedFrom = nullptr;
-
-  /// True if some other NodeFactory borrowed free memory from this factory.
-  bool isBorrowed = false;
-
-#ifdef NODE_FACTORY_DEBUGGING
-  size_t allocatedMemory = 0;
-  static int nestingLevel;
-  std::string indent() { return std::string(nestingLevel * 2, ' '); }
-#endif
-
+  
 public:
 
   NodeFactory() {
 #ifdef NODE_FACTORY_DEBUGGING
-    fprintf(stderr, "%s## New NodeFactory\n", indent().c_str());
-    nestingLevel++;
+    std::cerr << "## New NodeFactory " << this << "\n";
 #endif
   }
-
-  /// Provide pre-allocated memory, e.g. memory on the stack.
-  ///
-  /// Only if this memory overflows, the factory begins to malloc.
-  void providePreallocatedMemory(char *Memory, size_t Size) {
-#ifdef NODE_FACTORY_DEBUGGING
-    fprintf(stderr, "%s++ provide preallocated memory, size = %zu\n", indent().c_str(), Size);
-#endif
-    assert(!CurPtr && !End && !CurrentSlab);
-    CurPtr = Memory;
-    End = CurPtr + Size;
-  }
-
-  /// Borrow free memory from another factory \p BorrowFrom.
-  ///
-  /// While this factory is alive, no allocations can be done in the
-  /// \p BorrowFrom factory.
-  void providePreallocatedMemory(NodeFactory &BorrowFrom) {
-    assert(!CurPtr && !End && !CurrentSlab);
-    assert(!BorrowFrom.isBorrowed && !BorrowedFrom);
-    BorrowFrom.isBorrowed = true;
-    BorrowedFrom = &BorrowFrom;
-    CurPtr = BorrowFrom.CurPtr;
-    End = BorrowFrom.End;
-#ifdef NODE_FACTORY_DEBUGGING
-    fprintf(stderr, "%s++ borrow memory, size = %zu\n", indent().c_str(), (End - CurPtr));
-#endif
-  }
-
+  
   virtual ~NodeFactory() {
     freeSlabs(CurrentSlab);
 #ifdef NODE_FACTORY_DEBUGGING
-    nestingLevel--;
-    fprintf(stderr, "%s## Delete NodeFactory: allocated memory = %zu\n", indent().c_str(), allocatedMemory)
+    std::cerr << "Delete NodeFactory " << this << "\n";
 #endif
-    if (BorrowedFrom) {
-      BorrowedFrom->isBorrowed = false;
-    }
   }
   
   virtual void clear();
   
   /// Allocates an object of type T or an array of objects of type T.
   template<typename T> T *Allocate(size_t NumObjects = 1) {
-    assert(!isBorrowed);
     size_t ObjectSize = NumObjects * sizeof(T);
     CurPtr = align(CurPtr, alignof(T));
 #ifdef NODE_FACTORY_DEBUGGING
-    fprintf(stderr, "%salloc %zu, CurPtr = %p\n", indent().c_str(), ObjectSize, (void *)CurPtr)
-    allocatedMemory += ObjectSize;
+    std::cerr << "  alloc " << ObjectSize << ", CurPtr = "
+              << (void *)CurPtr << "\n";
 #endif
 
     // Do we have enough space in the current slab?
@@ -154,8 +113,9 @@ public:
       End = (char *)newSlab + AllocSize;
       assert(CurPtr + ObjectSize <= End);
 #ifdef NODE_FACTORY_DEBUGGING
-      fprintf(stderr, "%s** new slab %p, allocsize = %zu, CurPtr = %p, End = %p\n",
-            indent().c_str(), newSlab, AllocSize, (void *)CurPtr, (void *)End);
+      std::cerr << "    ** new slab " << newSlab << ", allocsize = "
+                << AllocSize << ", CurPtr = " << (void *)CurPtr
+                << ", End = " << (void *)End << "\n";
 #endif
     }
     T *AllocatedObj = (T *)CurPtr;
@@ -172,15 +132,15 @@ public:
   /// new memory address.
   /// The \p Capacity is enlarged at least by \p MinGrowth, but can also be
   /// enlarged by a bigger value.
-  template<typename T> void Reallocate(T *&Objects, uint32_t &Capacity,
+  template<typename T> void Reallocate(T *&Objects, size_t &Capacity,
                                        size_t MinGrowth) {
-    assert(!isBorrowed);
     size_t OldAllocSize = Capacity * sizeof(T);
     size_t AdditionalAlloc = MinGrowth * sizeof(T);
 
 #ifdef NODE_FACTORY_DEBUGGING
-    fprintf(stderr, "%srealloc: capacity = %d (size = %zu), growth = %zu (size = %zu)\n",
-          indent().c_str(), Capacity, OldAllocSize, MinGrowth, AdditionalAlloc);
+    std::cerr << "  realloc " << Objects << ", num = " << NumObjects
+              << " (size = " << OldAllocSize << "), Growth = " << Growth
+              << " (size = " << AdditionalAlloc << ")\n";
 #endif
     if ((char *)Objects + OldAllocSize == CurPtr
         && CurPtr + AdditionalAlloc <= End) {
@@ -189,8 +149,7 @@ public:
       CurPtr += AdditionalAlloc;
       Capacity += MinGrowth;
 #ifdef NODE_FACTORY_DEBUGGING
-      fprintf(stderr, "%s** can grow: %p\n", indent().c_str(), (void *)CurPtr);
-      allocatedMemory += AdditionalAlloc;
+      std::cerr << "    ** can grow: CurPtr = " << (void *)CurPtr << "\n";
 #endif
       return;
     }
@@ -244,11 +203,12 @@ template<typename T> class Vector {
 
 protected:
   T *Elems = nullptr;
-  uint32_t NumElems = 0;
-  uint32_t Capacity = 0;
+  size_t NumElems = 0;
+  size_t Capacity = 0;
 
 public:
-  using iterator = T *;
+  
+  typedef T *iterator;
 
   Vector() { }
 
@@ -268,11 +228,7 @@ public:
     Capacity = 0;
     Elems = 0;
   }
-
-  void clear() {
-    NumElems = 0;
-  }
-
+  
   iterator begin() { return Elems; }
   iterator end() { return Elems + NumElems; }
   
@@ -291,11 +247,6 @@ public:
   bool empty() const { return NumElems == 0; }
 
   T &back() { return (*this)[NumElems - 1]; }
-
-  void resetSize(size_t toPos) {
-    assert(toPos <= NumElems);
-    NumElems = toPos;
-  }
 
   void push_back(const T &NewElem, NodeFactory &Factory) {
     if (NumElems >= Capacity)
@@ -325,27 +276,10 @@ public:
   // Append an integer as readable number.
   void append(int Number, NodeFactory &Factory);
 
-  // Append an unsigned 64 bit integer as readable number.
-  void append(unsigned long long Number, NodeFactory &Factory);
-
   StringRef str() const {
     return StringRef(Elems, NumElems);
   }
 };
-
-/// Kinds of symbolic reference supported.
-enum class SymbolicReferenceKind : uint8_t {
-  /// A symbolic reference to a context descriptor, representing the
-  /// (unapplied generic) context.
-  Context,
-  /// A symbolic reference to an accessor function, which can be executed in
-  /// the process to get a pointer to the referenced entity.
-  AccessorFunctionReference,
-};
-
-using SymbolicReferenceResolver_t = NodePointer (SymbolicReferenceKind,
-                                                 Directness,
-                                                 int32_t, const void *);
 
 /// The demangler.
 ///
@@ -356,19 +290,13 @@ protected:
   StringRef Text;
   size_t Pos = 0;
 
-  /// Mangling style where function type would have
-  /// labels attached to it, instead of having them
-  /// as part of the name.
-  bool IsOldFunctionTypeMangling = false;
-
   Vector<NodePointer> NodeStack;
   Vector<NodePointer> Substitutions;
+  Vector<unsigned> PendingSubstitutions;
 
   static const int MaxNumWords = 26;
   StringRef Words[MaxNumWords];
   int NumWords = 0;
-  
-  std::function<SymbolicReferenceResolver_t> SymbolicReferenceResolver;
 
   bool nextIf(StringRef str) {
     if (!Text.substr(Pos).startswith(str)) return false;
@@ -436,23 +364,7 @@ protected:
     return popNode();
   }
 
-  /// This class handles preparing the initial state for a demangle job in a reentrant way, pushing the
-  /// existing state back when a demangle job is completed.
-  class DemangleInitRAII {
-    Demangler &Dem;
-    Vector<NodePointer> NodeStack;
-    Vector<NodePointer> Substitutions;
-    int NumWords;
-    StringRef Text;
-    size_t Pos;
-    std::function<SymbolicReferenceResolver_t> SymbolicReferenceResolver;
-    
-  public:
-    DemangleInitRAII(Demangler &Dem, StringRef MangledName,
-         std::function<SymbolicReferenceResolver_t> SymbolicReferenceResolver);
-    ~DemangleInitRAII();
-  };
-  friend DemangleInitRAII;
+  void init(StringRef MangledName);
   
   void addSubstitution(NodePointer Nd) {
     if (Nd)
@@ -466,9 +378,6 @@ protected:
                                  NodePointer Child2);
   NodePointer createWithChildren(Node::Kind kind, NodePointer Child1,
                                  NodePointer Child2, NodePointer Child3);
-  NodePointer createWithChildren(Node::Kind kind, NodePointer Child1,
-                                 NodePointer Child2, NodePointer Child3,
-                                 NodePointer Child4);
   NodePointer createWithPoppedType(Node::Kind kind) {
     return createWithChild(kind, popNode(Node::Kind::Type));
   }
@@ -482,11 +391,8 @@ protected:
   int demangleNatural();
   int demangleIndex();
   NodePointer demangleIndexAsNode();
-  NodePointer demangleDependentConformanceIndex();
   NodePointer demangleIdentifier();
   NodePointer demangleOperatorIdentifier();
-
-  std::string demangleBridgedMethodParams();
 
   NodePointer demangleMultiSubstitutions();
   NodePointer pushMultiSubstitutions(int RepeatCount, size_t SubstIdx);
@@ -498,14 +404,13 @@ protected:
   NodePointer popModule();
   NodePointer popContext();
   NodePointer popTypeAndGetChild();
-  NodePointer popTypeAndGetAnyGeneric();
+  NodePointer popTypeAndGetNominal();
   NodePointer demangleBuiltinType();
   NodePointer demangleAnyGenericType(Node::Kind kind);
   NodePointer demangleExtensionContext();
   NodePointer demanglePlainFunction();
   NodePointer popFunctionType(Node::Kind kind);
   NodePointer popFunctionParams(Node::Kind kind);
-  NodePointer popFunctionParamLabels(NodePointer FuncType);
   NodePointer popTuple();
   NodePointer popTypeList();
   NodePointer popProtocol();
@@ -513,50 +418,35 @@ protected:
   NodePointer demangleBoundGenericArgs(NodePointer nominalType,
                                     const Vector<NodePointer> &TypeLists,
                                     size_t TypeListIdx);
-  NodePointer popAnyProtocolConformanceList();
-  NodePointer demangleRetroactiveConformance();
   NodePointer demangleInitializer();
-  NodePointer demangleImplParamConvention(Node::Kind ConvKind);
+  NodePointer demangleImplParamConvention();
   NodePointer demangleImplResultConvention(Node::Kind ConvKind);
-  NodePointer demangleImplDifferentiability();
   NodePointer demangleImplFunctionType();
   NodePointer demangleMetatype();
-  NodePointer demanglePrivateContextDescriptor();
   NodePointer createArchetypeRef(int depth, int i);
   NodePointer demangleArchetype();
   NodePointer demangleAssociatedTypeSimple(NodePointer GenericParamIdx);
   NodePointer demangleAssociatedTypeCompound(NodePointer GenericParamIdx);
 
   NodePointer popAssocTypeName();
-  NodePointer popAssocTypePath();
   NodePointer getDependentGenericParamType(int depth, int index);
   NodePointer demangleGenericParamIndex();
   NodePointer popProtocolConformance();
-  NodePointer demangleRetroactiveProtocolConformanceRef();
-  NodePointer popAnyProtocolConformance();
-  NodePointer demangleConcreteProtocolConformance();
-  NodePointer popDependentProtocolConformance();
-  NodePointer demangleDependentProtocolConformanceRoot();
-  NodePointer demangleDependentProtocolConformanceInherited();
-  NodePointer popDependentAssociatedConformance();
-  NodePointer demangleDependentProtocolConformanceAssociated();
   NodePointer demangleThunkOrSpecialization();
   NodePointer demangleGenericSpecialization(Node::Kind SpecKind);
   NodePointer demangleFunctionSpecialization();
-  NodePointer demangleFuncSpecParam(Node::Kind Kind);
+  NodePointer demangleFuncSpecParam(Node::IndexType ParamIdx);
   NodePointer addFuncSpecParamNumber(NodePointer Param,
                               FunctionSigSpecializationParamKind Kind);
 
-  NodePointer demangleSpecAttributes(Node::Kind SpecKind);
+  NodePointer demangleSpecAttributes(Node::Kind SpecKind,
+                                     bool demangleUniqueID = false);
 
   NodePointer demangleWitness();
   NodePointer demangleSpecialType();
   NodePointer demangleMetatypeRepresentation();
-  NodePointer demangleAccessor(NodePointer ChildNode);
   NodePointer demangleFunctionEntity();
   NodePointer demangleEntity(Node::Kind Kind);
-  NodePointer demangleVariable();
-  NodePointer demangleSubscript();
   NodePointer demangleProtocolList();
   NodePointer demangleProtocolListType();
   NodePointer demangleGenericSignature(bool hasParamCounts);
@@ -564,13 +454,8 @@ protected:
   NodePointer demangleGenericType();
   NodePointer demangleValueWitness();
 
-  NodePointer demangleTypeMangling();
-  NodePointer demangleSymbolicReference(unsigned char rawKind,
-                                        const void *at);
+  NodePointer demangleObjCTypeName();
 
-  bool demangleBoundGenerics(Vector<NodePointer> &TypeListList,
-                             NodePointer &RetroactiveConformances);
-  
   void dump();
 
 public:
@@ -581,46 +466,26 @@ public:
   /// Demangle the given symbol and return the parse tree.
   ///
   /// \param MangledName The mangled symbol string, which start with the
-  /// mangling prefix $S.
-  /// \param SymbolicReferenceResolver A function invoked to resolve symbolic references in
-  /// the string. If null, then symbolic references will cause the demangle to fail.
+  /// mangling prefix _T0.
   ///
   /// \returns A parse tree for the demangled string - or a null pointer
   /// on failure.
   /// The lifetime of the returned node tree ends with the lifetime of the
   /// Demangler or with a call of clear().
-  NodePointer demangleSymbol(StringRef MangledName,
-            std::function<SymbolicReferenceResolver_t> SymbolicReferenceResolver
-               = nullptr);
+  NodePointer demangleSymbol(StringRef MangledName);
 
   /// Demangle the given type and return the parse tree.
   ///
   /// \param MangledName The mangled type string, which does _not_ start with
-  /// the mangling prefix $S.
-  /// \param SymbolicReferenceResolver A function invoked to resolve symbolic references in
-  /// the string. If null, then symbolic references will cause the demangle to fail.
+  /// the mangling prefix _T0.
   ///
   /// \returns A parse tree for the demangled string - or a null pointer
   /// on failure.
   /// The lifetime of the returned node tree ends with the lifetime of the
   /// Demangler or with a call of clear().
-  NodePointer demangleType(StringRef MangledName,
-            std::function<SymbolicReferenceResolver_t> SymbolicReferenceResolver
-              = nullptr);
+  NodePointer demangleType(StringRef MangledName);
 };
-
-/// A demangler which uses stack space for its initial memory.
-///
-/// The \p Size paramter specifies the size of the stack space.
-template <size_t Size> class StackAllocatedDemangler : public Demangler {
-  char StackSpace[Size];
-
-public:
-  StackAllocatedDemangler() {
-    providePreallocatedMemory(StackSpace, Size);
-  }
-};
-
+  
 NodePointer demangleOldSymbolAsNode(StringRef MangledName,
                                     NodeFactory &Factory);
 } // end namespace Demangle

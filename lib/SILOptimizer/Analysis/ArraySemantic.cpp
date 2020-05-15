@@ -10,34 +10,154 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/ADT/StringSwitch.h"
 #include "swift/SILOptimizer/Analysis/ArraySemantic.h"
+#include "swift/SILOptimizer/Analysis/DominanceAnalysis.h"
+#include "swift/SILOptimizer/Utils/Local.h"
 #include "swift/SIL/DebugUtils.h"
 #include "swift/SIL/SILArgument.h"
 #include "swift/SIL/SILBuilder.h"
 #include "swift/SIL/SILFunction.h"
-#include "swift/SILOptimizer/Analysis/DominanceAnalysis.h"
-#include "swift/SILOptimizer/Utils/InstOptUtils.h"
-#include "llvm/ADT/StringSwitch.h"
 
 using namespace swift;
 
-/// Determine which kind of array semantics function this is.
-ArrayCallKind swift::getArraySemanticsKind(SILFunction *f) {
+static ParameterConvention
+getSelfParameterConvention(ApplyInst *SemanticsCall) {
+  FunctionRefInst *FRI = cast<FunctionRefInst>(SemanticsCall->getCallee());
+  SILFunction *F = FRI->getReferencedFunction();
+  auto FnTy = F->getLoweredFunctionType();
+
+  return FnTy->getSelfParameter().getConvention();
+}
+
+/// \brief Make sure that all parameters are passed with a reference count
+/// neutral parameter convention except for self.
+bool swift::ArraySemanticsCall::isValidSignature() {
+  assert(SemanticsCall && getKind() != ArrayCallKind::kNone &&
+         "Need an array semantic call");
+  FunctionRefInst *FRI = cast<FunctionRefInst>(SemanticsCall->getCallee());
+  SILFunction *F = FRI->getReferencedFunction();
+  auto FnTy = F->getLoweredFunctionType();
+  auto &Mod = F->getModule();
+
+  // Check whether we have a valid signature for semantic calls that we hoist.
+  switch (getKind()) {
+  // All other calls can be consider valid.
+  default: break;
+  case ArrayCallKind::kArrayPropsIsNativeTypeChecked: {
+    // @guaranteed/@owned Self
+    if (SemanticsCall->getNumArguments() != 1)
+      return false;
+    auto SelfConvention = FnTy->getSelfParameter().getConvention();
+    return SelfConvention == ParameterConvention::Direct_Guaranteed ||
+           SelfConvention == ParameterConvention::Direct_Owned;
+  }
+  case ArrayCallKind::kCheckIndex: {
+    // Int, @guaranteed/@owned Self
+    if (SemanticsCall->getNumArguments() != 2 ||
+        !SemanticsCall->getArgument(0)->getType().isTrivial(Mod))
+      return false;
+    auto SelfConvention = FnTy->getSelfParameter().getConvention();
+    return SelfConvention == ParameterConvention::Direct_Guaranteed ||
+           SelfConvention == ParameterConvention::Direct_Owned;
+  }
+  case ArrayCallKind::kCheckSubscript: {
+    // Int, Bool, Self
+    if (SemanticsCall->getNumArguments() != 3 ||
+        !SemanticsCall->getArgument(0)->getType().isTrivial(Mod))
+      return false;
+    if (!SemanticsCall->getArgument(1)->getType().isTrivial(Mod))
+      return false;
+    auto SelfConvention = FnTy->getSelfParameter().getConvention();
+    return SelfConvention == ParameterConvention::Direct_Guaranteed ||
+           SelfConvention == ParameterConvention::Direct_Owned;
+  }
+  case ArrayCallKind::kMakeMutable: {
+    auto SelfConvention = FnTy->getSelfParameter().getConvention();
+    return SelfConvention == ParameterConvention::Indirect_Inout;
+  }
+  case ArrayCallKind::kArrayUninitialized: {
+    // Make sure that if we are a _adoptStorage call that our storage is
+    // uniquely referenced by us.
+    SILValue Arg0 = SemanticsCall->getArgument(0);
+    if (Arg0->getType().isExistentialType()) {
+      auto *AllocBufferAI = dyn_cast<ApplyInst>(Arg0);
+      if (!AllocBufferAI)
+        return false;
+
+      auto *AllocFn = AllocBufferAI->getReferencedFunction();
+      if (!AllocFn)
+        return false;
+
+      StringRef AllocFuncName = AllocFn->getName();
+      if (AllocFuncName != "swift_bufferAllocate")
+        return false;
+
+      if (!hasOneNonDebugUse(AllocBufferAI))
+        return false;
+    }
+    return true;
+  }
+  case ArrayCallKind::kWithUnsafeMutableBufferPointer: {
+    SILFunctionConventions origConv(SemanticsCall->getOrigCalleeType(), Mod);
+    if (origConv.getNumIndirectSILResults() != 1
+        || SemanticsCall->getNumArguments() != 3)
+      return false;
+    auto SelfConvention = FnTy->getSelfParameter().getConvention();
+    return SelfConvention == ParameterConvention::Indirect_Inout;
+  }
+  }
+
+  return true;
+}
+
+/// Match array semantic calls.
+swift::ArraySemanticsCall::ArraySemanticsCall(ValueBase *V,
+                                              StringRef SemanticStr,
+                                              bool MatchPartialName) {
+  if (auto *AI = dyn_cast<ApplyInst>(V))
+    if (auto *Fn = AI->getReferencedFunction())
+      if ((MatchPartialName &&
+           Fn->hasSemanticsAttrThatStartsWith(SemanticStr)) ||
+          (!MatchPartialName && Fn->hasSemanticsAttr(SemanticStr))) {
+        SemanticsCall = AI;
+        // Need a 'self' argument otherwise this is not a semantic call that
+        // we recognize.
+        if (getKind() < ArrayCallKind::kArrayInit && !hasSelf())
+          SemanticsCall = nullptr;
+
+        // A arguments must be passed reference count neutral except for self.
+        if (SemanticsCall && !isValidSignature())
+          SemanticsCall = nullptr;
+        return;
+      }
+  // Otherwise, this is not the semantic call we are looking for.
+  SemanticsCall = nullptr;
+}
+
+/// Determine which kind of array semantics call this is.
+ArrayCallKind swift::ArraySemanticsCall::getKind() const {
+  if (!SemanticsCall)
+    return ArrayCallKind::kNone;
+
+  auto F = cast<FunctionRefInst>(SemanticsCall->getCallee())
+               ->getReferencedFunction();
+
   ArrayCallKind Kind = ArrayCallKind::kNone;
 
-  for (auto &Attrs : f->getSemanticsAttrs()) {
+  for (auto &Attrs : F->getSemanticsAttrs()) {
     auto Tmp =
         llvm::StringSwitch<ArrayCallKind>(Attrs)
             .Case("array.props.isNativeTypeChecked",
                   ArrayCallKind::kArrayPropsIsNativeTypeChecked)
-            .StartsWith("array.init", ArrayCallKind::kArrayInit)
+            .Case("array.init", ArrayCallKind::kArrayInit)
             .Case("array.uninitialized", ArrayCallKind::kArrayUninitialized)
-            .Case("array.uninitialized_intrinsic", ArrayCallKind::kArrayUninitializedIntrinsic)
             .Case("array.check_subscript", ArrayCallKind::kCheckSubscript)
             .Case("array.check_index", ArrayCallKind::kCheckIndex)
             .Case("array.get_count", ArrayCallKind::kGetCount)
             .Case("array.get_capacity", ArrayCallKind::kGetCapacity)
             .Case("array.get_element", ArrayCallKind::kGetElement)
+            .Case("array.owner", ArrayCallKind::kGetArrayOwner)
             .Case("array.make_mutable", ArrayCallKind::kMakeMutable)
             .Case("array.get_element_address",
                   ArrayCallKind::kGetElementAddress)
@@ -57,149 +177,6 @@ ArrayCallKind swift::getArraySemanticsKind(SILFunction *f) {
   }
 
   return Kind;
-}
-
-static ParameterConvention
-getSelfParameterConvention(ApplyInst *SemanticsCall) {
-  FunctionRefInst *FRI = cast<FunctionRefInst>(SemanticsCall->getCallee());
-  SILFunction *F = FRI->getInitiallyReferencedFunction();
-  auto FnTy = F->getLoweredFunctionType();
-
-  return FnTy->getSelfParameter().getConvention();
-}
-
-/// Make sure that all parameters are passed with a reference count
-/// neutral parameter convention except for self.
-bool swift::ArraySemanticsCall::isValidSignature() {
-  assert(SemanticsCall && getKind() != ArrayCallKind::kNone &&
-         "Need an array semantic call");
-  FunctionRefInst *FRI = cast<FunctionRefInst>(SemanticsCall->getCallee());
-  SILFunction *F = FRI->getInitiallyReferencedFunction();
-  auto FnTy = F->getLoweredFunctionType();
-  auto &Mod = F->getModule();
-
-  // Check whether we have a valid signature for semantic calls that we hoist.
-  switch (getKind()) {
-  // All other calls can be consider valid.
-  default: break;
-  case ArrayCallKind::kArrayPropsIsNativeTypeChecked: {
-    // @guaranteed/@owned Self
-    if (SemanticsCall->getNumArguments() != 1)
-      return false;
-    auto SelfConvention = FnTy->getSelfParameter().getConvention();
-    return SelfConvention == ParameterConvention::Direct_Guaranteed ||
-           SelfConvention == ParameterConvention::Direct_Owned;
-  }
-  case ArrayCallKind::kCheckIndex: {
-    // Int, @guaranteed/@owned Self
-    if (SemanticsCall->getNumArguments() != 2 ||
-        !SemanticsCall->getArgument(0)->getType().isTrivial(*F))
-      return false;
-    auto SelfConvention = FnTy->getSelfParameter().getConvention();
-    return SelfConvention == ParameterConvention::Direct_Guaranteed ||
-           SelfConvention == ParameterConvention::Direct_Owned;
-  }
-  case ArrayCallKind::kCheckSubscript: {
-    // Int, Bool, Self
-    if (SemanticsCall->getNumArguments() != 3 ||
-        !SemanticsCall->getArgument(0)->getType().isTrivial(*F))
-      return false;
-    if (!SemanticsCall->getArgument(1)->getType().isTrivial(*F))
-      return false;
-    auto SelfConvention = FnTy->getSelfParameter().getConvention();
-    return SelfConvention == ParameterConvention::Direct_Guaranteed ||
-           SelfConvention == ParameterConvention::Direct_Owned;
-  }
-  case ArrayCallKind::kMakeMutable: {
-    auto SelfConvention = FnTy->getSelfParameter().getConvention();
-    return SelfConvention == ParameterConvention::Indirect_Inout;
-  }
-  case ArrayCallKind::kArrayUninitialized: {
-    // Make sure that if we are a _adoptStorage call that our storage is
-    // uniquely referenced by us.
-    SILValue Arg0 = SemanticsCall->getArgument(0);
-    if (Arg0->getType().isExistentialType()) {
-      auto *AllocBufferAI = dyn_cast<ApplyInst>(Arg0);
-      if (!AllocBufferAI)
-        return false;
-      auto *AllocFn = AllocBufferAI->getReferencedFunctionOrNull();
-      if (!AllocFn || AllocFn->getName() != "swift_bufferAllocate" ||
-          !hasOneNonDebugUse(AllocBufferAI))
-        return false;
-    }
-    return true;
-  }
-  case ArrayCallKind::kWithUnsafeMutableBufferPointer: {
-    SILFunctionConventions origConv(SemanticsCall->getOrigCalleeType(), Mod);
-    if (origConv.getNumIndirectSILResults() != 1
-        || SemanticsCall->getNumArguments() != 3)
-      return false;
-    auto SelfConvention = FnTy->getSelfParameter().getConvention();
-    return SelfConvention == ParameterConvention::Indirect_Inout;
-  }
-  }
-
-  return true;
-}
-
-/// Match array semantic calls.
-swift::ArraySemanticsCall::ArraySemanticsCall(SILValue V,
-                                              StringRef semanticName,
-                                              bool matchPartialName)
-    : SemanticsCall(nullptr) {
-  if (auto AI = dyn_cast<ApplyInst>(V))
-    initialize(AI, semanticName, matchPartialName);
-}
-
-/// Match array semantic calls.
-swift::ArraySemanticsCall::ArraySemanticsCall(SILInstruction *I,
-                                              StringRef semanticName,
-                                              bool matchPartialName)
-    : SemanticsCall(nullptr) {
-  if (auto AI = dyn_cast<ApplyInst>(I))
-    initialize(AI, semanticName, matchPartialName);
-}
-
-/// Match array semantic calls.
-swift::ArraySemanticsCall::ArraySemanticsCall(ApplyInst *AI,
-                                              StringRef semanticName,
-                                              bool matchPartialName)
-    : SemanticsCall(nullptr) {
-  initialize(AI, semanticName, matchPartialName);
-}
-
-void ArraySemanticsCall::initialize(ApplyInst *AI, StringRef semanticName,
-                                    bool matchPartialName) {
-  auto *fn = AI->getReferencedFunctionOrNull();
-  if (!fn)
-    return;
-
-  if (!(matchPartialName
-          ? fn->hasSemanticsAttrThatStartsWith(semanticName)
-          : fn->hasSemanticsAttr(semanticName)))
-    return;
-
-  SemanticsCall = AI;
-
-  // Need a 'self' argument otherwise this is not a semantic call that
-  // we recognize.
-  if (getKind() < ArrayCallKind::kArrayInit && !hasSelf())
-    SemanticsCall = nullptr;
-
-  // A arguments must be passed reference count neutral except for self.
-  if (SemanticsCall && !isValidSignature())
-    SemanticsCall = nullptr;
-}
-
-/// Determine which kind of array semantics call this is.
-ArrayCallKind swift::ArraySemanticsCall::getKind() const {
-  if (!SemanticsCall)
-    return ArrayCallKind::kNone;
-
-  auto F = cast<FunctionRefInst>(SemanticsCall->getCallee())
-               ->getInitiallyReferencedFunction();
-
-  return getArraySemanticsKind(F);
 }
 
 bool swift::ArraySemanticsCall::hasSelf() const {
@@ -370,7 +347,7 @@ static SILValue copyArrayLoad(SILValue ArrayStructValue,
     InsertPt = Inst;
   }
 
-  return cast<LoadInst>(LI->clone(InsertBefore));
+  return LI->clone(InsertBefore);
 }
 
 static ApplyInst *hoistOrCopyCall(ApplyInst *AI, SILInstruction *InsertBefore,
@@ -386,7 +363,7 @@ static ApplyInst *hoistOrCopyCall(ApplyInst *AI, SILInstruction *InsertBefore,
 }
 
 
-/// Hoist or copy the self argument of the semantics call.
+/// \brief Hoist or copy the self argument of the semantics call.
 /// Return the hoisted self argument.
 static SILValue hoistOrCopySelf(ApplyInst *SemanticsCall,
                                 SILInstruction *InsertBefore,
@@ -597,15 +574,11 @@ bool swift::ArraySemanticsCall::canInlineEarly() const {
     case ArrayCallKind::kAppendContentsOf:
     case ArrayCallKind::kReserveCapacityForAppend:
     case ArrayCallKind::kAppendElement:
-    case ArrayCallKind::kArrayUninitializedIntrinsic:
       // append(Element) calls other semantics functions. Therefore it's
       // important that it's inlined by the early inliner (which is before all
       // the array optimizations). Also, this semantics is only used to lookup
       // Array.append(Element), so inlining it does not prevent any other
       // optimization.
-      //
-      // Early inlining array.uninitialized_intrinsic semantic call helps in
-      // stack promotion.
       return true;
   }
 }
@@ -632,64 +605,68 @@ SILValue swift::ArraySemanticsCall::getInitializationCount() const {
   return SILValue();
 }
 
-/// Given an array semantic call \c arrayCall, if it is an "array.uninitialized"
-/// initializer, which returns a two-element tuple, return the element of the
-/// tuple at \c tupleElementIndex. Return a null SILValue if the
-/// array call is not an "array.uninitialized" initializer or if the extraction
-/// of the result tuple fails.
-static SILValue getArrayUninitializedInitResult(ArraySemanticsCall arrayCall,
-                                                unsigned tupleElementIndex) {
-  assert(tupleElementIndex <= 1 && "tupleElementIndex must be 0 or 1");
-  ArrayCallKind arrayCallKind = arrayCall.getKind();
-  if (arrayCallKind != ArrayCallKind::kArrayUninitialized &&
-      arrayCallKind != ArrayCallKind::kArrayUninitializedIntrinsic)
-    return SILValue();
-
-  // In OSSA, the call result will be extracted through a destructure_tuple
-  // instruction.
-  ApplyInst *callInst = arrayCall;
-  if (callInst->getFunction()->hasOwnership()) {
-    Operand *singleUse = callInst->getSingleUse();
-    if (!singleUse)
-      return SILValue();
-    if (DestructureTupleInst *destructTuple =
-            dyn_cast<DestructureTupleInst>(singleUse->getUser())) {
-      return destructTuple->getResult(tupleElementIndex);
-    }
-    return SILValue();
-  }
-
-  // In non-OSSA, look for a tuple_extract instruction of the call result with
-  // the requested tupleElementIndex.
-  TupleExtractInst *tupleExtractInst = nullptr;
-  for (auto *op : callInst->getUses()) {
-    auto *tupleElt = dyn_cast<TupleExtractInst>(op->getUser());
-    if (!tupleElt)
-      return SILValue();
-    if (tupleElt->getFieldNo() != tupleElementIndex)
-      continue;
-    tupleExtractInst = tupleElt;
-    break;
-  }
-  return SILValue(tupleExtractInst);
-}
-
 SILValue swift::ArraySemanticsCall::getArrayValue() const {
-  ArrayCallKind arrayCallKind = getKind();
-  if (arrayCallKind == ArrayCallKind::kArrayInit)
+  if (getKind() == ArrayCallKind::kArrayUninitialized) {
+    TupleExtractInst *ArrayDef = nullptr;
+    for (auto *Op : SemanticsCall->getUses()) {
+      auto *TupleElt = dyn_cast<TupleExtractInst>(Op->getUser());
+      if (!TupleElt)
+        return SILValue();
+      switch (TupleElt->getFieldNo()) {
+      default:
+        return SILValue();
+      case 0: {
+          // Should only have one tuple extract after CSE.
+        if (ArrayDef)
+          return SILValue();
+        ArrayDef = TupleElt;
+        break;
+      }
+      case 1: /*Ignore the storage address */ break;
+      }
+    }
+    return SILValue(ArrayDef);
+  }
+
+  if (getKind() == ArrayCallKind::kArrayInit)
     return SILValue(SemanticsCall);
-  return getArrayUninitializedInitResult(*this, 0);
+
+  return SILValue();
 }
 
 SILValue swift::ArraySemanticsCall::getArrayElementStoragePointer() const {
-  return getArrayUninitializedInitResult(*this, 1);
+  if (getKind() == ArrayCallKind::kArrayUninitialized) {
+    TupleExtractInst *ArrayElementStorage = nullptr;
+    for (auto *Op : SemanticsCall->getUses()) {
+      auto *TupleElt = dyn_cast<TupleExtractInst>(Op->getUser());
+      if (!TupleElt)
+        return SILValue();
+      switch (TupleElt->getFieldNo()) {
+      default:
+        return SILValue();
+      case 0: {
+        // Ignore the array value.
+        break;
+      }
+      case 1:
+        // Should only have one tuple extract after CSE.
+        if (ArrayElementStorage)
+          return SILValue();
+        ArrayElementStorage = TupleElt;
+        break;
+      }
+    }
+    return SILValue(ArrayElementStorage);
+  }
+
+  return SILValue();
 }
 
 bool swift::ArraySemanticsCall::replaceByValue(SILValue V) {
   assert(getKind() == ArrayCallKind::kGetElement &&
          "Must be a get_element call");
   // We only handle loadable types.
-  if (!V->getType().isLoadable(*SemanticsCall->getFunction()))
+  if (!V->getType().isLoadable(SemanticsCall->getModule()))
    return false;
 
   // Expect a check_subscript call or the empty dependence.
@@ -700,7 +677,7 @@ bool swift::ArraySemanticsCall::replaceByValue(SILValue V) {
     return false;
 
   SILBuilderWithScope Builder(SemanticsCall);
-  auto &ValLowering = Builder.getTypeLowering(V->getType());
+  auto &ValLowering = Builder.getModule().getTypeLowering(V->getType());
   if (hasGetElementDirectResult()) {
     ValLowering.emitCopyValue(Builder, SemanticsCall->getLoc(), V);
     SemanticsCall->replaceAllUsesWith(V);
@@ -721,17 +698,15 @@ bool swift::ArraySemanticsCall::replaceByValue(SILValue V) {
 }
 
 bool swift::ArraySemanticsCall::replaceByAppendingValues(
-    SILFunction *AppendFn, SILFunction *ReserveFn,
-    const SmallVectorImpl<SILValue> &Vals, SubstitutionMap Subs) {
+    SILModule &M, SILFunction *AppendFn, SILFunction *ReserveFn,
+    const SmallVectorImpl<SILValue> &Vals, ArrayRef<Substitution> Subs) {
   assert(getKind() == ArrayCallKind::kAppendContentsOf &&
          "Must be an append_contentsOf call");
   assert(AppendFn && "Must provide an append SILFunction");
 
-  auto *F = SemanticsCall->getFunction();
-
   // We only handle loadable types.
-  if (any_of(Vals, [F](SILValue V) -> bool {
-        return !V->getType().isLoadable(*F);
+  if (any_of(Vals, [&M](SILValue V) -> bool {
+        return !V->getType().isLoadable(M);
       }))
     return false;
   
@@ -739,35 +714,31 @@ bool swift::ArraySemanticsCall::replaceByAppendingValues(
   SILValue ArrRef = SemanticsCall->getArgument(1);
   SILBuilderWithScope Builder(SemanticsCall);
   auto Loc = SemanticsCall->getLoc();
-  auto *FnRef = Builder.createFunctionRefFor(Loc, AppendFn);
+  auto *FnRef = Builder.createFunctionRef(Loc, AppendFn);
 
   if (Vals.size() > 1) {
     // Create a call to reserveCapacityForAppend() to reserve space for multiple
     // elements.
-    FunctionRefBaseInst *ReserveFnRef =
-        Builder.createFunctionRefFor(Loc, ReserveFn);
+    FunctionRefInst *ReserveFnRef = Builder.createFunctionRef(Loc, ReserveFn);
     SILFunctionType *ReserveFnTy =
       ReserveFnRef->getType().castTo<SILFunctionType>();
     assert(ReserveFnTy->getNumParameters() == 2);
     StructType *IntType =
-        ReserveFnTy->getParameters()[0]
-            .getArgumentType(F->getModule(), ReserveFnTy,
-                             Builder.getTypeExpansionContext())
-            ->castTo<StructType>();
+      ReserveFnTy->getParameters()[0].getType()->castTo<StructType>();
     StructDecl *IntDecl = IntType->getDecl();
-    VarDecl *field = IntDecl->getStoredProperties()[0];
+    VarDecl *field = *IntDecl->getStoredProperties().begin();
     SILType BuiltinIntTy =SILType::getPrimitiveObjectType(
                                field->getInterfaceType()->getCanonicalType());
     IntegerLiteralInst *CapacityLiteral =
       Builder.createIntegerLiteral(Loc, BuiltinIntTy, Vals.size());
     StructInst *Capacity = Builder.createStruct(Loc,
         SILType::getPrimitiveObjectType(CanType(IntType)), {CapacityLiteral});
-    Builder.createApply(Loc, ReserveFnRef, Subs, {Capacity, ArrRef});
+    Builder.createApply(Loc, ReserveFnRef, Subs, {Capacity, ArrRef}, false);
   }
 
   for (SILValue V : Vals) {
     auto SubTy = V->getType();
-    auto &ValLowering = Builder.getTypeLowering(SubTy);
+    auto &ValLowering = Builder.getModule().getTypeLowering(SubTy);
     auto CopiedVal = ValLowering.emitCopyValue(Builder, Loc, V);
     auto *AllocStackInst = Builder.createAllocStack(Loc, SubTy);
 
@@ -775,14 +746,14 @@ bool swift::ArraySemanticsCall::replaceByAppendingValues(
                                 IsInitialization_t::IsInitialization);
 
     SILValue Args[] = {AllocStackInst, ArrRef};
-    Builder.createApply(Loc, FnRef, Subs, Args);
+    Builder.createApply(Loc, FnRef, Subs, Args, false);
     Builder.createDeallocStack(Loc, AllocStackInst);
     if (!isConsumedParameter(AppendFnTy->getParameters()[0].getConvention())) {
       ValLowering.emitDestroyValue(Builder, Loc, CopiedVal);
     }
   }
   CanSILFunctionType AppendContentsOfFnTy =
-      SemanticsCall->getReferencedFunctionOrNull()->getLoweredFunctionType();
+    SemanticsCall->getReferencedFunction()->getLoweredFunctionType();
   if (AppendContentsOfFnTy->getParameters()[0].getConvention() ==
         ParameterConvention::Direct_Owned) {
     SILValue SrcArray = SemanticsCall->getArgument(0);
@@ -793,76 +764,4 @@ bool swift::ArraySemanticsCall::replaceByAppendingValues(
   removeCall();
 
   return true;
-}
-
-bool swift::ArraySemanticsCall::mapInitializationStores(
-    llvm::DenseMap<uint64_t, StoreInst *> &ElementValueMap) {
-  if (getKind() != ArrayCallKind::kArrayUninitialized &&
-      getKind() != ArrayCallKind::kArrayUninitializedIntrinsic)
-    return false;
-  SILValue ElementBuffer = getArrayElementStoragePointer();
-  if (!ElementBuffer)
-    return false;
-
-  // Match initialization stores into ElementBuffer. E.g.
-  // %83 = struct_extract %element_buffer : $UnsafeMutablePointer<Int>
-  // %84 = pointer_to_address %83 : $Builtin.RawPointer to strict $*Int
-  // store %85 to %84 : $*Int
-  // %87 = integer_literal $Builtin.Word, 1
-  // %88 = index_addr %84 : $*Int, %87 : $Builtin.Word
-  // store %some_value to %88 : $*Int
-
-  // If this an ArrayUinitializedIntrinsic then the ElementBuffer is a
-  // builtin.RawPointer. Otherwise, it is an UnsafeMutablePointer, which would
-  // be struct-extracted to obtain a builtin.RawPointer.
-  SILValue UnsafeMutablePointerExtract =
-      (getKind() == ArrayCallKind::kArrayUninitialized)
-          ? dyn_cast_or_null<StructExtractInst>(
-                getSingleNonDebugUser(ElementBuffer))
-          : ElementBuffer;
-  if (!UnsafeMutablePointerExtract)
-    return false;
-
-  auto *PointerToAddress = dyn_cast_or_null<PointerToAddressInst>(
-      getSingleNonDebugUser(UnsafeMutablePointerExtract));
-  if (!PointerToAddress)
-    return false;
-
-  // Match the stores. We can have either a store directly to the address or
-  // to an index_addr projection.
-  for (auto *Op : PointerToAddress->getUses()) {
-    auto *Inst = Op->getUser();
-
-    // Store to the base.
-    auto *SI = dyn_cast<StoreInst>(Inst);
-    if (SI && SI->getDest() == PointerToAddress) {
-      // We have already seen an entry for this index bail.
-      if (ElementValueMap.count(0))
-        return false;
-      ElementValueMap[0] = SI;
-      continue;
-    } else if (SI)
-      return false;
-
-    // Store to an index_addr projection.
-    auto *IndexAddr = dyn_cast<IndexAddrInst>(Inst);
-    if (!IndexAddr)
-      return false;
-    SI = dyn_cast_or_null<StoreInst>(getSingleNonDebugUser(IndexAddr));
-    if (!SI || SI->getDest() != IndexAddr)
-      return false;
-    auto *Index = dyn_cast<IntegerLiteralInst>(IndexAddr->getIndex());
-    if (!Index)
-      return false;
-    auto IndexVal = Index->getValue();
-    // Let's not blow up our map.
-    if (IndexVal.getActiveBits() > 16)
-      return false;
-    // Already saw an entry.
-    if (ElementValueMap.count(IndexVal.getZExtValue()))
-      return false;
-
-    ElementValueMap[IndexVal.getZExtValue()] = SI;
-  }
-  return !ElementValueMap.empty();
 }

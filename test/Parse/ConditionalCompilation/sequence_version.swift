@@ -18,11 +18,11 @@ foo bar
 // There should be no error here.
 foo bar baz
 #else
-undefinedElse() // expected-error {{cannot find 'undefinedElse' in scope}}
+undefinedElse() // expected-error {{use of unresolved identifier 'undefinedElse'}}
 #endif
 
 #if swift(>=99.0) || FOO
-undefinedIf() // expected-error {{cannot find 'undefinedIf' in scope}}
+undefinedIf() // expected-error {{use of unresolved identifier 'undefinedIf'}}
 #else
 undefinedElse()
 #endif
@@ -31,18 +31,18 @@ undefinedElse()
 // There should be no error here.
 foo bar baz
 #else
-undefinedElse() // expected-error {{cannot find 'undefinedElse' in scope}}
+undefinedElse() // expected-error {{use of unresolved identifier 'undefinedElse'}}
 #endif
 
 #if FOO && swift(>=2.2)
-undefinedIf() // expected-error {{cannot find 'undefinedIf' in scope}}
+undefinedIf() // expected-error {{use of unresolved identifier 'undefinedIf'}}
 #else
 // There should be no error here.
 foo bar baz
 #endif
 
 #if swift(>=2.2) && swift(>=1)
-undefinedIf() // expected-error {{cannot find 'undefinedIf' in scope}}
+undefinedIf() // expected-error {{use of unresolved identifier 'undefinedIf'}}
 #else
 // There should be no error here.
 foo bar baz

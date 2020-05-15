@@ -36,15 +36,14 @@ namespace irgen {
 template <class Impl>
 class WitnessSizedTypeInfo : public IndirectTypeInfo<Impl, TypeInfo> {
 private:
-  using super = IndirectTypeInfo<Impl, TypeInfo>;
+  typedef IndirectTypeInfo<Impl, TypeInfo> super;
 
 protected:
   const Impl &asImpl() const { return static_cast<const Impl &>(*this); }
 
   WitnessSizedTypeInfo(llvm::Type *type, Alignment align, IsPOD_t pod,
-                       IsBitwiseTakable_t bt, IsABIAccessible_t abi)
-    : super(type, align, pod, bt, IsNotFixedSize, abi,
-            SpecialTypeInfoKind::None) {}
+                       IsBitwiseTakable_t bt)
+    : super(type, align, pod, bt, IsNotFixedSize, TypeInfo::STIK_None) {}
 
 private:
   /// Bit-cast the given pointer to the right type and assume it as an
@@ -59,23 +58,28 @@ public:
   // This is useful for metaprogramming.
   static bool isFixed() { return false; }
 
-  StackAddress allocateStack(IRGenFunction &IGF, SILType T,
-                             const llvm::Twine &name) const override {
+  StackAddress allocateStack(IRGenFunction &IGF,
+                                 SILType T,
+                                 bool isInEntryBlock,
+                                 const llvm::Twine &name) const override {
     // Allocate memory on the stack.
-    auto alloca = IGF.emitDynamicAlloca(T, name);
-    IGF.Builder.CreateLifetimeStart(alloca.getAddressPointer());
-    return alloca.withAddress(
-             getAsBitCastAddress(IGF, alloca.getAddressPointer()));
+    auto alloca = emitDynamicAlloca(IGF, T, isInEntryBlock);
+    assert((isInEntryBlock && alloca.SavedSP == nullptr) ||
+           (!isInEntryBlock && alloca.SavedSP != nullptr) &&
+               "stacksave/restore operations can only be skipped in the entry "
+               "block");
+    IGF.Builder.CreateLifetimeStart(alloca.Alloca);
+    return { getAsBitCastAddress(IGF, alloca.Alloca), alloca.SavedSP };
   }
 
   void deallocateStack(IRGenFunction &IGF, StackAddress stackAddress,
                        SILType T) const override {
     IGF.Builder.CreateLifetimeEnd(stackAddress.getAddress().getAddress());
-    IGF.emitDeallocateDynamicAlloca(stackAddress);
+    emitDeallocateDynamicAlloca(IGF, stackAddress);
   }
 
-  void destroyStack(IRGenFunction &IGF, StackAddress stackAddress, SILType T,
-                    bool isOutlined) const override {
+  void destroyStack(IRGenFunction &IGF, StackAddress stackAddress,
+                    SILType T) const override {
     emitDestroyCall(IGF, T, stackAddress.getAddress());
     deallocateStack(IGF, stackAddress, T);
   }
@@ -100,16 +104,22 @@ public:
     return emitLoadOfIsPOD(IGF, T);
   }
 
-  llvm::Value *getIsBitwiseTakable(IRGenFunction &IGF, SILType T) const override {
-    return emitLoadOfIsBitwiseTakable(IGF, T);
-  }
-
   llvm::Value *isDynamicallyPackedInline(IRGenFunction &IGF,
                                          SILType T) const override {
     return emitLoadOfIsInline(IGF, T);
   }
 
-  bool mayHaveExtraInhabitants(IRGenModule &) const override { return true; }
+  /// FIXME: Dynamic extra inhabitant lookup.
+  bool mayHaveExtraInhabitants(IRGenModule &) const override { return false; }
+  llvm::Value *getExtraInhabitantIndex(IRGenFunction &IGF,
+                                       Address src, SILType T) const override {
+    llvm_unreachable("dynamic extra inhabitants not supported");
+  }
+  void storeExtraInhabitant(IRGenFunction &IGF,
+                            llvm::Value *index,
+                            Address dest, SILType T) const override {
+    llvm_unreachable("dynamic extra inhabitants not supported");
+  }
 
   llvm::Constant *getStaticSize(IRGenModule &IGM) const override {
     return nullptr;
@@ -121,6 +131,7 @@ public:
     return nullptr;
   }
 };
+
 }
 }
 

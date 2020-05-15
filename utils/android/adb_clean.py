@@ -9,12 +9,9 @@
 # See https://swift.org/LICENSE.txt for license information
 # See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 
-import os
-
 from adb.commands import DEVICE_TEMP_DIR, reboot, rmdir
 
 
 if __name__ == '__main__':
-    if 'SKIP_ANDROID_CLEAN' not in os.environ:
-        reboot()
-        rmdir(DEVICE_TEMP_DIR)
+    reboot()
+    rmdir(DEVICE_TEMP_DIR)

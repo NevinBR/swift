@@ -125,14 +125,13 @@ struct FooStruct {
 func returnsInt() -> Int {}
 
 // FOO_OBJECT_DOT: Begin completions
-// FOO_OBJECT_DOT-NEXT: Keyword[self]/CurrNominal: self[#FooStruct#]; name=self
 // FOO_OBJECT_DOT-NEXT: Decl[InstanceVar]/CurrNominal:    instanceVar[#Int#]{{; name=.+$}}
 // FOO_OBJECT_DOT-NEXT: Decl[InstanceMethod]/CurrNominal: instanceFunc0()[#Void#]{{; name=.+$}}
 // FOO_OBJECT_DOT-NEXT: End completions
 
 // WITH_GLOBAL_DECLS: Begin completions
 // WITH_GLOBAL_DECLS-DAG: Decl[Struct]/CurrModule:       FooStruct[#FooStruct#]{{; name=.+$}}
-// WITH_GLOBAL_DECLS-DAG: Decl[FreeFunction]/CurrModule{{(/TypeRelation\[Identical\])?}}: returnsInt()[#Int#]{{; name=.+$}}
+// WITH_GLOBAL_DECLS-DAG: Decl[FreeFunction]/CurrModule: returnsInt()[#Int#]{{; name=.+$}}
 // WITH_GLOBAL_DECLS: End completions
 
 // WITH_GLOBAL_DECLS1: Begin completions
@@ -142,7 +141,7 @@ func returnsInt() -> Int {}
 
 // WITH_MEMBER_DECLS: Begin completions
 // WITH_MEMBER_DECLS-DAG: Decl[Struct]/CurrModule:          FooStruct[#FooStruct#]{{; name=.+$}}
-// WITH_MEMBER_DECLS-DAG: Decl[FreeFunction]/CurrModule{{(/TypeRelation\[Identical\])?}}:    returnsInt()[#Int#]{{; name=.+$}}
+// WITH_MEMBER_DECLS-DAG: Decl[FreeFunction]/CurrModule:    returnsInt()[#Int#]{{; name=.+$}}
 // WITH_MEMBER_DECLS-DAG: Decl[LocalVar]/Local:             self[#MemberAccessors#]{{; name=.+$}}
 // WITH_MEMBER_DECLS-DAG: Decl[InstanceVar]/CurrNominal:    instanceVar[#Double#]{{; name=.+$}}
 // WITH_MEMBER_DECLS-DAG: Decl[InstanceMethod]/CurrNominal: instanceFunc({#(a): Int#})[#Float#]{{; name=.+$}}
@@ -150,8 +149,8 @@ func returnsInt() -> Int {}
 
 // WITH_MEMBER_DECLS_INIT: Begin completions
 // WITH_MEMBER_DECLS_INIT-DAG: Decl[Struct]/CurrModule:          FooStruct[#FooStruct#]{{; name=.+$}}
-// WITH_MEMBER_DECLS_INIT-DAG: Decl[FreeFunction]/CurrModule/TypeRelation[Identical]: returnsInt()[#Int#]{{; name=.+$}}
-// WITH_MEMBER_DECLS_INIT-DAG: Decl[InstanceMethod]/CurrNominal: instanceFunc({#(self): MemberAccessors#})[#(Int) -> Float#]{{; name=.+$}}
+// WITH_MEMBER_DECLS_INIT-DAG: Decl[FreeFunction]/CurrModule:    returnsInt()[#Int#]{{; name=.+$}}
+// WITH_MEMBER_DECLS_INIT-DAG: Decl[InstanceMethod]/CurrNominal: instanceFunc({#self: MemberAccessors#})[#(Int) -> Float#]{{; name=.+$}}
 // WITH_MEMBER_DECLS_INIT: End completions
 
 // WITH_MEMBER_DECLS_INIT_WRONG-NOT: self[
@@ -159,8 +158,8 @@ func returnsInt() -> Int {}
 
 // WITH_LOCAL_DECLS: Begin completions
 // WITH_LOCAL_DECLS-DAG: Decl[Struct]/CurrModule:          FooStruct[#FooStruct#]{{; name=.+$}}
-// WITH_LOCAL_DECLS-DAG: Decl[FreeFunction]/CurrModule{{(/TypeRelation\[Identical\])?}}:    returnsInt()[#Int#]{{; name=.+$}}
-// WITH_LOCAL_DECLS-DAG: Decl[LocalVar]/Local{{(/TypeRelation\[Identical\])?}}:             functionParam[#Int#]{{; name=.+$}}
+// WITH_LOCAL_DECLS-DAG: Decl[FreeFunction]/CurrModule:    returnsInt()[#Int#]{{; name=.+$}}
+// WITH_LOCAL_DECLS-DAG: Decl[LocalVar]/Local:             functionParam[#Int#]{{; name=.+$}}
 // WITH_LOCAL_DECLS-DAG: Decl[FreeFunction]/Local:         localFunc({#(a): Int#})[#Float#]{{; name=.+$}}
 // WITH_LOCAL_DECLS: End completions
 
@@ -247,18 +246,18 @@ willSet {
 }
 
 var globalAccessorDidSet1: Int {
-  didSet(oldValue) {
+  didSet {
     #^GLOBAL_ACCESSOR_DIDSET_1^#
   }
 }
 var globalAccessorDidSet2: Int {
-  didSet(oldValue) {
+  didSet {
     var fs = FooStruct()
     fs.#^GLOBAL_ACCESSOR_DIDSET_2^#
   }
 }
 var globalAccessorDidSet3 = 42 {
-didSet(oldValue) {
+didSet {
   #^GLOBAL_ACCESSOR_DIDSET_3^#
 }
 }
@@ -337,18 +336,18 @@ struct MemberAccessors {
   }
 
   var memberAccessorDidSet1: Int {
-    didSet(oldValue) {
+    didSet {
       #^MEMBER_ACCESSOR_DIDSET_1^#
     }
   }
   var memberAccessorDidSet2: Int {
-    didSet(oldValue) {
+    didSet {
       var fs = FooStruct()
       fs.#^MEMBER_ACCESSOR_DIDSET_2^#
     }
   }
   var memberAccessorDidSet3 = 42 {
-    didSet(oldValue) {
+    didSet {
       #^MEMBER_ACCESSOR_DIDSET_3^#
     }
   }
@@ -424,18 +423,18 @@ func accessorsInFunction(_ functionParam: Int) {
   }
 
   var memberAccessorDidSet1: Int {
-    didSet(oldValue) {
+    didSet {
       #^LOCAL_ACCESSOR_DIDSET_1^#
     }
   }
   var memberAccessorDidSet2: Int {
-    didSet(oldValue) {
+    didSet {
       var fs = FooStruct()
       fs.#^LOCAL_ACCESSOR_DIDSET_2^#
     }
   }
   var memberAccessorDidSet3: Int {
-    didSet(oldValue) {
+    didSet {
       #^LOCAL_ACCESSOR_DIDSET_3^#
     }
   }
@@ -456,7 +455,7 @@ func accessorsInFunction(_ functionParam: Int) {
 
 // ACCESSORS_IN_MEMBER_FUNC_2: Begin completions
 // ACCESSORS_IN_MEMBER_FUNC_2-DAG: Decl[LocalVar]/Local:            self[#AccessorsInMemberFunction#]
-// ACCESSORS_IN_MEMBER_FUNC_2-DAG: Decl[LocalVar]/Local{{(/TypeRelation\[Identical\])?}}:            functionParam[#Int#]
+// ACCESSORS_IN_MEMBER_FUNC_2-DAG: Decl[LocalVar]/Local:            functionParam[#Int#]
 // ACCESSORS_IN_MEMBER_FUNC_2-DAG: Decl[InstanceVar]/OutNominal:    instanceVar[#Double#]
 // ACCESSORS_IN_MEMBER_FUNC_2-DAG: Decl[InstanceMethod]/OutNominal: instanceFunc({#(a): Int#})[#Float#]
 // ACCESSORS_IN_MEMBER_FUNC_2: End completions

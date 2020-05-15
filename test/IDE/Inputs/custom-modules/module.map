@@ -35,7 +35,6 @@ module ImportAsMember {
   module C {
     requires objc
     header "ImportAsMemberC.h"
-    export *
   }
 
   module APINotes {

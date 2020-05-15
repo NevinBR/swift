@@ -222,25 +222,12 @@ class TestIndexPath: TestIndexPathSuper {
     }
     
     func testHashing() {
-        guard #available(macOS 10.15, iOS 13, watchOS 6, tvOS 13, *) else { return }
-        let samples: [IndexPath] = [
-            [],
-            [1],
-            [2],
-            [Int.max],
-            [1, 1],
-            [2, 1],
-            [1, 2],
-            [1, 1, 1],
-            [2, 1, 1],
-            [1, 2, 1],
-            [1, 1, 2],
-            [Int.max, Int.max, Int.max],
-        ]
-        checkHashable(samples, equalityOracle: { $0 == $1 })
+        let ip1: IndexPath = [5, 1]
+        let ip2: IndexPath = [1, 1, 1]
+        
+        expectNotEqual(ip1.hashValue, ip2.hashValue)
 
-        // this should not cause an overflow crash
-        _ = IndexPath(indexes: [Int.max >> 8, 2, Int.max >> 36]).hashValue 
+        IndexPath(indexes: [Int.max >> 8, 2, Int.max >> 36]).hashValue // this should not cause an overflow crash
     }
     
     func testEquality() {

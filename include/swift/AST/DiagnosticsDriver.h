@@ -11,7 +11,7 @@
 //===----------------------------------------------------------------------===//
 //
 /// \file
-/// This file defines diagnostics for the driver.
+/// \brief This file defines diagnostics for the driver.
 /// \note Diagnostics shared between the driver and frontend are defined in
 /// \ref DiagnosticsFrontend.h.
 //

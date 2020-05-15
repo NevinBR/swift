@@ -23,7 +23,7 @@ class LoopRegionFunctionInfo;
 class AliasAnalysis;
 class RCIdentityFunctionInfo;
 
-/// Per-Region state.
+/// \brief Per-Region state.
 class ARCRegionState {
 public:
   // TODO: These are relatively expensive, find something else to use here.
@@ -121,11 +121,11 @@ public:
 
   /// Blot \p Ptr.
   void clearBottomUpRefCountState(SILValue Ptr) {
-    PtrToBottomUpState.erase(Ptr);
+    PtrToBottomUpState.blot(Ptr);
   }
 
   /// Blot \p Ptr.
-  void clearTopDownRefCountState(SILValue Ptr) { PtrToTopDownState.erase(Ptr); }
+  void clearTopDownRefCountState(SILValue Ptr) { PtrToTopDownState.blot(Ptr); }
 
   void clearTopDownState() { PtrToTopDownState.clear(); }
   void clearBottomUpState() { PtrToBottomUpState.clear(); }

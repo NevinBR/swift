@@ -35,7 +35,7 @@ struct NotHashable { }
 var nh1 : [NotHashable : Int] // expected-error{{'NotHashable' does not conform to protocol 'Hashable'}}
 
 struct Y<T> : Hashable {
-  func hash(into hasher: inout Hasher) {}
+  var hashValue: Int { return 0 }
 
   static func ==(this: Y<T>, other: Y<T>) -> Bool { return true }
 }

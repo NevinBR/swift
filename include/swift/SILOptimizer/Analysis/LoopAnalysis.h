@@ -32,10 +32,10 @@ class SILLoopAnalysis : public FunctionAnalysisBase<SILLoopInfo> {
   DominanceAnalysis *DA;
 public:
   SILLoopAnalysis(SILModule *)
-      : FunctionAnalysisBase(SILAnalysisKind::Loop), DA(nullptr) {}
+      : FunctionAnalysisBase(AnalysisKind::Loop), DA(nullptr) {}
 
   static bool classof(const SILAnalysis *S) {
-    return S->getKind() == SILAnalysisKind::Loop;
+    return S->getKind() == AnalysisKind::Loop;
   }
 
   virtual bool shouldInvalidate(SILAnalysis::InvalidationKind K) override {
@@ -44,8 +44,7 @@ public:
 
   // Computes loop information for the given function using dominance
   // information.
-  virtual std::unique_ptr<SILLoopInfo>
-  newFunctionAnalysis(SILFunction *F) override;
+  virtual SILLoopInfo *newFunctionAnalysis(SILFunction *F) override;
 
   virtual void initialize(SILPassManager *PM) override;
 };

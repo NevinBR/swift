@@ -12,18 +12,18 @@
 
 #define DEBUG_TYPE "merge-cond_fail"
 
-#include "swift/SIL/SILBuilder.h"
-#include "swift/SIL/SILInstruction.h"
 #include "swift/SILOptimizer/Analysis/Analysis.h"
 #include "swift/SILOptimizer/PassManager/Passes.h"
 #include "swift/SILOptimizer/PassManager/Transforms.h"
-#include "swift/SILOptimizer/Utils/InstOptUtils.h"
+#include "swift/SILOptimizer/Utils/Local.h"
+#include "swift/SIL/SILBuilder.h"
+#include "swift/SIL/SILInstruction.h"
 
 #include "llvm/Support/Debug.h"
 
 using namespace swift;
 
-/// Return true if the operand of the cond_fail instruction looks like
+/// \brief Return true if the operand of the cond_fail instruction looks like
 /// the overflow bit of an arithmetic instruction.
 static bool hasOverflowConditionOperand(CondFailInst *CFI) {
   if (auto *TEI = dyn_cast<TupleExtractInst>(CFI->getOperand()))
@@ -69,9 +69,7 @@ public:
 
         // Do not process arithmetic overflow checks. We typically generate more
         // efficient code with separate jump-on-overflow.
-        if (CFI && !hasOverflowConditionOperand(CFI) &&
-            (CondFailToMerge.empty() ||
-             CFI->getMessage() == CondFailToMerge.front()->getMessage()))
+        if (CFI && !hasOverflowConditionOperand(CFI))
           CondFailToMerge.push_back(CFI);
 
       }
@@ -86,7 +84,7 @@ public:
     }
   }
 
-  /// Try to merge the cond_fail instructions. Returns true if any could
+  /// \brief Try to merge the cond_fail instructions. Returns true if any could
   /// be merge.
   bool mergeCondFails(SmallVectorImpl<CondFailInst *> &CondFailToMerge) {
     assert(CondFailToMerge.size() > 1 &&
@@ -111,15 +109,12 @@ public:
                                                       {MergedCond, CurCond});
       }
 
+      CondFailToMerge[I]->eraseFromParent();
       MergedCond = CurCond;
     }
 
     // Create a new cond_fail using the merged condition.
-    Builder.createCondFail(Loc, MergedCond, LastCFI->getMessage());
-
-    for (CondFailInst *CFI : CondFailToMerge) {
-      CFI->eraseFromParent();
-    }
+    Builder.createCondFail(Loc, MergedCond);
     return true;
   }
 };

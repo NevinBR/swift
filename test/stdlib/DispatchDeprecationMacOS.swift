@@ -1,7 +1,8 @@
 // RUN: %swift -typecheck -target x86_64-apple-macosx10.9 -verify -sdk %sdk %s
 // REQUIRES: OS=macosx
-// REQUIRES: libdispatch
+// REQUIRES: objc_interop
 
+import Foundation
 import Dispatch
 
 // Don't warn because these APIs were deprecated in macOS 10.10 and the

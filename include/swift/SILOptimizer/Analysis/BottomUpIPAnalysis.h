@@ -19,7 +19,6 @@
 
 #include "swift/SILOptimizer/Analysis/Analysis.h"
 #include "swift/SIL/SILInstruction.h"
-#include "swift/SIL/ApplySite.h"
 #include "llvm/ADT/SmallVector.h"
 
 namespace swift {
@@ -182,7 +181,7 @@ protected:
     }
 
     ~BottomUpFunctionOrder() {
-      assert(InitiallyUnscheduled.empty() &&
+      assert(InitiallyUnscheduled.size() == 0 &&
              "not finished scheduling");
       assert(Scheduled.size() == numVisited &&
              "missed some functions to schedule");
@@ -287,7 +286,7 @@ protected:
     }
   };
 
-  BottomUpIPAnalysis(SILAnalysisKind k) : SILAnalysis(k) {}
+  BottomUpIPAnalysis(AnalysisKind K) : SILAnalysis(K) { }
 
   /// Increments the CurrentUpdateID.
   /// Should be called at the beginning of a recomputation.

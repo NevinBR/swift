@@ -165,9 +165,10 @@ public:
   }
 };
 
-inline std::unique_ptr<SwitchBuilder>
-SwitchBuilder::create(IRGenFunction &IGF, llvm::Value *Subject,
-                      SwitchDefaultDest Default, unsigned NumCases) {
+std::unique_ptr<SwitchBuilder> SwitchBuilder::create(IRGenFunction &IGF,
+                                                     llvm::Value *Subject,
+                                                     SwitchDefaultDest Default,
+                                                     unsigned NumCases) {
   // Pick a builder based on how many total reachable destinations we intend
   // to have.
   switch (NumCases + (Default.getInt() == IsNotUnreachable)) {

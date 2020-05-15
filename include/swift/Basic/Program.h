@@ -15,7 +15,7 @@
 
 namespace swift {
 
-/// This function executes the program using the arguments provided,
+/// \brief This function executes the program using the arguments provided,
 /// preferring to reexecute the current process, if supported.
 ///
 /// \param Program Path of the program to be executed

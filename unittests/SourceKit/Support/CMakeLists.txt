@@ -4,6 +4,5 @@ add_swift_unittest(SourceKitSupportTests
   )
 
 target_link_libraries(SourceKitSupportTests
-  PRIVATE
   SourceKitSupport
   )

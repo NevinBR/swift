@@ -38,6 +38,7 @@ Reference Counting Instructions
 - fix_lifetime
 - mark_dependence
 - is_unique
+- is_unique_or_pinned
 - copy_block
 
 Memory Behavior of ARC Operations
@@ -162,7 +163,7 @@ Contrasts with Alias Analysis
 
 A common question is what is the difference in between RC Identity analysis and
 alias analysis. While alias analysis is attempting to determine if two memory
-locations are the same, RC identity analysis is attempting to determine if
+location are the same, RC identity analysis is attempting to determine if
 reference counting operations on different values would result in the same
 reference count being read or written to.
 
@@ -335,7 +336,7 @@ is_unique performs depends on the argument type:
 
     - Objective-C object types require an additional check that the
       dynamic object type uses native Swift reference counting:
-      (unknown class reference, class existential)
+      (Builtin.UnknownObject, unknown class reference, class existential)
 
     - Bridged object types allow the dynamic object type check to be
       bypassed based on the pointer encoding:
@@ -347,10 +348,15 @@ static argument type is optional, then a null check is also performed.
 Thus, is_unique only returns true for non-null, native Swift object
 references with a strong reference count of one.
 
+is_unique_or_pinned has the same semantics as is_unique except that it
+also returns true if the object is marked pinned (by strong_pin)
+regardless of the reference count. This allows for simultaneous
+non-structural modification of multiple subobjects.
+
 Builtin.isUnique
 ----------------
 
-Builtin.isUnique gives the standard
+Builtin.isUnique and Builtin.isUniqueOrPinned give the standard
 library access to optimization safe uniqueness checking. Because the
 type of reference check is derived from the builtin argument's static
 type, the most efficient check is automatically generated. However, in
@@ -361,6 +367,7 @@ additional pointer bit mask and dynamic class lookup to be bypassed in
 these cases:
 
 - isUnique_native : <T> (inout T[?]) -> Int1
+- isUniqueOrPinned_native : <T> (inout T[?]) -> Int1
 
 These builtins perform an implicit cast to NativeObject before
 checking uniqueness. There's no way at SIL level to cast the address
@@ -373,7 +380,7 @@ Semantic Tags
 ARC takes advantage of certain semantic tags. This section documents these
 semantics and their meanings.
 
-programtermination_point
+arc.programtermination_point
 ----------------------------
 
 If this semantic tag is applied to a function, then we know that:
@@ -396,7 +403,7 @@ scope's lifetime may never end. This means that:
 
 1. While we can not ignore all such unreachable terminated blocks for ARC
 purposes for instance, if we sink a retain past a br into a non
-programtermination_point block, we must sink the retain into the block.
+arc.programtermination_point block, we must sink the retain into the block.
 
 2. If we are able to infer that an object's lifetime scope would never end due
 to the unreachable/no-return function, then we do not need to end the lifetime
@@ -439,8 +446,8 @@ In the following we assume that all loops are canonicalized such that:
 2. The loop has one backedge.
 3. All exiting edges have a unique exit block.
 
-Motivation
-----------
+Motiviation
+-----------
 
 Consider the following simple loop::
 
@@ -544,7 +551,7 @@ optimization? We must consider three areas of concern:
    retain/release counts in the loop? Consider a set of retains and a set of
    releases that we wish to hoist out of a loop. We can only hoist the retain,
    release sets out of the loop if all paths in the given loop region from the
-   entrance to the backedge have exactly one retain or release from this set.
+   entrance to the backedge.  have exactly one retain or release from this set.
 
 4. Any early exits that we must move a retain past or a release by must be
    compensated appropriately. This will be discussed in the next section.
@@ -555,7 +562,7 @@ hoist with safety.
 Compensating Early Exits for Lost Dynamic Reference Counts
 ----------------------------------------------------------
 
-Let's say that we have the following loop canonicalized SIL::
+Lets say that we have the following loop canonicalized SIL::
 
   bb0(%0 : $Builtin.NativeObject):
     br bb1
@@ -579,7 +586,7 @@ Let's say that we have the following loop canonicalized SIL::
   bb6:
     return ...
 
-Can we hoist the retain/release pair here? Let's assume the loop is 3 iterations
+Can we hoist the retain/release pair here? Lets assume the loop is 3 iterations
 and we completely unroll it. Then we have::
 
   bb0:
@@ -667,7 +674,7 @@ exit. Consider the following::
   bb6:
     return ...
 
-Let's unroll this loop::
+Lets unroll this loop::
 
   bb0(%0 : $Builtin.NativeObject):
     br bb1

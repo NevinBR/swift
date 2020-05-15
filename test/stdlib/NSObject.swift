@@ -133,11 +133,12 @@ print("\(s1.hashValue)")
 print("\(s1.hash)")
 print("done NSMutableString hashValue")
 // CHECK: NSMutableString hashValue
-// CHECK-NEXT: [[H1:(-)?[0-9]+]]
+// CHECK-NEXT: [[H1:[0-9]+]]
 // CHECK-NEXT: [[H1]]
-// CHECK-NEXT: [[H2:(-)?[0-9]+]]
+// CHECK-NEXT: [[H2:[0-9]+]]
 // CHECK-NEXT: [[H2]]
 // CHECK-NEXT: done NSMutableString hashValue
+
 
 class NoisyHash : NSObject {
   override var hash : Int {
@@ -152,7 +153,7 @@ printHashValue(nh, "nh")
 print("done NoisyHash hashValue")
 // CHECK: NoisyHash hashValue
 // CHECK-NEXT: so hash
-// CHECK-NEXT: nh hashes to {{(-)?[0-9]+}}
+// CHECK-NEXT: nh hashes to {{[0-9]+}}
 // CHECK: done NoisyHash hashValue
 
 
@@ -262,8 +263,3 @@ print( // CHECK-NEXT: true
   _getSuperclass(_getSuperclass(E.self)!) == NSObject.self)
 print( // CHECK-NEXT: true
   _getSuperclass(_getSuperclass(_getSuperclass(E.self)!)!) == nil)
-
-print("NSObject's type id")
-print(CFGetTypeID(NSObject()))
-// CHECK: NSObject's type id
-// CHECK-NEXT: 1

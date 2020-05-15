@@ -1,5 +1,4 @@
 import Swift
-import SwiftPrivate
 import StdlibUnittest
 
 func acceptsAnySet<T : Hashable>(_ s: Set<T>) {}
@@ -26,38 +25,14 @@ func equalsUnordered<T : Comparable>(_ lhs: [T], _ rhs: [T]) -> Bool {
   return lhs.sorted().elementsEqual(rhs.sorted())
 }
 
-// A COW wrapper type that holds an Int.
-struct TestValueCOWTy {
-  
-  class Base {
-    var value: Int
-    init(_ value: Int) { self.value = value }
-  }
-
-  private var base: Base
-  init(_ value: Int = 0) { self.base = Base(value) }
-
-  var value: Int {
-    get { return base.value }
-    set {
-      if !isKnownUniquelyReferenced(&base) {
-        base = Base(newValue)
-      } else {
-        base.value = newValue
-      }
-    }
-  }
-
-  var baseAddress: Int { return unsafeBitCast(base, to: Int.self) }
-}
-
 var _keyCount = _stdlib_AtomicInt(0)
 var _keySerial = _stdlib_AtomicInt(0)
 
-class _BaseKeyTy: CustomStringConvertible {
-  final var value: Int
-  final var serial: Int
-
+// A wrapper class that can help us track allocations and find issues with
+// object lifetime.
+final class TestKeyTy 
+  : Equatable, Hashable, CustomStringConvertible, ExpressibleByIntegerLiteral 
+{
   class var objectCount: Int {
     get {
       return _keyCount.load()
@@ -69,8 +44,18 @@ class _BaseKeyTy: CustomStringConvertible {
 
   init(_ value: Int) {
     _keyCount.fetchAndAdd(1)
-    self.serial = _keySerial.addAndFetch(1)
+    serial = _keySerial.addAndFetch(1)
     self.value = value
+    self._hashValue = value
+  }
+
+  convenience init(integerLiteral value: Int) {
+    self.init(value)
+  }
+  
+  convenience init(value: Int, hashValue: Int) {
+    self.init(value)
+    self._hashValue = hashValue
   }
 
   deinit {
@@ -83,60 +68,18 @@ class _BaseKeyTy: CustomStringConvertible {
     assert(serial > 0, "dead TestKeyTy")
     return value.description
   }
-}
-
-// A wrapper class that can help us track allocations and find issues with
-// object lifetime.
-final class TestKeyTy
-  : _BaseKeyTy, Equatable, Hashable, ExpressibleByIntegerLiteral
-{
-  override init(_ value: Int) {
-    super.init(value)
-  }
-
-  convenience init(integerLiteral value: Int) {
-    self.init(value)
-  }
-
-  func hash(into hasher: inout Hasher) {
-    hasher.combine(value)
-  }
 
   var hashValue: Int {
-    return value
+    return _hashValue
   }
 
-  static func ==(lhs: TestKeyTy, rhs: TestKeyTy) -> Bool {
-    return lhs.value == rhs.value
-  }
+  var value: Int
+  var _hashValue: Int
+  var serial: Int
 }
 
-// A variant of TestKeyTy with precise control over hashing.
-// This is useful for bucket-level tests.
-final class RawTestKeyTy: _BaseKeyTy, Equatable, Hashable
-{
-  var _hash: Int
-
-  init(value: Int, hashValue: Int) {
-    self._hash = hashValue
-    super.init(value)
-  }
-
-  var hashValue: Int {
-    return _hash
-  }
-
-  func hash(into hasher: inout Hasher) {
-    hasher.combine(_hash)
-  }
-
-  func _rawHashValue(seed: Int) -> Int {
-    return _hash
-  }
-
-  static func ==(lhs: RawTestKeyTy, rhs: RawTestKeyTy) -> Bool {
-    return lhs.value == rhs.value
-  }
+func == (lhs: TestKeyTy, rhs: TestKeyTy) -> Bool {
+  return lhs.value == rhs.value
 }
 
 var _valueCount = _stdlib_AtomicInt(0)

@@ -16,9 +16,8 @@
 #ifndef SWIFT_CLANGIMPORTER_CLANGMODULE_H
 #define SWIFT_CLANGIMPORTER_CLANGMODULE_H
 
-#include "swift/AST/FileUnit.h"
+#include "swift/AST/Module.h"
 #include "swift/ClangImporter/ClangImporter.h"
-#include "clang/AST/ExternalASTSource.h"
 
 namespace clang {
   class ASTContext;
@@ -30,14 +29,14 @@ namespace swift {
 class ASTContext;
 class ModuleLoader;
 
-/// Represents a Clang module that has been imported into Swift.
+/// \brief Represents a Clang module that has been imported into Swift.
 class ClangModuleUnit final : public LoadedFile {
   ClangImporter::Implementation &owner;
   const clang::Module *clangModule;
-  llvm::PointerIntPair<ModuleDecl *, 1, bool> overlayModule;
-  mutable Optional<ArrayRef<ModuleDecl::ImportedModule>> importedModulesForLookup;
-  /// The metadata of the underlying Clang module.
-  clang::ExternalASTSource::ASTSourceDescriptor ASTSourceDescriptor;
+  llvm::PointerIntPair<ModuleDecl *, 1, bool> adapterModule;
+  mutable ArrayRef<ModuleDecl::ImportedModule> importedModulesForLookup;
+
+  ~ClangModuleUnit() = default;
 
 public:
   /// True if the given Module contains an imported Clang module unit.
@@ -46,7 +45,7 @@ public:
   ClangModuleUnit(ModuleDecl &M, ClangImporter::Implementation &owner,
                   const clang::Module *clangModule);
 
-  /// Retrieve the underlying Clang module.
+  /// \brief Retrieve the underlying Clang module.
   ///
   /// This will be null if the module unit represents the imported headers.
   const clang::Module *getClangModule() const { return clangModule; }
@@ -55,16 +54,12 @@ public:
   bool isTopLevel() const;
 
   /// Returns the Swift module that overlays this Clang module.
-  ModuleDecl *getOverlayModule() const override;
-
-  /// Retrieve the "exported" name of the module, which is usually the module
-  /// name, but might be the name of the public module through which this
-  /// (private) module is re-exported.
-  StringRef getExportedModuleName() const override;
+  ModuleDecl *getAdapterModule() const;
 
   virtual bool isSystemModule() const override;
 
-  virtual void lookupValue(DeclName name, NLKind lookupKind,
+  virtual void lookupValue(ModuleDecl::AccessPathTy accessPath,
+                           DeclName name, NLKind lookupKind,
                            SmallVectorImpl<ValueDecl*> &results) const override;
 
   virtual TypeDecl *
@@ -107,18 +102,11 @@ public:
 
   virtual StringRef getFilename() const override;
 
-  virtual const clang::Module *getUnderlyingClangModule() const override {
+  virtual const clang::Module *getUnderlyingClangModule() override {
     return getClangModule();
   }
 
   clang::ASTContext &getClangASTContext() const;
-
-  /// Returns the ASTSourceDescriptor of the associated Clang module if one
-  /// exists.
-  Optional<clang::ExternalASTSource::ASTSourceDescriptor>
-  getASTSourceDescriptor() const;
-
-  virtual StringRef getModuleDefiningPath() const override;
 
   static bool classof(const FileUnit *file) {
     return file->getKind() == FileUnitKind::ClangModule;

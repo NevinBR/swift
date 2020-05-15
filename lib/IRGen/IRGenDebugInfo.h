@@ -17,7 +17,6 @@
 #ifndef SWIFT_IRGEN_DEBUGINFO_H
 #define SWIFT_IRGEN_DEBUGINFO_H
 
-#include <swift/SIL/SILInstruction.h>
 #include "DebugTypeInfo.h"
 #include "IRGenFunction.h"
 
@@ -46,11 +45,10 @@ enum ArtificialKind : bool { RealValue = false, ArtificialValue = true };
 /// \c llvm::DebugLoc.
 class IRGenDebugInfo {
 public:
-  static std::unique_ptr<IRGenDebugInfo>
-  createIRGenDebugInfo(const IRGenOptions &Opts, ClangImporter &CI,
-                       IRGenModule &IGM, llvm::Module &M,
-                       StringRef MainOutputFilenameForDebugInfo,
-                       StringRef PrivateDiscriminator);
+  static IRGenDebugInfo *createIRGenDebugInfo(const IRGenOptions &Opts,
+                                              ClangImporter &CI,
+                                              IRGenModule &IGM, llvm::Module &M,
+                                              SourceFile *SF);
   virtual ~IRGenDebugInfo();
 
   /// Finalize the llvm::DIBuilder owned by this object.
@@ -59,13 +57,7 @@ public:
   /// Update the IRBuilder's current debug location to the location
   /// Loc and the lexical scope DS.
   void setCurrentLoc(IRBuilder &Builder, const SILDebugScope *DS,
-                     SILLocation Loc);
-
-  /// Replace the current debug location in \p Builder with the same location, but contained in an
-  /// inlined function which is named like \p failureMsg.
-  ///
-  /// This lets the debugger display the \p failureMsg as an inlined function frame.
-  void addFailureMessageToCurrentLoc(IRBuilder &Builder, StringRef failureMsg);
+                     Optional<SILLocation> Loc = None);
 
   void clearLoc(IRBuilder &Builder);
 
@@ -76,12 +68,10 @@ public:
   /// Restore the current debug location from the stack.
   void popLoc();
 
-  /// If we are not emitting CodeView, this does nothing since the ``llvm.trap``
-  /// instructions should already have an artificial location of zero.
-  /// In CodeView, since zero is not an artificial location, we emit the
-  /// location of the unified trap block at the end of the fuction as an
-  /// artificial inline location pointing to the user's instruction.
-  void setInlinedTrapLocation(IRBuilder &Builder, const SILDebugScope *Scope);
+  /// Emit the final line 0 location for the unified trap block at the
+  /// end of the function.
+  void setArtificialTrapLocation(IRBuilder &Builder,
+                                 const SILDebugScope *Scope);
 
   /// Set the location for SWIFT_ENTRY_POINT_FUNCTION.
   void setEntryPointLoc(IRBuilder &Builder);
@@ -135,7 +125,8 @@ public:
   void emitVariableDeclaration(IRBuilder &Builder,
                                ArrayRef<llvm::Value *> Storage,
                                DebugTypeInfo Ty, const SILDebugScope *DS,
-                               ValueDecl *VarDecl, SILDebugVariable VarInfo,
+                               ValueDecl *VarDecl, StringRef Name,
+                               unsigned ArgNo = 0,
                                IndirectionKind Indirection = DirectValue,
                                ArtificialKind Artificial = RealValue);
 
@@ -145,18 +136,16 @@ public:
                         unsigned Line, unsigned Col, llvm::DILocalScope *Scope,
                         const SILDebugScope *DS);
 
-  enum { NotHeapAllocated = false };
-  
   /// Create debug metadata for a global variable.
   void emitGlobalVariableDeclaration(llvm::GlobalVariable *Storage,
                                      StringRef Name, StringRef LinkageName,
                                      DebugTypeInfo DebugType,
-                                     bool IsLocalToUnit, bool InFixedBuffer,
+                                     bool IsLocalToUnit,
                                      Optional<SILLocation> Loc);
 
   /// Emit debug metadata for type metadata (for generic types). So meta.
   void emitTypeMetadata(IRGenFunction &IGF, llvm::Value *Metadata,
-                        unsigned Depth, unsigned Index, StringRef Name);
+                        StringRef Name);
 
   /// Return the DIBuilder.
   llvm::DIBuilder &getBuilder();

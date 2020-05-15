@@ -1,4 +1,4 @@
-// RUN: %target-resilience-test
+// RUN: %target-resilience-test-wmo
 // REQUIRES: executable_test
 
 import StdlibUnittest

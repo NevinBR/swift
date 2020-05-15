@@ -15,15 +15,15 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "swift/Strings.h"
 #include "swift/Subsystems.h"
 #include "swift/AST/DiagnosticsFrontend.h"
 #include "swift/AST/SILOptions.h"
-#include "swift/Basic/FileTypes.h"
 #include "swift/Basic/LLVMInitialize.h"
+#include "swift/Basic/LLVMContext.h"
 #include "swift/Frontend/DiagnosticVerifier.h"
 #include "swift/Frontend/Frontend.h"
 #include "swift/Frontend/PrintingDiagnosticConsumer.h"
-#include "swift/SIL/SILRemarkStreamer.h"
 #include "swift/SILOptimizer/Analysis/Analysis.h"
 #include "swift/SILOptimizer/PassManager/Passes.h"
 #include "swift/SILOptimizer/PassManager/PassManager.h"
@@ -40,7 +40,6 @@
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/TargetSelect.h"
-#include "llvm/Support/YAMLTraits.h"
 #include <cstdio>
 using namespace swift;
 
@@ -71,40 +70,18 @@ ModuleName("module-name", llvm::cl::desc("The name of the module if processing"
                                          "stdin."));
 
 static llvm::cl::opt<bool>
-EnableLibraryEvolution("enable-library-evolution",
-                       llvm::cl::desc("Compile the module to export resilient "
-                                      "interfaces for all public declarations by "
-                                      "default"));
+EnableResilience("enable-resilience",
+                 llvm::cl::desc("Compile the module to export resilient "
+                                "interfaces for all public declarations by "
+                                "default"));
 
-static llvm::cl::opt<bool> DisableSILOwnershipVerifier(
-    "disable-sil-ownership-verifier",
-    llvm::cl::desc(
-        "Do not verify SIL ownership invariants during SIL verification"));
-
-static llvm::cl::opt<bool> EnableOwnershipLoweringAfterDiagnostics(
-    "enable-ownership-lowering-after-diagnostics",
-    llvm::cl::desc("Enable ownership lowering after diagnostics"),
-    llvm::cl::init(false));
+static llvm::cl::opt<bool>
+EnableSILOwnershipOpt("enable-sil-ownership",
+                 llvm::cl::desc("Compile the module with sil-ownership initially enabled for all functions"));
 
 static llvm::cl::opt<bool>
 EnableSILOpaqueValues("enable-sil-opaque-values",
                       llvm::cl::desc("Compile the module with sil-opaque-values enabled."));
-
-static llvm::cl::opt<bool>
-EnableObjCInterop("enable-objc-interop",
-                  llvm::cl::desc("Enable Objective-C interoperability."));
-
-static llvm::cl::opt<bool>
-DisableObjCInterop("disable-objc-interop",
-                   llvm::cl::desc("Disable Objective-C interoperability."));
-
-static llvm::cl::opt<bool>
-VerifyExclusivity("enable-verify-exclusivity",
-                  llvm::cl::desc("Verify the access markers used to enforce exclusivity."));
-
-static llvm::cl::opt<bool>
-EnableSpeculativeDevirtualization("enable-spec-devirt",
-                  llvm::cl::desc("Enable Speculative Devirtualization pass."));
 
 namespace {
 enum EnforceExclusivityMode {
@@ -138,8 +115,7 @@ SDKPath("sdk", llvm::cl::desc("The path to the SDK for use with the clang "
         llvm::cl::init(""));
 
 static llvm::cl::opt<std::string>
-Target("target", llvm::cl::desc("target triple"),
-       llvm::cl::init(llvm::sys::getDefaultTargetTriple()));
+Target("target", llvm::cl::desc("target triple"));
 
 static llvm::cl::opt<OptGroup> OptimizationGroup(
     llvm::cl::desc("Predefined optimization groups:"),
@@ -210,72 +186,35 @@ DisableASTDump("sil-disable-ast-dump", llvm::cl::Hidden,
                llvm::cl::init(false),
                llvm::cl::desc("Do not dump AST."));
 
+static llvm::cl::opt<unsigned>
+ASTVerifierProcessCount("ast-verifier-process-count", llvm::cl::Hidden,
+                        llvm::cl::init(1));
+
+static llvm::cl::opt<unsigned>
+ASTVerifierProcessId("ast-verifier-process-id", llvm::cl::Hidden,
+                     llvm::cl::init(1));
+
 static llvm::cl::opt<bool>
 PerformWMO("wmo", llvm::cl::desc("Enable whole-module optimizations"));
 
 static llvm::cl::opt<bool>
-EnableExperimentalStaticAssert(
-    "enable-experimental-static-assert", llvm::cl::Hidden,
-    llvm::cl::init(false), llvm::cl::desc("Enable experimental #assert"));
-
-static llvm::cl::opt<bool> EnableExperimentalDifferentiableProgramming(
-    "enable-experimental-differentiable-programming", llvm::cl::Hidden,
-    llvm::cl::init(false),
-    llvm::cl::desc("Enable experimental differentiable programming"));
-
-/// Regular expression corresponding to the value given in one of the
-/// -pass-remarks* command line flags. Passes whose name matches this regexp
-/// will emit a diagnostic.
-static std::shared_ptr<llvm::Regex> createOptRemarkRegex(StringRef Val) {
-  std::shared_ptr<llvm::Regex> Pattern = std::make_shared<llvm::Regex>(Val);
-  if (!Val.empty()) {
-    std::string RegexError;
-    if (!Pattern->isValid(RegexError))
-      llvm::report_fatal_error("Invalid regular expression '" + Val +
-                                   "' in -sil-remarks: " + RegexError,
-                               false);
-  }
-  return Pattern;
-}
-
-static cl::opt<std::string> PassRemarksPassed(
-    "sil-remarks", cl::value_desc("pattern"),
-    cl::desc(
-        "Enable performed optimization remarks from passes whose name match "
-        "the given regular expression"),
-    cl::Hidden);
-
-static cl::opt<std::string> PassRemarksMissed(
-    "sil-remarks-missed", cl::value_desc("pattern"),
-    cl::desc("Enable missed optimization remarks from passes whose name match "
-             "the given regular expression"),
-    cl::Hidden);
-
-static cl::opt<std::string>
-    RemarksFilename("save-optimization-record-path",
-                    cl::desc("YAML output filename for pass remarks"),
-                    cl::value_desc("filename"));
-
-static cl::opt<std::string> RemarksPasses(
-    "save-optimization-record-passes",
-    cl::desc("Only include passes which match a specified regular expression "
-             "in the generated optimization record (by default, include all "
-             "passes)"),
-    cl::value_desc("regex"));
-
-// sil-opt doesn't have the equivalent of -save-optimization-record=<format>.
-// Instead, use -save-optimization-record-format <format>.
-static cl::opt<std::string> RemarksFormat(
-    "save-optimization-record-format",
-    cl::desc("The format used for serializing remarks (default: YAML)"),
-    cl::value_desc("format"), cl::init("yaml"));
+AssumeUnqualifiedOwnershipWhenParsing(
+    "assume-parsing-unqualified-ownership-sil", llvm::cl::Hidden, llvm::cl::init(false),
+    llvm::cl::desc("Assume all parsed functions have unqualified ownership"));
 
 static void runCommandLineSelectedPasses(SILModule *Module,
                                          irgen::IRGenModule *IRGenMod) {
-  auto &opts = Module->getOptions();
-  executePassPipelinePlan(
-      Module, SILPassPipelinePlan::getPassPipelineForKinds(opts, Passes),
-      /*isMandatory*/ false, IRGenMod);
+  SILPassManager PM(Module, IRGenMod);
+  for (auto P : Passes) {
+#define PASS(ID, Tag, Name)
+#define IRGEN_PASS(ID, Tag, Name)                                              \
+  if (P == PassKind::ID)                                                       \
+    PM.registerIRGenPass(swift::PassKind::ID, irgen::create##ID());
+#include "swift/SILOptimizer/PassManager/Passes.def"
+  }
+
+  PM.executePassPipelinePlan(
+      SILPassPipelinePlan::getPassPipelineForKinds(Passes));
 
   if (Module->getOptions().VerifyAll)
     Module->verify();
@@ -289,8 +228,7 @@ static void runCommandLineSelectedPasses(SILModule *Module,
 void anchorForGetMainExecutable() {}
 
 int main(int argc, char **argv) {
-  PROGRAM_START(argc, argv);
-  INITIALIZE_LLVM();
+  INITIALIZE_LLVM(argc, argv);
 
   llvm::cl::ParseCommandLineOptions(argc, argv, "Swift SIL optimizer\n");
 
@@ -322,8 +260,7 @@ int main(int argc, char **argv) {
     Invocation.setTargetTriple(Target);
   if (!ResourceDir.empty())
     Invocation.setRuntimeResourcePath(ResourceDir);
-  Invocation.getFrontendOptions().EnableLibraryEvolution
-    = EnableLibraryEvolution;
+  Invocation.getFrontendOptions().EnableResilience = EnableResilience;
   // Set the module cache path. If not passed in we use the default swift module
   // cache.
   Invocation.getClangImporterOptions().ModuleCachePath = ModuleCachePath;
@@ -332,24 +269,13 @@ int main(int argc, char **argv) {
   Invocation.getLangOptions().EnableAccessControl = false;
   Invocation.getLangOptions().EnableObjCAttrRequiresFoundation = false;
   Invocation.getLangOptions().EnableObjCInterop =
-    EnableObjCInterop ? true :
-    DisableObjCInterop ? false : llvm::Triple(Target).isOSDarwin();
+    llvm::Triple(Target).isOSDarwin();
 
+  Invocation.getLangOptions().ASTVerifierProcessCount =
+      ASTVerifierProcessCount;
+  Invocation.getLangOptions().ASTVerifierProcessId =
+      ASTVerifierProcessId;
   Invocation.getLangOptions().EnableSILOpaqueValues = EnableSILOpaqueValues;
-
-  Invocation.getLangOptions().OptimizationRemarkPassedPattern =
-      createOptRemarkRegex(PassRemarksPassed);
-  Invocation.getLangOptions().OptimizationRemarkMissedPattern =
-      createOptRemarkRegex(PassRemarksMissed);
-
-  Invocation.getLangOptions().EnableExperimentalStaticAssert =
-      EnableExperimentalStaticAssert;
-
-  Invocation.getLangOptions().EnableExperimentalDifferentiableProgramming =
-      EnableExperimentalDifferentiableProgramming;
-
-  Invocation.getDiagnosticOptions().VerifyMode =
-      VerifyMode ? DiagnosticOptions::Verify : DiagnosticOptions::NoVerify;
 
   // Setup the SIL Options.
   SILOptions &SILOpts = Invocation.getSILOptions();
@@ -358,14 +284,11 @@ int main(int argc, char **argv) {
   SILOpts.RemoveRuntimeAsserts = RemoveRuntimeAsserts;
   SILOpts.AssertConfig = AssertConfId;
   if (OptimizationGroup != OptGroup::Diagnostics)
-    SILOpts.OptMode = OptimizationMode::ForSpeed;
-  SILOpts.VerifySILOwnership = !DisableSILOwnershipVerifier;
-  SILOpts.StripOwnershipAfterSerialization =
-      EnableOwnershipLoweringAfterDiagnostics;
-  SILOpts.OptRecordFile = RemarksFilename;
-  SILOpts.OptRecordPasses = RemarksPasses;
+    SILOpts.Optimization = SILOptions::SILOptMode::Optimize;
+  SILOpts.EnableSILOwnership = EnableSILOwnershipOpt;
+  SILOpts.AssumeUnqualifiedOwnershipWhenParsing =
+    AssumeUnqualifiedOwnershipWhenParsing;
 
-  SILOpts.VerifyExclusivity = VerifyExclusivity;
   if (EnforceExclusivity.getNumOccurrences() != 0) {
     switch (EnforceExclusivity) {
     case EnforceExclusivityMode::Unchecked:
@@ -392,108 +315,94 @@ int main(int argc, char **argv) {
     }
   }
 
-  SILOpts.EnableSpeculativeDevirtualization = EnableSpeculativeDevirtualization;
-
-  serialization::ExtendedValidationInfo extendedInfo;
+  // Load the input file.
   llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> FileBufOrErr =
-      Invocation.setUpInputForSILTool(InputFilename, ModuleName,
-                                      /*alwaysSetModuleToMain*/ false,
-                                      /*bePrimary*/ !PerformWMO, extendedInfo);
+    llvm::MemoryBuffer::getFileOrSTDIN(InputFilename);
   if (!FileBufOrErr) {
     fprintf(stderr, "Error! Failed to open file: %s\n", InputFilename.c_str());
     exit(-1);
+  }
+
+  // If it looks like we have an AST, set the source file kind to SIL and the
+  // name of the module to the file's name.
+  Invocation.addInputBuffer(FileBufOrErr.get().get());
+
+  serialization::ExtendedValidationInfo extendedInfo;
+  auto result = serialization::validateSerializedAST(
+      FileBufOrErr.get()->getBuffer(), &extendedInfo);
+  bool HasSerializedAST = result.status == serialization::Status::Valid;
+
+  if (HasSerializedAST) {
+    const StringRef Stem = ModuleName.size() ?
+                             StringRef(ModuleName) :
+                             llvm::sys::path::stem(InputFilename);
+    Invocation.setModuleName(Stem);
+    Invocation.setInputKind(InputFileKind::IFK_Swift_Library);
+  } else {
+    const StringRef Name = ModuleName.size() ? StringRef(ModuleName) : "main";
+    Invocation.setModuleName(Name);
+    Invocation.setInputKind(InputFileKind::IFK_SIL);
   }
 
   CompilerInstance CI;
   PrintingDiagnosticConsumer PrintDiags;
   CI.addDiagnosticConsumer(&PrintDiags);
 
-  if (VerifyMode)
-    PrintDiags.setSuppressOutput(true);
-
-  struct FinishDiagProcessingCheckRAII {
-    bool CalledFinishDiagProcessing = false;
-    ~FinishDiagProcessingCheckRAII() {
-      assert(CalledFinishDiagProcessing &&
-             "returned from the function "
-             "without calling finishDiagProcessing");
+  if (!PerformWMO) {
+    auto &FrontendOpts = Invocation.getFrontendOptions();
+    if (!InputFilename.empty() && InputFilename != "-") {
+      FrontendOpts.PrimaryInput = SelectedInput(
+          FrontendOpts.InputFilenames.size());
+    } else {
+      FrontendOpts.PrimaryInput = SelectedInput(
+          FrontendOpts.InputBuffers.size(), SelectedInput::InputKind::Buffer);
     }
-  } FinishDiagProcessingCheckRAII;
-
-  auto finishDiagProcessing = [&](int retValue) -> int {
-    FinishDiagProcessingCheckRAII.CalledFinishDiagProcessing = true;
-    PrintDiags.setSuppressOutput(false);
-    bool diagnosticsError = CI.getDiags().finishProcessing();
-    // If the verifier is enabled and did not encounter any verification errors,
-    // return 0 even if the compile failed. This behavior isn't ideal, but large
-    // parts of the test suite are reliant on it.
-    if (VerifyMode && !diagnosticsError) {
-      return 0;
-    }
-    return retValue ? retValue : diagnosticsError;
-  };
+  }
 
   if (CI.setup(Invocation))
-    return finishDiagProcessing(1);
+    return 1;
 
   CI.performSema();
 
   // If parsing produced an error, don't run any passes.
-  bool HadError = CI.getASTContext().hadError();
-  if (HadError)
-    return finishDiagProcessing(1);
+  if (CI.getASTContext().hadError())
+    return 1;
 
-  auto *mod = CI.getMainModule();
-  assert(mod->getFiles().size() == 1);
+  // Load the SIL if we have a module. We have to do this after SILParse
+  // creating the unfortunate double if statement.
+  if (HasSerializedAST) {
+    assert(!CI.hasSILModule() &&
+           "performSema() should not create a SILModule.");
+    CI.setSILModule(SILModule::createEmptyModule(
+        CI.getMainModule(), CI.getSILOptions(), PerformWMO));
+    std::unique_ptr<SerializedSILLoader> SL = SerializedSILLoader::create(
+        CI.getASTContext(), CI.getSILModule(), nullptr);
 
-  std::unique_ptr<SILModule> SILMod;
-  if (PerformWMO) {
-    SILMod = performSILGeneration(mod, CI.getSILTypes(), CI.getSILOptions());
-  } else {
-    SILMod = performSILGeneration(*mod->getFiles()[0], CI.getSILTypes(),
-                                  CI.getSILOptions());
-  }
-  SILMod->setSerializeSILAction([]{});
-
-  // Load the SIL if we have a non-SIB serialized module. SILGen handles SIB for
-  // us.
-  if (Invocation.hasSerializedAST() && !extendedInfo.isSIB()) {
-    auto SL = SerializedSILLoader::create(
-        CI.getASTContext(), SILMod.get(), nullptr);
-    if (DisableSILLinking)
+    if (extendedInfo.isSIB() || DisableSILLinking)
       SL->getAllForModule(CI.getMainModule()->getName(), nullptr);
     else
       SL->getAll();
   }
 
-  if (!RemarksFilename.empty()) {
-    llvm::Expected<llvm::remarks::Format> formatOrErr =
-        llvm::remarks::parseFormat(RemarksFormat);
-    if (llvm::Error E = formatOrErr.takeError()) {
-      CI.getDiags().diagnose(SourceLoc(),
-                             diag::error_creating_remark_serializer,
-                             toString(std::move(E)));
-      HadError = true;
-      SILOpts.OptRecordFormat = llvm::remarks::Format::YAML;
-    } else {
-      SILOpts.OptRecordFormat = *formatOrErr;
-    }
-
-    SILMod->installSILRemarkStreamer();
-  }
+  // If we're in verify mode, install a custom diagnostic handling for
+  // SourceMgr.
+  if (VerifyMode)
+    enableDiagnosticVerifier(CI.getSourceMgr());
 
   if (OptimizationGroup == OptGroup::Diagnostics) {
-    runSILDiagnosticPasses(*SILMod.get());
+    runSILDiagnosticPasses(*CI.getSILModule());
   } else if (OptimizationGroup == OptGroup::Performance) {
-    runSILOptimizationPasses(*SILMod.get());
+    runSILOptPreparePasses(*CI.getSILModule());
+    runSILOptimizationPasses(*CI.getSILModule());
   } else if (OptimizationGroup == OptGroup::Lowering) {
-    runSILLoweringPasses(*SILMod.get());
+    runSILLoweringPasses(*CI.getSILModule());
   } else {
-    auto T = irgen::createIRGenModule(
-        SILMod.get(), Invocation.getOutputFilenameForAtMostOnePrimary(),
-        Invocation.getMainInputFilenameForDebugInfoForAtMostOnePrimary(), "");
-    runCommandLineSelectedPasses(SILMod.get(), T.second);
-    irgen::deleteIRGenModule(T);
+    auto *SILMod = CI.getSILModule();
+    {
+      auto T = irgen::createIRGenModule(SILMod, getGlobalLLVMContext());
+      runCommandLineSelectedPasses(SILMod, T.second);
+      irgen::deleteIRGenModule(T);
+    }
   }
 
   if (EmitSIB) {
@@ -502,12 +411,10 @@ int main(int argc, char **argv) {
       OutputFile = OutputFilename;
     } else if (ModuleName.size()) {
       OutputFile = ModuleName;
-      llvm::sys::path::replace_extension(
-          OutputFile, file_types::getExtension(file_types::TY_SIB));
+      llvm::sys::path::replace_extension(OutputFile, SIB_EXTENSION);
     } else {
       OutputFile = CI.getMainModule()->getName().str();
-      llvm::sys::path::replace_extension(
-          OutputFile, file_types::getExtension(file_types::TY_SIB));
+      llvm::sys::path::replace_extension(OutputFile, SIB_EXTENSION);
     }
 
     SerializationOptions serializationOpts;
@@ -515,30 +422,35 @@ int main(int argc, char **argv) {
     serializationOpts.SerializeAllSIL = true;
     serializationOpts.IsSIB = true;
 
-    serialize(CI.getMainModule(), serializationOpts, SILMod.get());
+    serialize(CI.getMainModule(), serializationOpts, CI.getSILModule());
   } else {
     const StringRef OutputFile = OutputFilename.size() ?
                                    StringRef(OutputFilename) : "-";
-    auto SILOpts = SILOptions();
-    SILOpts.EmitVerboseSIL = EmitVerboseSIL;
-    SILOpts.EmitSortedSIL = EnableSILSortOutput;
+
     if (OutputFile == "-") {
-      SILMod->print(llvm::outs(), CI.getMainModule(), SILOpts, !DisableASTDump);
+      CI.getSILModule()->print(llvm::outs(), EmitVerboseSIL, CI.getMainModule(),
+                               EnableSILSortOutput, !DisableASTDump);
     } else {
       std::error_code EC;
       llvm::raw_fd_ostream OS(OutputFile, EC, llvm::sys::fs::F_None);
       if (EC) {
         llvm::errs() << "while opening '" << OutputFile << "': "
                      << EC.message() << '\n';
-        return finishDiagProcessing(1);
+        return 1;
       }
-      SILMod->print(OS, CI.getMainModule(), SILOpts, !DisableASTDump);
+      CI.getSILModule()->print(OS, EmitVerboseSIL, CI.getMainModule(),
+                               EnableSILSortOutput, !DisableASTDump);
     }
   }
 
-  HadError |= CI.getASTContext().hadError();
+  bool HadError = CI.getASTContext().hadError();
 
+  // If we're in -verify mode, we've buffered up all of the generated
+  // diagnostics.  Check now to ensure that they meet our expectations.
   if (VerifyMode) {
+    HadError = verifyDiagnostics(CI.getSourceMgr(), CI.getInputBufferIDs(),
+                                 /*autoApplyFixes*/false,
+                                 /*ignoreUnknown*/false);
     DiagnosticEngine &diags = CI.getDiags();
     if (diags.hasFatalErrorOccurred() &&
         !Invocation.getDiagnosticOptions().ShowDiagnosticsAfterFatalError) {
@@ -548,5 +460,5 @@ int main(int argc, char **argv) {
     }
   }
 
-  return finishDiagProcessing(HadError);
+  return HadError;
 }

@@ -13,7 +13,6 @@
 #ifndef SWIFT_AST_SEARCHPATHOPTIONS_H
 #define SWIFT_AST_SEARCHPATHOPTIONS_H
 
-#include "swift/Basic/ArrayRefView.h"
 #include "llvm/ADT/Hashing.h"
 
 #include <string>
@@ -32,9 +31,6 @@ public:
   /// Do not add values to this directly. Instead, use
   /// \c ASTContext::addSearchPath.
   std::vector<std::string> ImportSearchPaths;
-
-  /// Path(s) to virtual filesystem overlay YAML files.
-  std::vector<std::string> VFSOverlayFiles;
 
   struct FrameworkSearchPath {
     std::string Path;
@@ -65,55 +61,33 @@ public:
   /// Path to search for compiler-relative header files.
   std::string RuntimeResourcePath;
 
-  /// Paths to search for compiler-relative stdlib dylibs, in order of
-  /// preference.
-  std::vector<std::string> RuntimeLibraryPaths;
+  /// Path to search for compiler-relative stdlib dylibs.
+  std::string RuntimeLibraryPath;
 
-  /// Paths to search for stdlib modules. One of these will be compiler-relative.
-  std::vector<std::string> RuntimeLibraryImportPaths;
+  /// Path to search for compiler-relative stdlib modules.
+  std::string RuntimeLibraryImportPath;
 
   /// Don't look in for compiler-provided modules.
-  bool SkipRuntimeLibraryImportPaths = false;
+  bool SkipRuntimeLibraryImportPath = false;
 
-  /// When set, don't validate module system dependencies.
-  ///
-  /// If a system header is modified and this is not set, the compiler will
-  /// rebuild PCMs and compiled swiftmodules that depend on them, just like it
-  /// would for a non-system header.
-  bool DisableModulesValidateSystemDependencies = false;
-
-private:
-  static StringRef
-  pathStringFromFrameworkSearchPath(const FrameworkSearchPath &next) {
-    return next.Path;
-  };
-
-public:
   /// Return a hash code of any components from these options that should
   /// contribute to a Swift Bridging PCH hash.
   llvm::hash_code getPCHHashComponents() const {
+    using llvm::hash_value;
     using llvm::hash_combine;
-    using llvm::hash_combine_range;
-
-    using FrameworkPathView = ArrayRefView<FrameworkSearchPath, StringRef,
-                                           pathStringFromFrameworkSearchPath>;
-    FrameworkPathView frameworkPathsOnly{FrameworkSearchPaths};
-
-    return hash_combine(SDKPath,
-                        hash_combine_range(ImportSearchPaths.begin(),
-                                           ImportSearchPaths.end()),
-                        hash_combine_range(VFSOverlayFiles.begin(),
-                                           VFSOverlayFiles.end()),
-                        // FIXME: Should we include the system-ness of framework
-                        // search paths too?
-                        hash_combine_range(frameworkPathsOnly.begin(),
-                                           frameworkPathsOnly.end()),
-                        hash_combine_range(LibrarySearchPaths.begin(),
-                                           LibrarySearchPaths.end()),
-                        RuntimeResourcePath,
-                        hash_combine_range(RuntimeLibraryImportPaths.begin(),
-                                           RuntimeLibraryImportPaths.end()),
-                        DisableModulesValidateSystemDependencies);
+    auto Code = hash_value(SDKPath);
+    for (auto Import : ImportSearchPaths) {
+      Code = hash_combine(Code, Import);
+    }
+    for (const auto &FrameworkPath : FrameworkSearchPaths) {
+      Code = hash_combine(Code, FrameworkPath.Path);
+    }
+    for (auto LibraryPath : LibrarySearchPaths) {
+      Code = hash_combine(Code, LibraryPath);
+    }
+    Code = hash_combine(Code, RuntimeResourcePath);
+    Code = hash_combine(Code, RuntimeLibraryImportPath);
+    return Code;
   }
 };
 

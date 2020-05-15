@@ -12,13 +12,8 @@
 
 // This test checks performance of Swift hanoi tower.
 // <rdar://problem/22151932>
+import Foundation
 import TestsUtils
-
-public let Hanoi = BenchmarkInfo(
-  name: "Hanoi",
-  runFunction: run_Hanoi,
-  tags: [.validation, .algorithm],
-  legacyFactor: 10)
 
 struct Move {
    var from: String
@@ -46,7 +41,7 @@ class TowersOfHanoi {
 
 @inline(never)
 public func run_Hanoi(_ N: Int) {
-  for _ in 1...10*N {
+  for _ in 1...100*N {
     let hanoi: TowersOfHanoi = TowersOfHanoi()
     hanoi.solve(10, start: "A", auxiliary: "B", end: "C")
   }

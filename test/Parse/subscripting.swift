@@ -1,6 +1,6 @@
 // RUN: %target-typecheck-verify-swift
 
-struct X { } // expected-note {{did you mean}}
+struct X { }
 
 // Simple examples
 struct X1 {
@@ -57,35 +57,10 @@ struct X4 {
   }
 }
 
-struct X5 {
-  static var stored: Int = 1
-
-  static subscript(i: Int) -> Int {
-    get {
-      return stored + i
-    }
-    set {
-      stored = newValue - i
-    }
-  }
-}
-
-class X6 {
-  static var stored: Int = 1
-
-  class subscript(i: Int) -> Int {
-    get {
-      return stored + i
-    }
-    set {
-      stored = newValue - i
-    }
-  }
-}
-
 struct Y1 {
   var stored: Int
-  subscript(_: i, j: Int) -> Int { // expected-error {{cannot find type 'i' in scope}}
+  // FIXME: Duplicate diagnostics
+  subscript(_: i, j: Int) -> Int { // expected-error 3{{use of undeclared type 'i'}}
     get {
       return stored + j
     }
@@ -117,7 +92,7 @@ struct A0 {
       stored = value
     }
   }
-
+  
   subscript -> Int { // expected-error {{expected '(' for subscript parameters}} {{12-12=()}}
     return 1
   }
@@ -127,10 +102,10 @@ struct A1 {
   subscript (i : Int) // expected-error{{expected '->' for subscript element type}}
      Int {
     get {
-      return stored // expected-error{{cannot find 'stored' in scope}}
+      return stored
     }
     set {
-      stored = newValue// expected-error{{cannot find 'stored' in scope}}
+      stored = value
     }
   }
 }
@@ -142,14 +117,13 @@ struct A2 {
       return stored
     }
     set {
-      stored = newValue // expected-error{{cannot find 'stored' in scope}}
+      stored = value
     }
   }
 }
 
 struct A3 {
   subscript(i : Int) // expected-error {{expected '->' for subscript element type}}
-                     // expected-error@-1 {{expected subscripting element type}}
   {
     get {
       return i
@@ -159,7 +133,6 @@ struct A3 {
 
 struct A4 {
   subscript(i : Int) { // expected-error {{expected '->' for subscript element type}}
-                       // expected-error@-1 {{expected subscripting element type}}
     get {
       return i
     }
@@ -172,24 +145,22 @@ struct A5 {
 
 struct A6 {
   subscript(i: Int)(j: Int) -> Int { // expected-error {{expected '->' for subscript element type}}
-                                     // expected-error@-1 {{function types cannot have argument labels}}
-                                     // expected-note@-2 {{did you mean}}
     get {
-      return i + j // expected-error {{cannot find 'j' in scope}}
+      return i + j
     }
   }
 }
 
 struct A7 {
-  class subscript(a: Float) -> Int { // expected-error {{class subscripts are only allowed within classes; use 'static' to declare a static subscript}} {{3-8=static}}
+  static subscript(a: Int) -> Int { // expected-error {{subscript cannot be marked 'static'}} {{3-10=}}
     get {
       return 42
     }
   }
 }
 
-class A7b {
-  class static subscript(a: Float) -> Int { // expected-error {{'static' cannot appear after another 'static' or 'class' keyword}} {{9-16=}}
+struct A7b {
+  class subscript(a: Float) -> Int { // expected-error {{subscript cannot be marked 'class'}} {{3-9=}}
     get {
       return 42
     }
@@ -214,9 +185,6 @@ struct A9 {
 
 struct A10 {
   subscript x(i: Int) -> Int { // expected-error {{subscripts cannot have a name}} {{13-14=}}
-    return 0
-  }
-  subscript x<T>(i: T) -> Int { // expected-error {{subscripts cannot have a name}} {{13-14=}}
     return 0
   }
 }

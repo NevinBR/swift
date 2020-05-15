@@ -10,20 +10,27 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "swift/SILOptimizer/Utils/SILSSAUpdater.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/raw_ostream.h"
+#include "llvm/Transforms/Utils/SSAUpdaterImpl.h"
 #include "swift/Basic/Malloc.h"
 #include "swift/SIL/SILArgument.h"
 #include "swift/SIL/SILBasicBlock.h"
 #include "swift/SIL/SILBuilder.h"
 #include "swift/SIL/SILModule.h"
 #include "swift/SIL/SILUndef.h"
-#include "swift/SILOptimizer/Utils/CFGOptUtils.h"
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/raw_ostream.h"
-#include "llvm/Transforms/Utils/SSAUpdaterImpl.h"
+#include "swift/SILOptimizer/Utils/CFG.h"
+#include "swift/SILOptimizer/Utils/SILSSAUpdater.h"
+
 
 using namespace swift;
+
+using AvailableValsTy = llvm::DenseMap<SILBasicBlock *, SILValue>;
+
+static AvailableValsTy &getAvailVals(void *AV) {
+  return *static_cast<AvailableValsTy *>(AV);
+}
 
 void *SILSSAUpdater::allocate(unsigned Size, unsigned Align) const {
   return AlignedAlloc(Size, Align);
@@ -33,11 +40,13 @@ void SILSSAUpdater::deallocateSentinel(SILUndef *D) {
   AlignedFree(D);
 }
 
-SILSSAUpdater::SILSSAUpdater(SmallVectorImpl<SILPhiArgument *> *PHIs)
+SILSSAUpdater::SILSSAUpdater(SmallVectorImpl<SILPHIArgument *> *PHIs)
     : AV(nullptr), PHISentinel(nullptr, deallocateSentinel),
       InsertedPHIs(PHIs) {}
 
-SILSSAUpdater::~SILSSAUpdater() = default;
+SILSSAUpdater::~SILSSAUpdater() {
+  delete static_cast<AvailableValsTy *>(AV);
+}
 
 void SILSSAUpdater::Initialize(SILType Ty) {
   ValType = Ty;
@@ -46,19 +55,19 @@ void SILSSAUpdater::Initialize(SILType Ty) {
       SILUndef::getSentinelValue(Ty, this), SILSSAUpdater::deallocateSentinel);
 
   if (!AV)
-    AV.reset(new AvailableValsTy());
+    AV = new AvailableValsTy();
   else
-    AV->clear();
+    getAvailVals(AV).clear();
 }
 
 bool SILSSAUpdater::HasValueForBlock(SILBasicBlock *BB) const {
-  return AV->count(BB);
+  return getAvailVals(AV).count(BB);
 }
 
 /// Indicate that a rewritten value is available in the specified block with the
 /// specified value.
 void SILSSAUpdater::AddAvailableValue(SILBasicBlock *BB, SILValue V) {
-  (*AV)[BB] = V;
+  getAvailVals(AV)[BB] = V;
 }
 
 /// Construct SSA form, materializing a value that is live at the end of the
@@ -68,30 +77,16 @@ SILValue SILSSAUpdater::GetValueAtEndOfBlock(SILBasicBlock *BB) {
 }
 
 /// Are all available values identicalTo each other.
-static bool areIdentical(llvm::DenseMap<SILBasicBlock *, SILValue> &Avails) {
-  if (auto *First = dyn_cast<SingleValueInstruction>(Avails.begin()->second)) {
-    for (auto Avail : Avails) {
-      auto *Inst = dyn_cast<SingleValueInstruction>(Avail.second);
-      if (!Inst)
-        return false;
-      if (!Inst->isIdenticalTo(First))
-        return false;
-    }
-    return true;
-  }
-
-  auto *MVIR = dyn_cast<MultipleValueInstructionResult>(Avails.begin()->second);
-  if (!MVIR)
+bool areIdentical(AvailableValsTy &Avails) {
+  auto *First = dyn_cast<SILInstruction>(Avails.begin()->second);
+  if (!First)
     return false;
-
   for (auto Avail : Avails) {
-    auto *Result = dyn_cast<MultipleValueInstructionResult>(Avail.second);
-    if (!Result)
+    auto *Inst = dyn_cast<SILInstruction>(Avail.second);
+    if (!Inst)
       return false;
-    if (!Result->getParent()->isIdenticalTo(MVIR->getParent()) ||
-        Result->getIndex() != MVIR->getIndex()) {
+    if (!Inst->isIdenticalTo(First))
       return false;
-    }
   }
   return true;
 }
@@ -102,32 +97,18 @@ void SILSSAUpdater::RewriteUse(Operand &Op) {
   // Replicate function_refs to their uses. SILGen can't build phi nodes for
   // them and it would not make much sense anyways.
   if (auto *FR = dyn_cast<FunctionRefInst>(Op.get())) {
-    assert(areIdentical(*AV) &&
+    assert(areIdentical(getAvailVals(AV)) &&
            "The function_refs need to have the same value");
     SILInstruction *User = Op.getUser();
-    auto *NewFR = cast<FunctionRefInst>(FR->clone(User));
-    Op.set(NewFR);
-    return;
-  } else if (auto *FR = dyn_cast<PreviousDynamicFunctionRefInst>(Op.get())) {
-    assert(areIdentical(*AV) &&
-           "The function_refs need to have the same value");
-    SILInstruction *User = Op.getUser();
-    auto *NewFR = cast<PreviousDynamicFunctionRefInst>(FR->clone(User));
-    Op.set(NewFR);
-    return;
-  } else if (auto *FR = dyn_cast<DynamicFunctionRefInst>(Op.get())) {
-    assert(areIdentical(*AV) &&
-           "The function_refs need to have the same value");
-    SILInstruction *User = Op.getUser();
-    auto *NewFR = cast<DynamicFunctionRefInst>(FR->clone(User));
+    auto *NewFR = FR->clone(User);
     Op.set(NewFR);
     return;
   } else if (auto *IL = dyn_cast<IntegerLiteralInst>(Op.get()))
-    if (areIdentical(*AV)) {
+    if (areIdentical(getAvailVals(AV))) {
       // Some llvm intrinsics don't like phi nodes as their constant inputs (e.g
       // ctlz).
       SILInstruction *User = Op.getUser();
-      auto *NewIL = cast<IntegerLiteralInst>(IL->clone(User));
+      auto *NewIL = IL->clone(User);
       Op.set(NewIL);
       return;
     }
@@ -167,7 +148,7 @@ static OperandValueArrayRef getEdgeValuesForTerminator(TermInst *TI,
 /// Check that the argument has the same incoming edge values as the value
 /// map.
 static bool
-isEquivalentPHI(SILPhiArgument *PHI,
+isEquivalentPHI(SILPHIArgument *PHI,
                 llvm::SmallDenseMap<SILBasicBlock *, SILValue, 8> &ValueMap) {
   SILBasicBlock *PhiBB = PHI->getParent();
   size_t Idx = PHI->getIndex();
@@ -212,7 +193,7 @@ SILValue SILSSAUpdater::GetValueInMiddleOfBlock(SILBasicBlock *BB) {
 
   // Return undef for blocks without predecessor.
   if (PredVals.empty())
-    return SILUndef::get(ValType, *BB->getParent());
+    return SILUndef::get(ValType, BB->getModule());
 
   if (SingularValue)
     return SingularValue;
@@ -221,15 +202,15 @@ SILValue SILSSAUpdater::GetValueInMiddleOfBlock(SILBasicBlock *BB) {
   if (!BB->getArguments().empty()) {
     llvm::SmallDenseMap<SILBasicBlock *, SILValue, 8> ValueMap(PredVals.begin(),
                                                                PredVals.end());
-    for (auto *Arg : BB->getSILPhiArguments())
+    for (auto *Arg : BB->getPHIArguments())
       if (isEquivalentPHI(Arg, ValueMap))
         return Arg;
 
   }
 
   // Create a new phi node.
-  SILPhiArgument *PHI =
-      BB->createPhiArgument(ValType, ValueOwnershipKind::Owned);
+  SILPHIArgument *PHI =
+      BB->createPHIArgument(ValType, ValueOwnershipKind::Owned);
   for (auto &EV : PredVals)
     addNewEdgeValueToBranch(EV.first->getTerminator(), BB, EV.second);
 
@@ -247,11 +228,34 @@ class SSAUpdaterTraits<SILSSAUpdater> {
 public:
   typedef SILBasicBlock BlkT;
   typedef SILValue ValT;
-  typedef SILPhiArgument PhiT;
+  typedef SILPHIArgument PhiT;
 
   typedef SILBasicBlock::succ_iterator BlkSucc_iterator;
   static BlkSucc_iterator BlkSucc_begin(BlkT *BB) { return BB->succ_begin(); }
   static BlkSucc_iterator BlkSucc_end(BlkT *BB) { return BB->succ_end(); }
+
+  /// Iterator over the arguments (phis) of a basic block.
+  /// Defines an implicit cast operator on the iterator. So that this iterator
+  /// can be used in the SSAUpdaterImpl.
+  class PhiIt {
+  private:
+    SILBasicBlock::arg_iterator It;
+
+  public:
+    explicit PhiIt(SILBasicBlock *B) // begin iterator
+        : It(B->args_begin()) {}
+    PhiIt(SILBasicBlock *B, bool) // end iterator
+        : It(B->args_end()) {}
+    PhiIt &operator++() { ++It; return *this; }
+
+    operator SILPHIArgument *() { return cast<SILPHIArgument>(*It); }
+    bool operator==(const PhiIt& x) const { return It == x.It; }
+    bool operator!=(const PhiIt& x) const { return !operator==(x); }
+  };
+
+  typedef PhiIt PhiItT;
+  static PhiItT PhiItT_begin(BlkT *BB) { return PhiIt(BB); }
+  static PhiItT PhiItT_end(BlkT *BB) { return PhiIt(BB, true); }
 
   /// Iterator for PHI operands.
   class PHI_iterator {
@@ -261,11 +265,11 @@ public:
     size_t Idx;
 
   public:
-    explicit PHI_iterator(SILPhiArgument *P) // begin iterator
+    explicit PHI_iterator(SILPHIArgument *P) // begin iterator
         : PredIt(P->getParent()->pred_begin()),
           BB(P->getParent()),
           Idx(P->getIndex()) {}
-    PHI_iterator(SILPhiArgument *P, bool) // end iterator
+    PHI_iterator(SILPHIArgument *P, bool) // end iterator
         : PredIt(P->getParent()->pred_end()),
           BB(P->getParent()),
           Idx(P->getIndex()) {}
@@ -304,7 +308,7 @@ public:
 
   static SILValue GetUndefVal(SILBasicBlock *BB,
                               SILSSAUpdater *Updater) {
-    return SILUndef::get(Updater->ValType, *BB->getParent());
+    return SILUndef::get(Updater->ValType, &BB->getModule());
   }
 
   /// Add an Argument to the basic block.
@@ -312,7 +316,7 @@ public:
                                  SILSSAUpdater *Updater) {
     // Add the argument to the block.
     SILValue PHI(
-        BB->createPhiArgument(Updater->ValType, ValueOwnershipKind::Owned));
+        BB->createPHIArgument(Updater->ValType, ValueOwnershipKind::Owned));
 
     // Mark all predecessor blocks with the sentinel undef value.
     SmallVector<SILBasicBlock*, 4> Preds(BB->pred_begin(), BB->pred_end());
@@ -325,7 +329,7 @@ public:
 
   /// Add the specified value as an operand of the PHI for the specified
   /// predecessor block.
-  static void AddPHIOperand(SILPhiArgument *PHI, SILValue Val,
+  static void AddPHIOperand(SILPHIArgument *PHI, SILValue Val,
                             SILBasicBlock *Pred) {
     auto *PHIBB = PHI->getParent();
     size_t PhiIdx = PHI->getIndex();
@@ -335,21 +339,21 @@ public:
 
   /// InstrIsPHI - Check if an instruction is a PHI.
   ///
-  static SILPhiArgument *InstrIsPHI(ValueBase *I) {
-    auto *Res = dyn_cast<SILPhiArgument>(I);
+  static SILPHIArgument *InstrIsPHI(ValueBase *I) {
+    auto *Res = dyn_cast<SILPHIArgument>(I);
     return Res;
   }
 
   /// ValueIsPHI - Check if the instruction that defines the specified register
   /// is a PHI instruction.
-  static SILPhiArgument *ValueIsPHI(SILValue V, SILSSAUpdater *Updater) {
+  static SILPHIArgument *ValueIsPHI(SILValue V, SILSSAUpdater *Updater) {
     return InstrIsPHI(V);
   }
 
   /// Like ValueIsPHI but also check if the PHI has no source
   /// operands, i.e., it was just added.
-  static SILPhiArgument *ValueIsNewPHI(SILValue Val, SILSSAUpdater *Updater) {
-    SILPhiArgument *PHI = ValueIsPHI(Val, Updater);
+  static SILPHIArgument *ValueIsNewPHI(SILValue Val, SILSSAUpdater *Updater) {
+    SILPHIArgument *PHI = ValueIsPHI(Val, Updater);
     if (PHI) {
       auto *PhiBB = PHI->getParent();
       size_t PhiIdx = PHI->getIndex();
@@ -371,7 +375,7 @@ public:
     return nullptr;
   }
 
-  static SILValue GetPHIValue(SILPhiArgument *PHI) { return PHI; }
+  static SILValue GetPHIValue(SILPHIArgument *PHI) { return PHI; }
 };
 
 } // namespace llvm
@@ -380,7 +384,7 @@ public:
 /// return it.  If not, construct SSA form by first calculating the required
 /// placement of PHIs and then inserting new PHIs where needed.
 SILValue SILSSAUpdater::GetValueAtEndOfBlockInternal(SILBasicBlock *BB){
-  AvailableValsTy &AvailableVals = *AV;
+  AvailableValsTy &AvailableVals = getAvailVals(AV);
   auto AI = AvailableVals.find(BB);
   if (AI != AvailableVals.end())
     return AI->second;
@@ -389,7 +393,7 @@ SILValue SILSSAUpdater::GetValueAtEndOfBlockInternal(SILBasicBlock *BB){
   return Impl.GetValue(BB);
 }
 
-/// Construct a use wrapper. For branches we store information so that we
+/// \brief Construct a use wrapper. For branches we store information so that we
 /// can reconstruct the use after the branch has been modified.
 ///
 /// When a branch is modified existing pointers to the operand
@@ -438,7 +442,7 @@ UseWrapper::UseWrapper(Operand *Use) {
 }
 
 /// Return the operand we wrap. Reconstructing branch operands.
-Operand *UseWrapper::getOperand() {
+UseWrapper::operator Operand *() {
   switch (Type) {
   case kRegularUse:
     return U;
@@ -470,7 +474,7 @@ Operand *UseWrapper::getOperand() {
 /// ArgValues are the values feeding the specified Argument from each
 /// predecessor. They must be listed in order of Arg->getParent()->getPreds().
 static StructInst *
-replaceBBArgWithStruct(SILPhiArgument *Arg,
+replaceBBArgWithStruct(SILPHIArgument *Arg,
                        SmallVectorImpl<SILValue> &ArgValues) {
 
   SILBasicBlock *PhiBB = Arg->getParent();
@@ -527,9 +531,9 @@ replaceBBArgWithStruct(SILPhiArgument *Arg,
 /// detection like induction variable analysis to succeed.
 ///
 /// If Arg is replaced, return the cast instruction. Otherwise return nullptr.
-SILValue swift::replaceBBArgWithCast(SILPhiArgument *Arg) {
+SILInstruction *swift::replaceBBArgWithCast(SILPHIArgument *Arg) {
   SmallVector<SILValue, 4> ArgValues;
-  Arg->getIncomingPhiValues(ArgValues);
+  Arg->getIncomingValues(ArgValues);
   if (isa<StructInst>(ArgValues[0]))
     return replaceBBArgWithStruct(Arg, ArgValues);
   return nullptr;

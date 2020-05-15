@@ -7,7 +7,7 @@ public func getVersion() -> Int {
 #endif
 }
 
-@frozen public struct AddConformance {
+@_fixed_layout public struct AddConformance {
   public init() {
     x = 0
     y = 0

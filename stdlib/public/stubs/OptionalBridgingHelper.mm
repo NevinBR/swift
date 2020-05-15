@@ -14,6 +14,7 @@
 
 #if SWIFT_OBJC_INTEROP
 #include "swift/Basic/Lazy.h"
+#include "swift/Basic/LLVM.h"
 #include "swift/Runtime/Metadata.h"
 #include "swift/Runtime/Mutex.h"
 #include "swift/Runtime/ObjCBridge.h"
@@ -25,33 +26,18 @@ using namespace swift;
 
 /// Class of sentinel objects used to represent the `nil` value of nested
 /// optionals.
-///
-/// NOTE: older runtimes called this _SwiftNull. The two must
-/// coexist, so it was renamed. The old name must not be used in the new
-/// runtime.
-@interface __SwiftNull : NSObject {
+@interface _SwiftNull : NSObject {
 @public
   unsigned depth;
 }
 @end
 
+@implementation _SwiftNull : NSObject
 
-
-@implementation __SwiftNull : NSObject
-
-//   int
- // asprintf(char **ret, const char *format, ...);
-
-- (id)description {
-  char *str = NULL;
-  const char *clsName = class_getName([self class]);
-  int fmtResult = asprintf(&str, "<%s %p depth = %u>", clsName,
-                                                       (void*)self,
-                                                       self->depth);
-  assert(fmtResult != -1 && "unable to format description of null");
-  id result = swift_stdlib_NSStringFromUTF8(str, strlen(str));
-  free(str);
-  return result;
+- (NSString*)description {
+  return [NSString stringWithFormat:@"<%@ %p depth = %u>", [self class],
+                                                           (void*)self,
+                                                           self->depth];
 }
 
 @end
@@ -68,7 +54,7 @@ static Lazy<SwiftNullSentinelCache> Sentinels;
 static id getSentinelForDepth(unsigned depth) {
   // For unnested optionals, use NSNull.
   if (depth == 1)
-    return SWIFT_LAZY_CONSTANT(id_const_cast([objc_getClass("NSNull") null]));
+    return (id)kCFNull;
   // Otherwise, make up our own sentinel.
   // See if we created one for this depth.
   auto &theSentinels = Sentinels.get();
@@ -90,7 +76,7 @@ static id getSentinelForDepth(unsigned depth) {
     auto &cached = theSentinels.Cache[depthIndex];
     // Make sure another writer didn't sneak in.
     if (!cached) {
-      auto sentinel = [[__SwiftNull alloc] init];
+      auto sentinel = [[_SwiftNull alloc] init];
       sentinel->depth = depth;
       cached = sentinel;
     }
@@ -102,7 +88,7 @@ static id getSentinelForDepth(unsigned depth) {
 
 /// Return the sentinel object to use to represent `nil` for a given Optional
 /// type.
-SWIFT_RUNTIME_STDLIB_API SWIFT_CC(swift)
+SWIFT_RUNTIME_STDLIB_INTERFACE SWIFT_CC(swift)
 id _swift_Foundation_getOptionalNilSentinelObject(const Metadata *Wrapped) {
   // Figure out the depth of optionality we're working with.
   unsigned depth = 1;

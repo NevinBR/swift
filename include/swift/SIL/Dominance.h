@@ -25,16 +25,6 @@ extern template class llvm::DominatorTreeBase<swift::SILBasicBlock, false>;
 extern template class llvm::DominatorTreeBase<swift::SILBasicBlock, true>;
 extern template class llvm::DomTreeNodeBase<swift::SILBasicBlock>;
 
-namespace llvm {
-namespace DomTreeBuilder {
-using SILDomTree = llvm::DomTreeBase<swift::SILBasicBlock>;
-using SILPostDomTree = llvm::PostDomTreeBase<swift::SILBasicBlock>;
-
-extern template void Calculate<SILDomTree>(SILDomTree &DT);
-extern template void Calculate<SILPostDomTree>(SILPostDomTree &DT);
-} // namespace DomTreeBuilder
-} // namespace llvm
-
 namespace swift {
 
 using DominatorTreeBase = llvm::DominatorTreeBase<swift::SILBasicBlock, false>;
@@ -49,11 +39,6 @@ public:
 
   /// Does instruction A properly dominate instruction B?
   bool properlyDominates(SILInstruction *a, SILInstruction *b);
-
-  /// Does instruction A dominate instruction B?
-  bool dominates(SILInstruction *a, SILInstruction *b) {
-    return a == b || properlyDominates(a, b);
-  }
 
   /// Does value A properly dominate instruction B?
   bool properlyDominates(SILValue a, SILInstruction *b);
@@ -77,7 +62,6 @@ public:
   }
 
   using DominatorTreeBase::properlyDominates;
-  using DominatorTreeBase::dominates;
 
   bool isValid(SILFunction *F) const {
     return getNode(&F->front()) != nullptr;
@@ -192,7 +176,7 @@ namespace llvm {
 /// iterable by generic graph iterators.
 template <> struct GraphTraits<swift::DominanceInfoNode *> {
   using ChildIteratorType = swift::DominanceInfoNode::iterator;
-  using NodeRef = swift::DominanceInfoNode *;
+  typedef swift::DominanceInfoNode *NodeRef;
 
   static NodeRef getEntryNode(NodeRef N) { return N; }
   static inline ChildIteratorType child_begin(NodeRef N) { return N->begin(); }
@@ -201,7 +185,7 @@ template <> struct GraphTraits<swift::DominanceInfoNode *> {
 
 template <> struct GraphTraits<const swift::DominanceInfoNode *> {
   using ChildIteratorType = swift::DominanceInfoNode::const_iterator;
-  using NodeRef = const swift::DominanceInfoNode *;
+  typedef const swift::DominanceInfoNode *NodeRef;
 
   static NodeRef getEntryNode(NodeRef N) { return N; }
   static inline ChildIteratorType child_begin(NodeRef N) { return N->begin(); }

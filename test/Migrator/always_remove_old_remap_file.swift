@@ -1,5 +1,4 @@
-// RUN: %empty-directory(%t)
-// RUN: cp %s %t/input.swift
+// RUN: rm -rf %t && mkdir -p %t && cp %s %t/input.swift
 // RUN: %target-swift-frontend -c -update-code -primary-file %t/input.swift -emit-migrated-file-path %t/always_remove_old_remap_file.result -emit-remap-file-path %t/always_remove_old_remap_file.remap -o /dev/null
 // RUN: ls %t/always_remove_old_remap_file.remap
 

@@ -9,23 +9,15 @@
 // See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
-
-// RUN: %empty-directory(%t)
+// XFAIL: linux
+// RUN: rm -rf %t ; mkdir -p %t
 // RUN: %target-build-swift -swift-version 4 -o %t/a.out %s
 // RUN: %target-run %t/a.out
 // REQUIRES: executable_test
 // REQUIRES: CPU=x86_64
 
 import StdlibUnittest
-#if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
-  import Darwin
-#elseif os(Linux) || os(FreeBSD) || os(OpenBSD) || os(PS4) || os(Android) || os(Cygwin) || os(Haiku)
-  import Glibc
-#elseif os(Windows)
-  import MSVCRT
-#else
-#error("Unsupported platform")
-#endif
+import Darwin
 
 extension FixedWidthInteger {
   /// Returns the high and low parts of a potentially overflowing addition.
@@ -93,7 +85,7 @@ public struct _BigInt<Word: FixedWidthInteger & UnsignedInteger> :
 
   /// A Boolean value indicating whether this instance is equal to zero.
   public var isZero: Bool {
-    return _data.isEmpty
+    return _data.count == 0
   }
 
   //===--- Numeric initializers -------------------------------------------===//
@@ -128,7 +120,7 @@ public struct _BigInt<Word: FixedWidthInteger & UnsignedInteger> :
 
     // FIXME: This is broken on 32-bit arch w/ Word = UInt64
     let wordRatio = UInt.bitWidth / Word.bitWidth
-    assert(wordRatio != 0)
+    _sanityCheck(wordRatio != 0)
     for var sourceWord in source.words {
       for _ in 0..<wordRatio {
         _data.append(Word(truncatingIfNeeded: sourceWord))
@@ -162,9 +154,9 @@ public struct _BigInt<Word: FixedWidthInteger & UnsignedInteger> :
   static func _randomWord() -> Word {
     // This handles up to a 64-bit word
     if Word.bitWidth > UInt32.bitWidth {
-      return Word(UInt32.random(in: 0...UInt32.max)) << 32 | Word(UInt32.random(in: 0...UInt32.max))
+      return Word(arc4random()) << 32 | Word(arc4random())
     } else {
-      return Word(truncatingIfNeeded: UInt32.random(in: 0...UInt32.max))
+      return Word(truncatingIfNeeded: arc4random())
     }
   }
 
@@ -210,7 +202,7 @@ public struct _BigInt<Word: FixedWidthInteger & UnsignedInteger> :
   /// - `_data` has no trailing zero elements
   /// - If `self == 0`, then `isNegative == false`
   func _checkInvariants(source: String = #function) {
-    if _data.isEmpty {
+    if _data.count == 0 {
       assert(isNegative == false,
         "\(source): isNegative with zero length _data")
     }
@@ -252,13 +244,13 @@ public struct _BigInt<Word: FixedWidthInteger & UnsignedInteger> :
   ///
   /// - Precondition: `rhs <= self.magnitude`
   mutating func _unsignedSubtract(_ rhs: Word) {
-    precondition(_data.count > 1 || _data[0] > rhs)
+    _precondition(_data.count > 1 || _data[0] > rhs)
 
     // Quick return if `rhs == 0`
     guard rhs != 0 else { return }
 
     // If `isZero == true`, then `rhs` must also be zero.
-    precondition(!isZero)
+    _precondition(!isZero)
 
     var carry: Word
     (carry, _data[0]) = _data[0].subtractingWithBorrow(rhs)
@@ -268,7 +260,7 @@ public struct _BigInt<Word: FixedWidthInteger & UnsignedInteger> :
       if carry == 0 { break }
       (carry, _data[i]) = _data[i].subtractingWithBorrow(carry)
     }
-    assert(carry == 0)
+    _sanityCheck(carry == 0)
 
     _standardize()
   }
@@ -340,7 +332,7 @@ public struct _BigInt<Word: FixedWidthInteger & UnsignedInteger> :
   /// Divides this instance by `rhs`, returning the remainder.
   @discardableResult
   mutating func divide(by rhs: Word) -> Word {
-    precondition(rhs != 0, "divide by zero")
+    _precondition(rhs != 0, "divide by zero")
 
     // No-op if `rhs == 1` or `self == 0`.
     if rhs == 1 || isZero {
@@ -421,7 +413,7 @@ public struct _BigInt<Word: FixedWidthInteger & UnsignedInteger> :
   /// - Precondition: `rhs.magnitude <= self.magnitude` (unchecked)
   /// - Precondition: `rhs._data.count <= self._data.count`
   mutating func _unsignedSubtract(_ rhs: _BigInt) {
-    precondition(rhs._data.count <= _data.count)
+    _precondition(rhs._data.count <= _data.count)
 
     var carry: Word = 0
     for i in 0..<rhs._data.count {
@@ -433,7 +425,7 @@ public struct _BigInt<Word: FixedWidthInteger & UnsignedInteger> :
       if carry == 0 { break }
       (carry, _data[i]) = _data[i].subtractingWithBorrow(carry)
     }
-    assert(carry == 0)
+    _sanityCheck(carry == 0)
 
     _standardize()
   }
@@ -484,7 +476,7 @@ public struct _BigInt<Word: FixedWidthInteger & UnsignedInteger> :
     let (a, b) = lhs._data.count > rhs._data.count
       ? (lhs._data, rhs._data)
       : (rhs._data, lhs._data)
-    assert(a.count >= b.count)
+    _sanityCheck(a.count >= b.count)
 
     var carry: Word = 0
     for ai in 0..<a.count {
@@ -521,12 +513,12 @@ public struct _BigInt<Word: FixedWidthInteger & UnsignedInteger> :
         //      0b11111111 + (0b11111101_____00000010) + 0b11111111
         //                   (0b11111110_____00000001) + 0b11111111
         //                   (0b11111111_____00000000)
-        assert(!product.high.addingReportingOverflow(carry).overflow)
+        _sanityCheck(!product.high.addingReportingOverflow(carry).overflow)
         carry = product.high &+ carry
       }
 
       // Leftover `carry` is inserted in new highest word.
-      assert(newData[ai + b.count] == 0)
+      _sanityCheck(newData[ai + b.count] == 0)
       newData[ai + b.count] = carry
     }
 
@@ -538,7 +530,7 @@ public struct _BigInt<Word: FixedWidthInteger & UnsignedInteger> :
   /// Divides this instance by `rhs`, returning the remainder.
   @discardableResult
   mutating func _internalDivide(by rhs: _BigInt) -> _BigInt {
-    precondition(!rhs.isZero, "Divided by zero")
+    _precondition(!rhs.isZero, "Divided by zero")
     defer { _checkInvariants() }
 
     // Handle quick cases that don't require division:
@@ -667,7 +659,7 @@ public struct _BigInt<Word: FixedWidthInteger & UnsignedInteger> :
   }
 
   public var words: [UInt] {
-    assert(UInt.bitWidth % Word.bitWidth == 0)
+    _sanityCheck(UInt.bitWidth % Word.bitWidth == 0)
     let twosComplementData = _dataAsTwosComplement()
     var words: [UInt] = []
     words.reserveCapacity((twosComplementData.count * Word.bitWidth 
@@ -720,8 +712,8 @@ public struct _BigInt<Word: FixedWidthInteger & UnsignedInteger> :
       return 0
     }
 
-    let i = _data.firstIndex(where: { $0 != 0 })!
-    assert(_data[i] != 0)
+    let i = _data.index(where: { $0 != 0 })!
+    _sanityCheck(_data[i] != 0)
     return i * Word.bitWidth + _data[i].trailingZeroBitCount
   }
 
@@ -943,7 +935,7 @@ public struct _BigInt<Word: FixedWidthInteger & UnsignedInteger> :
     // Check for a single prefixing hyphen
     let negative = source.hasPrefix("-")
     if negative {
-      source = String(source.dropFirst())
+      source = String(source.characters.dropFirst())
     }
 
     // Loop through characters, multiplying
@@ -1072,9 +1064,17 @@ public struct _BigInt<Word: FixedWidthInteger & UnsignedInteger> :
 
   //===--- Hashable -------------------------------------------------------===//
 
-  public func hash(into hasher: inout Hasher) {
-    hasher.combine(isNegative)
-    hasher.combine(_data)
+  public var hashValue: Int {
+#if arch(i386) || arch(arm)
+    let p: UInt = 16777619
+    let h: UInt = (2166136261 &* p) ^ (isNegative ? 1 : 0)
+#elseif arch(x86_64) || arch(arm64) || arch(powerpc64) || arch(powerpc64le) || arch(s390x)
+    let p: UInt = 1099511628211
+    let h: UInt = (14695981039346656037 &* p) ^ (isNegative ? 1 : 0)
+#else
+    fatalError("Unimplemented")
+#endif
+    return Int(bitPattern: _data.reduce(h, { ($0 &* p) ^ UInt($1) }))
   }
 
   //===--- Bit shifting operators -----------------------------------------===//
@@ -1282,8 +1282,8 @@ struct Bit : FixedWidthInteger, UnsignedInteger {
 
   // Hashable, CustomStringConvertible
 
-  func hash(into hasher: inout Hasher) {
-    hasher.combine(value)
+  var hashValue: Int {
+    return Int(value)
   }
 
   var description: String {
@@ -1458,7 +1458,7 @@ func testBinaryInit<T: BinaryInteger>(_ x: T) -> BigInt {
 }
 
 func randomBitLength() -> Int {
-  return Int.random(in: 2...1000)
+  return Int(arc4random_uniform(1000) + 2)
 }
 
 var BitTests = TestSuite("Bit")
@@ -1867,9 +1867,3 @@ BigIntBitTests.test("words") {
 }
 
 runAllTests()
-
-BigIntTests.test("isMultiple") {
-  // Test that these do not crash.
-  expectTrue((0 as _BigInt<UInt>).isMultiple(of: 0))
-  expectFalse((1 as _BigInt<UInt>).isMultiple(of: 0))
-}

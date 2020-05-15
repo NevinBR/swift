@@ -39,15 +39,12 @@ var b: [B] = []
 a = b as [A]
 
 b = a // expected-error {{cannot assign value of type '[A]' to type '[B]'}}
-// expected-note@-1 {{arguments to generic parameter 'Element' ('A' and 'B') are expected to be equal}}
 
 var aa: [[A]] = []
 var bb: [[B]] = []
 
 aa = bb // expected-error {{cannot assign value of type '[[B]]' to type '[[A]]'}}
-// expected-note@-1 {{arguments to generic parameter 'Element' ('B' and 'A') are expected to be equal}}
 bb = aa // expected-error {{cannot assign value of type '[[A]]' to type '[[B]]'}}
-// expected-note@-1 {{arguments to generic parameter 'Element' ('A' and 'B') are expected to be equal}}
 
 class C {
 }
@@ -79,7 +76,6 @@ var f: [F] = []
 
 e = f as [E]
 f = e // expected-error {{cannot assign value of type '[E]' to type '[F]'}}
-// expected-note@-1 {{arguments to generic parameter 'Element' ('E' and 'F') are expected to be equal}}
 
 class G {
   var x = 0
@@ -130,4 +126,3 @@ var i: [I] = []
 
 aoa = i as [AnyObject]
 i = aoa // expected-error {{cannot assign value of type '[AnyObject]' to type '[I]'}}
-// expected-note@-1 {{arguments to generic parameter 'Element' ('AnyObject' and 'I') are expected to be equal}}

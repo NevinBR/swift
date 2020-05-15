@@ -27,7 +27,3 @@
 @interface ObjCBridgeGenericConstrainedExtra<Element: NSObject <ExtraElementProtocol> *> : NSObject
 @property NSSet<Element> * _Nonnull foo;
 @end
-
-@interface ObjCBridgeExistential : NSObject
-@property NSSet<NSObject<ExtraElementProtocol> *> * _Nonnull foo;
-@end

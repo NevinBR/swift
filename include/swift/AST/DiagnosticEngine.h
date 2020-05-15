@@ -18,35 +18,29 @@
 #ifndef SWIFT_BASIC_DIAGNOSTICENGINE_H
 #define SWIFT_BASIC_DIAGNOSTICENGINE_H
 
+#include "swift/AST/Attr.h"
 #include "swift/AST/TypeLoc.h"
 #include "swift/AST/DeclNameLoc.h"
 #include "swift/AST/DiagnosticConsumer.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/Allocator.h"
-#include "llvm/Support/VersionTuple.h"
 
 namespace swift {
   class Decl;
-  class DeclAttribute;
   class DiagnosticEngine;
   class SourceManager;
   class ValueDecl;
-  class SourceFile;
-
+  
   enum class PatternKind : uint8_t;
-  enum class SelfAccessKind : uint8_t;
-  enum class ReferenceOwnership : uint8_t;
   enum class StaticSpellingKind : uint8_t;
   enum class DescriptiveDeclKind : uint8_t;
   enum DeclAttrKind : unsigned;
 
-  /// Enumeration describing all of possible diagnostics.
+  /// \brief Enumeration describing all of possible diagnostics.
   ///
   /// Each of the diagnostics described in Diagnostics.def has an entry in
   /// this enumeration type that uniquely identifies it.
   enum class DiagID : uint32_t;
 
-  /// Describes a diagnostic along with its argument types.
+  /// \brief Describes a diagnostic along with its argument types.
   ///
   /// The diagnostics header introduces instances of this type for each 
   /// diagnostic, which provide both the set of argument types (used to
@@ -54,12 +48,12 @@ namespace swift {
   /// (for other information about the diagnostic).
   template<typename ...ArgTypes>
   struct Diag {
-    /// The diagnostic ID corresponding to this diagnostic.
+    /// \brief The diagnostic ID corresponding to this diagnostic.
     DiagID ID;
   };
 
   namespace detail {
-    /// Describes how to pass a diagnostic argument of the given type.
+    /// \brief Describes how to pass a diagnostic argument of the given type.
     ///
     /// By default, diagnostic arguments are passed by value, because they
     /// tend to be small. Larger diagnostic arguments
@@ -70,7 +64,7 @@ namespace swift {
     };
   }
     
-  /// Describes the kind of diagnostic argument we're storing.
+  /// \brief Describes the kind of diagnostic argument we're storing.
   ///
   enum class DiagnosticArgumentKind {
     String,
@@ -82,8 +76,6 @@ namespace swift {
     Type,
     TypeRepr,
     PatternKind,
-    SelfAccessKind,
-    ReferenceOwnership,
     StaticSpellingKind,
     DescriptiveDeclKind,
     DeclAttribute,
@@ -95,7 +87,7 @@ namespace swift {
     enum class RequirementKind : uint8_t;
   }
 
-  /// Variant type that holds a single diagnostic argument of a known
+  /// \brief Variant type that holds a single diagnostic argument of a known
   /// type.
   ///
   /// All diagnostic arguments are converted to an instance of this class.
@@ -105,18 +97,16 @@ namespace swift {
       int IntegerVal;
       unsigned UnsignedVal;
       StringRef StringVal;
-      DeclNameRef IdentifierVal;
+      DeclName IdentifierVal;
       ObjCSelector ObjCSelectorVal;
       ValueDecl *TheValueDecl;
       Type TypeVal;
       TypeRepr *TyR;
       PatternKind PatternKindVal;
-      SelfAccessKind SelfAccessKindVal;
-      ReferenceOwnership ReferenceOwnershipVal;
       StaticSpellingKind StaticSpellingKindVal;
       DescriptiveDeclKind DescriptiveDeclKindVal;
       const DeclAttribute *DeclAttributeVal;
-      llvm::VersionTuple VersionVal;
+      clang::VersionTuple VersionVal;
       LayoutConstraint LayoutConstraintVal;
     };
     
@@ -133,20 +123,14 @@ namespace swift {
       : Kind(DiagnosticArgumentKind::Unsigned), UnsignedVal(I) {
     }
 
-    DiagnosticArgument(DeclNameRef R)
-        : Kind(DiagnosticArgumentKind::Identifier), IdentifierVal(R) {}
-
     DiagnosticArgument(DeclName D)
-        : Kind(DiagnosticArgumentKind::Identifier),
-          IdentifierVal(DeclNameRef(D)) {}
+        : Kind(DiagnosticArgumentKind::Identifier), IdentifierVal(D) {}
 
     DiagnosticArgument(DeclBaseName D)
-        : Kind(DiagnosticArgumentKind::Identifier),
-          IdentifierVal(DeclNameRef(D)) {}
+        : Kind(DiagnosticArgumentKind::Identifier), IdentifierVal(D) {}
 
     DiagnosticArgument(Identifier I)
-      : Kind(DiagnosticArgumentKind::Identifier),
-        IdentifierVal(DeclNameRef(I)) {
+      : Kind(DiagnosticArgumentKind::Identifier), IdentifierVal(I) {
     }
 
     DiagnosticArgument(ObjCSelector S)
@@ -178,14 +162,6 @@ namespace swift {
     DiagnosticArgument(PatternKind K)
         : Kind(DiagnosticArgumentKind::PatternKind), PatternKindVal(K) {}
 
-    DiagnosticArgument(ReferenceOwnership RO)
-        : Kind(DiagnosticArgumentKind::ReferenceOwnership),
-          ReferenceOwnershipVal(RO) {}
-
-    DiagnosticArgument(SelfAccessKind SAK)
-        : Kind(DiagnosticArgumentKind::SelfAccessKind),
-          SelfAccessKindVal(SAK) {}
-
     DiagnosticArgument(StaticSpellingKind SSK)
         : Kind(DiagnosticArgumentKind::StaticSpellingKind),
           StaticSpellingKindVal(SSK) {}
@@ -198,7 +174,7 @@ namespace swift {
         : Kind(DiagnosticArgumentKind::DeclAttribute),
           DeclAttributeVal(attr) {}
 
-    DiagnosticArgument(llvm::VersionTuple version)
+    DiagnosticArgument(clang::VersionTuple version)
       : Kind(DiagnosticArgumentKind::VersionTuple),
         VersionVal(version) { }
 
@@ -231,7 +207,7 @@ namespace swift {
       return UnsignedVal;
     }
 
-    DeclNameRef getAsIdentifier() const {
+    DeclName getAsIdentifier() const {
       assert(Kind == DiagnosticArgumentKind::Identifier);
       return IdentifierVal;
     }
@@ -261,16 +237,6 @@ namespace swift {
       return PatternKindVal;
     }
 
-    ReferenceOwnership getAsReferenceOwnership() const {
-      assert(Kind == DiagnosticArgumentKind::ReferenceOwnership);
-      return ReferenceOwnershipVal;
-    }
-
-    SelfAccessKind getAsSelfAccessKind() const {
-      assert(Kind == DiagnosticArgumentKind::SelfAccessKind);
-      return SelfAccessKindVal;
-    }
-
     StaticSpellingKind getAsStaticSpellingKind() const {
       assert(Kind == DiagnosticArgumentKind::StaticSpellingKind);
       return StaticSpellingKindVal;
@@ -286,7 +252,7 @@ namespace swift {
       return DeclAttributeVal;
     }
 
-    llvm::VersionTuple getAsVersionTuple() const {
+    clang::VersionTuple getAsVersionTuple() const {
       assert(Kind == DiagnosticArgumentKind::VersionTuple);
       return VersionVal;
     }
@@ -301,37 +267,19 @@ namespace swift {
     const std::string OpeningQuotationMark;
     const std::string ClosingQuotationMark;
     const std::string AKAFormatString;
-    const std::string OpaqueResultFormatString;
 
     DiagnosticFormatOptions(std::string OpeningQuotationMark,
                             std::string ClosingQuotationMark,
-                            std::string AKAFormatString,
-                            std::string OpaqueResultFormatString)
+                            std::string AKAFormatString)
         : OpeningQuotationMark(OpeningQuotationMark),
           ClosingQuotationMark(ClosingQuotationMark),
-          AKAFormatString(AKAFormatString),
-          OpaqueResultFormatString(OpaqueResultFormatString) {}
+          AKAFormatString(AKAFormatString) {}
 
     DiagnosticFormatOptions()
         : OpeningQuotationMark("'"), ClosingQuotationMark("'"),
-          AKAFormatString("'%s' (aka '%s')"),
-          OpaqueResultFormatString("'%s' (%s of '%s')") {}
-
-    /// When formatting fix-it arguments, don't include quotes or other
-    /// additions which would result in invalid code.
-    static DiagnosticFormatOptions formatForFixIts() {
-      return DiagnosticFormatOptions("", "", "%s", "%s");
-    }
+          AKAFormatString("'%1$s' (aka '%2$s')") {}
   };
-
-  enum class FixItID : uint32_t;
-
-  /// Represents a fix-it defined  with a format string and optional
-  /// DiagnosticArguments. The template parameters allow the
-  /// fixIt... methods on InFlightDiagnostic to infer their own
-  /// template params.
-  template <typename... ArgTypes> struct StructuredFixIt { FixItID ID; };
-
+  
   /// Diagnostic - This is a specific instance of a diagnostic along with all of
   /// the DiagnosticArguments that it requires. 
   class Diagnostic {
@@ -343,12 +291,8 @@ namespace swift {
     SmallVector<DiagnosticArgument, 3> Args;
     SmallVector<CharSourceRange, 2> Ranges;
     SmallVector<FixIt, 2> FixIts;
-    std::vector<Diagnostic> ChildNotes;
     SourceLoc Loc;
-    bool IsChildNote = false;
-    const swift::Decl *Decl = nullptr;
-
-    friend DiagnosticEngine;
+    const Decl *Decl = nullptr;
 
   public:
     // All constructors are intentionally implicit.
@@ -356,7 +300,7 @@ namespace swift {
     Diagnostic(Diag<ArgTypes...> ID,
                typename detail::PassArgument<ArgTypes>::type... VArgs)
       : ID(ID.ID) {
-      DiagnosticArgument DiagArgs[] = {
+      DiagnosticArgument DiagArgs[] = { 
         DiagnosticArgument(0), std::move(VArgs)... 
       };
       Args.append(DiagArgs + 1, DiagArgs + 1 + sizeof...(VArgs));
@@ -370,13 +314,10 @@ namespace swift {
     ArrayRef<DiagnosticArgument> getArgs() const { return Args; }
     ArrayRef<CharSourceRange> getRanges() const { return Ranges; }
     ArrayRef<FixIt> getFixIts() const { return FixIts; }
-    ArrayRef<Diagnostic> getChildNotes() const { return ChildNotes; }
-    bool isChildNote() const { return IsChildNote; }
     SourceLoc getLoc() const { return Loc; }
     const class Decl *getDecl() const { return Decl; }
 
     void setLoc(SourceLoc loc) { Loc = loc; }
-    void setIsChildNote(bool isChildNote) { IsChildNote = isChildNote; }
     void setDecl(const class Decl *decl) { Decl = decl; }
 
     /// Returns true if this object represents a particular diagnostic.
@@ -397,11 +338,9 @@ namespace swift {
     void addFixIt(FixIt &&F) {
       FixIts.push_back(std::move(F));
     }
-
-    void addChildNote(Diagnostic &&D);
   };
   
-  /// Describes an in-flight diagnostic, which is currently active
+  /// \brief Describes an in-flight diagnostic, which is currently active
   /// within the diagnostic engine and can be augmented within additional
   /// information (source ranges, Fix-Its, etc.).
   ///
@@ -414,7 +353,7 @@ namespace swift {
     DiagnosticEngine *Engine;
     bool IsActive;
     
-    /// Create a new in-flight diagnostic. 
+    /// \brief Create a new in-flight diagnostic. 
     ///
     /// This constructor is only available to the DiagnosticEngine.
     InFlightDiagnostic(DiagnosticEngine &Engine)
@@ -425,14 +364,14 @@ namespace swift {
     InFlightDiagnostic &operator=(InFlightDiagnostic &&) = delete;
 
   public:
-    /// Create an active but unattached in-flight diagnostic.
+    /// \brief Create an active but unattached in-flight diagnostic.
     /// 
     /// The resulting diagnostic can be used as a dummy, accepting the
     /// syntax to add additional information to a diagnostic without
     /// actually emitting a diagnostic.
     InFlightDiagnostic() : Engine(0), IsActive(true) { }
     
-    /// Transfer an in-flight diagnostic to a new object, which is
+    /// \brief Transfer an in-flight diagnostic to a new object, which is
     /// typically used when returning in-flight diagnostics.
     InFlightDiagnostic(InFlightDiagnostic &&Other)
       : Engine(Other.Engine), IsActive(Other.IsActive) {
@@ -444,152 +383,90 @@ namespace swift {
         flush();
     }
     
-    /// Flush the active diagnostic to the diagnostic output engine.
+    /// \brief Flush the active diagnostic to the diagnostic output engine.
     void flush();
 
-    /// Add a token-based range to the currently-active diagnostic.
+    /// \brief Add a token-based range to the currently-active diagnostic.
     InFlightDiagnostic &highlight(SourceRange R);
 
-    /// Add a character-based range to the currently-active diagnostic.
+    /// \brief Add a character-based range to the currently-active diagnostic.
     InFlightDiagnostic &highlightChars(SourceLoc Start, SourceLoc End);
 
-    static const char *fixItStringFor(const FixItID id);
-
-    /// Add a token-based replacement fix-it to the currently-active
-    /// diagnostic.
-    template <typename... ArgTypes>
-    InFlightDiagnostic &
-    fixItReplace(SourceRange R, StructuredFixIt<ArgTypes...> fixIt,
-                 typename detail::PassArgument<ArgTypes>::type... VArgs) {
-      DiagnosticArgument DiagArgs[] = { std::move(VArgs)... };
-      return fixItReplace(R, fixItStringFor(fixIt.ID), DiagArgs);
-    }
-
-    /// Add a character-based replacement fix-it to the currently-active
-    /// diagnostic.
-    template <typename... ArgTypes>
-    InFlightDiagnostic &
-    fixItReplaceChars(SourceLoc Start, SourceLoc End,
-                      StructuredFixIt<ArgTypes...> fixIt,
-                      typename detail::PassArgument<ArgTypes>::type... VArgs) {
-      DiagnosticArgument DiagArgs[] = { std::move(VArgs)... };
-      return fixItReplaceChars(Start, End, fixItStringFor(fixIt.ID), DiagArgs);
-    }
-
-    /// Add an insertion fix-it to the currently-active diagnostic.
-    template <typename... ArgTypes>
-    InFlightDiagnostic &
-    fixItInsert(SourceLoc L, StructuredFixIt<ArgTypes...> fixIt,
-                typename detail::PassArgument<ArgTypes>::type... VArgs) {
-      DiagnosticArgument DiagArgs[] = { std::move(VArgs)... };
-      return fixItReplaceChars(L, L, fixItStringFor(fixIt.ID), DiagArgs);
-    }
-
-    /// Add an insertion fix-it to the currently-active diagnostic.  The
-    /// text is inserted immediately *after* the token specified.
-    template <typename... ArgTypes>
-    InFlightDiagnostic &
-    fixItInsertAfter(SourceLoc L, StructuredFixIt<ArgTypes...> fixIt,
-                     typename detail::PassArgument<ArgTypes>::type... VArgs) {
-      DiagnosticArgument DiagArgs[] = { std::move(VArgs)... };
-      return fixItInsertAfter(L, fixItStringFor(fixIt.ID), DiagArgs);
-    }
-
-    /// Add a token-based replacement fix-it to the currently-active
+    /// \brief Add a token-based replacement fix-it to the currently-active
     /// diagnostic.
     InFlightDiagnostic &fixItReplace(SourceRange R, StringRef Str);
 
-    /// Add a character-based replacement fix-it to the currently-active
+    /// \brief Add a character-based replacement fix-it to the currently-active
     /// diagnostic.
     InFlightDiagnostic &fixItReplaceChars(SourceLoc Start, SourceLoc End,
-                                          StringRef Str) {
-      return fixItReplaceChars(Start, End, "%0", {Str});
-    }
+                                          StringRef Str);
 
-    /// Add an insertion fix-it to the currently-active diagnostic.
+    /// \brief Add an insertion fix-it to the currently-active diagnostic.
     InFlightDiagnostic &fixItInsert(SourceLoc L, StringRef Str) {
-      return fixItReplaceChars(L, L, "%0", {Str});
+      return fixItReplaceChars(L, L, Str);
     }
 
-    /// Add an insertion fix-it to the currently-active diagnostic.  The
+    /// \brief Add an insertion fix-it to the currently-active diagnostic.  The
     /// text is inserted immediately *after* the token specified.
-    InFlightDiagnostic &fixItInsertAfter(SourceLoc L, StringRef Str) {
-      return fixItInsertAfter(L, "%0", {Str});
-    }
-    
-    /// Add a token-based removal fix-it to the currently-active
+    ///
+    InFlightDiagnostic &fixItInsertAfter(SourceLoc L, StringRef);
+
+    /// \brief Add a token-based removal fix-it to the currently-active
     /// diagnostic.
     InFlightDiagnostic &fixItRemove(SourceRange R);
     
-    /// Add a character-based removal fix-it to the currently-active
+    /// \brief Add a character-based removal fix-it to the currently-active
     /// diagnostic.
     InFlightDiagnostic &fixItRemoveChars(SourceLoc Start, SourceLoc End) {
       return fixItReplaceChars(Start, End, {});
     }
 
-    /// Add two replacement fix-it exchanging source ranges to the
+    /// \brief Add two replacement fix-it exchanging source ranges to the
     /// currently-active diagnostic.
     InFlightDiagnostic &fixItExchange(SourceRange R1, SourceRange R2);
-    
-  private:
-    InFlightDiagnostic &fixItReplace(SourceRange R, StringRef FormatString,
-                                     ArrayRef<DiagnosticArgument> Args);
-
-    InFlightDiagnostic &fixItReplaceChars(SourceLoc Start, SourceLoc End,
-                                          StringRef FormatString,
-                                          ArrayRef<DiagnosticArgument> Args);
-
-    InFlightDiagnostic &fixItInsert(SourceLoc L, StringRef FormatString,
-                                    ArrayRef<DiagnosticArgument> Args) {
-      return fixItReplaceChars(L, L, FormatString, Args);
-    }
-
-    InFlightDiagnostic &fixItInsertAfter(SourceLoc L, StringRef FormatString,
-                                         ArrayRef<DiagnosticArgument> Args);
   };
 
-  /// Class to track, map, and remap diagnostic severity and fatality
+  /// \brief Class to track, map, and remap diagnostic severity and fatality
   ///
   class DiagnosticState {
   public:
-    /// Describes the current behavior to take with a diagnostic
+    /// \brief Describes the current behavior to take with a diagnostic
     enum class Behavior : uint8_t {
       Unspecified,
       Ignore,
       Note,
-      Remark,
       Warning,
       Error,
       Fatal,
     };
 
   private:
-    /// Whether we should continue to emit diagnostics, even after a
+    /// \brief Whether we should continue to emit diagnostics, even after a
     /// fatal error
     bool showDiagnosticsAfterFatalError = false;
 
-    /// Don't emit any warnings
+    /// \brief Don't emit any warnings
     bool suppressWarnings = false;
 
-    /// Emit all warnings as errors
+    /// \brief Emit all warnings as errors
     bool warningsAsErrors = false;
 
-    /// Whether a fatal error has occurred
+    /// \brief Whether a fatal error has occurred
     bool fatalErrorOccurred = false;
 
-    /// Whether any error diagnostics have been emitted.
+    /// \brief Whether any error diagnostics have been emitted.
     bool anyErrorOccurred = false;
 
-    /// Track the previous emitted Behavior, useful for notes
+    /// \brief Track the previous emitted Behavior, useful for notes
     Behavior previousBehavior = Behavior::Unspecified;
 
-    /// Track settable, per-diagnostic state that we store
+    /// \brief Track settable, per-diagnostic state that we store
     std::vector<Behavior> perDiagnosticBehavior;
 
   public:
     DiagnosticState();
 
-    /// Figure out the Behavior for the given diagnostic, taking current
+    /// \brief Figure out the Behavior for the given diagnostic, taking current
     /// state such as fatality into account.
     Behavior determineBehavior(DiagID id);
 
@@ -603,11 +480,11 @@ namespace swift {
       return showDiagnosticsAfterFatalError;
     }
 
-    /// Whether to skip emitting warnings
+    /// \brief Whether to skip emitting warnings
     void setSuppressWarnings(bool val) { suppressWarnings = val; }
     bool getSuppressWarnings() const { return suppressWarnings; }
 
-    /// Whether to treat warnings as errors
+    /// \brief Whether to treat warnings as errors
     void setWarningsAsErrors(bool val) { warningsAsErrors = val; }
     bool getWarningsAsErrors() const { return warningsAsErrors; }
 
@@ -630,63 +507,42 @@ namespace swift {
     DiagnosticState &operator=(DiagnosticState &&) = default;
   };
     
-  /// Class responsible for formatting diagnostics and presenting them
+  /// \brief Class responsible for formatting diagnostics and presenting them
   /// to the user.
   class DiagnosticEngine {
-  public:
-    /// The source manager used to interpret source locations and
+    /// \brief The source manager used to interpret source locations and
     /// display diagnostics.
     SourceManager &SourceMgr;
 
-  private:
-    /// The diagnostic consumer(s) that will be responsible for actually
+    /// \brief The diagnostic consumer(s) that will be responsible for actually
     /// emitting diagnostics.
     SmallVector<DiagnosticConsumer *, 2> Consumers;
 
-    /// Tracks diagnostic behaviors and state
+    /// \brief Tracks diagnostic behaviors and state
     DiagnosticState state;
 
-    /// The currently active diagnostic, if there is one.
+    /// \brief The currently active diagnostic, if there is one.
     Optional<Diagnostic> ActiveDiagnostic;
 
-    /// All diagnostics that have are no longer active but have not yet
+    /// \brief All diagnostics that have are no longer active but have not yet
     /// been emitted due to an open transaction.
     SmallVector<Diagnostic, 4> TentativeDiagnostics;
 
-    /// The set of declarations for which we have pretty-printed
+    /// \brief The set of declarations for which we have pretty-printed
     /// results that we can point to on the command line.
     llvm::DenseMap<const Decl *, SourceLoc> PrettyPrintedDeclarations;
 
-    llvm::BumpPtrAllocator TransactionAllocator;
-    /// A set of all strings involved in current transactional chain.
-    /// This is required because diagnostics are not directly emitted
-    /// but rather stored until all transactions complete.
-    llvm::StringSet<llvm::BumpPtrAllocator &> TransactionStrings;
-
-    /// The number of open diagnostic transactions. Diagnostics are only
+    /// \brief The number of open diagnostic transactions. Diagnostics are only
     /// emitted once all transactions have closed.
     unsigned TransactionCount = 0;
 
-    /// For batch mode, use this to know where to output a diagnostic from a
-    /// non-primary file. It's any location in the buffer of the current primary
-    /// input being compiled.
-    /// May be invalid.
-    SourceLoc bufferIndirectlyCausingDiagnostic;
-    
-    /// Print diagnostic names after their messages
-    bool printDiagnosticNames = false;
-
-    /// Path to diagnostic documentation directory.
-    std::string diagnosticDocumentationPath = "";
-
     friend class InFlightDiagnostic;
     friend class DiagnosticTransaction;
-    friend class CompoundDiagnosticTransaction;
-
+    
   public:
     explicit DiagnosticEngine(SourceManager &SourceMgr)
-        : SourceMgr(SourceMgr), ActiveDiagnostic(),
-          TransactionStrings(TransactionAllocator) {}
+      : SourceMgr(SourceMgr), ActiveDiagnostic() {
+    }
 
     /// hadAnyError - return true if any *error* diagnostics have been emitted.
     bool hadAnyError() const { return state.hadAnyError(); }
@@ -702,36 +558,16 @@ namespace swift {
       return state.getShowDiagnosticsAfterFatalError();
     }
 
-    void flushConsumers() {
-      for (auto consumer : Consumers)
-        consumer->flush();
-    }
-
-    /// Whether to skip emitting warnings
+    /// \brief Whether to skip emitting warnings
     void setSuppressWarnings(bool val) { state.setSuppressWarnings(val); }
     bool getSuppressWarnings() const {
       return state.getSuppressWarnings();
     }
 
-    /// Whether to treat warnings as errors
+    /// \brief Whether to treat warnings as errors
     void setWarningsAsErrors(bool val) { state.setWarningsAsErrors(val); }
     bool getWarningsAsErrors() const {
       return state.getWarningsAsErrors();
-    }
-
-    /// Whether to print diagnostic names after their messages
-    void setPrintDiagnosticNames(bool val) {
-      printDiagnosticNames = val;
-    }
-    bool getPrintDiagnosticNames() const {
-      return printDiagnosticNames;
-    }
-
-    void setDiagnosticDocumentationPath(std::string path) {
-      diagnosticDocumentationPath = path;
-    }
-    StringRef getDiagnosticDocumentationPath() {
-      return diagnosticDocumentationPath;
     }
 
     void ignoreDiagnostic(DiagID id) {
@@ -742,18 +578,12 @@ namespace swift {
       state.resetHadAnyError();
     }
 
-    /// Add an additional DiagnosticConsumer to receive diagnostics.
+    /// \brief Add an additional DiagnosticConsumer to receive diagnostics.
     void addConsumer(DiagnosticConsumer &Consumer) {
       Consumers.push_back(&Consumer);
     }
 
-    /// Remove a specific DiagnosticConsumer.
-    void removeConsumer(DiagnosticConsumer &Consumer) {
-      Consumers.erase(
-          std::remove(Consumers.begin(), Consumers.end(), &Consumer));
-    }
-
-    /// Remove and return all \c DiagnosticConsumers.
+    /// \brief Remove and return all \c DiagnosticConsumers.
     std::vector<DiagnosticConsumer *> takeConsumers() {
       auto Result = std::vector<DiagnosticConsumer*>(Consumers.begin(),
                                                      Consumers.end());
@@ -761,12 +591,7 @@ namespace swift {
       return Result;
     }
 
-    /// Return all \c DiagnosticConsumers.
-    ArrayRef<DiagnosticConsumer *> getConsumers() const {
-      return Consumers;
-    }
-
-    /// Emit a diagnostic using a preformatted array of diagnostic
+    /// \brief Emit a diagnostic using a preformatted array of diagnostic
     /// arguments.
     ///
     /// \param Loc The location to which the diagnostic refers in the source
@@ -781,10 +606,13 @@ namespace swift {
     /// be attached.
     InFlightDiagnostic diagnose(SourceLoc Loc, DiagID ID, 
                                 ArrayRef<DiagnosticArgument> Args) {
-      return diagnose(Loc, Diagnostic(ID, Args));
+      assert(!ActiveDiagnostic && "Already have an active diagnostic");
+      ActiveDiagnostic = Diagnostic(ID, Args);
+      ActiveDiagnostic->setLoc(Loc);
+      return InFlightDiagnostic(*this);
     }
 
-    /// Emit a diagnostic using a preformatted array of diagnostic
+    /// \brief Emit a diagnostic using a preformatted array of diagnostic
     /// arguments.
     ///
     /// \param Loc The declaration name location to which the
@@ -799,10 +627,10 @@ namespace swift {
     /// be attached.
     InFlightDiagnostic diagnose(DeclNameLoc Loc, DiagID ID, 
                                 ArrayRef<DiagnosticArgument> Args) {
-      return diagnose(Loc.getBaseNameLoc(), Diagnostic(ID, Args));
+      return diagnose(Loc.getBaseNameLoc(), ID, Args);
     }
 
-    /// Emit an already-constructed diagnostic at the given location.
+    /// \brief Emit an already-constructed diagnostic at the given location.
     ///
     /// \param Loc The location to which the diagnostic refers in the source
     /// code.
@@ -818,7 +646,7 @@ namespace swift {
       return InFlightDiagnostic(*this);
     }
     
-    /// Emit a diagnostic with the given set of diagnostic arguments.
+    /// \brief Emit a diagnostic with the given set of diagnostic arguments.
     ///
     /// \param Loc The location to which the diagnostic refers in the source
     /// code.
@@ -831,16 +659,13 @@ namespace swift {
     InFlightDiagnostic 
     diagnose(SourceLoc Loc, Diag<ArgTypes...> ID,
              typename detail::PassArgument<ArgTypes>::type... Args) {
-      return diagnose(Loc, Diagnostic(ID, std::move(Args)...));
+      assert(!ActiveDiagnostic && "Already have an active diagnostic");
+      ActiveDiagnostic = Diagnostic(ID, std::move(Args)...);
+      ActiveDiagnostic->setLoc(Loc);
+      return InFlightDiagnostic(*this);
     }
 
-    /// Delete an API that may lead clients to avoid specifying source location.
-    template<typename ...ArgTypes>
-    InFlightDiagnostic
-    diagnose(Diag<ArgTypes...> ID,
-             typename detail::PassArgument<ArgTypes>::type... Args) = delete;
-
-    /// Emit a diagnostic with the given set of diagnostic arguments.
+    /// \brief Emit a diagnostic with the given set of diagnostic arguments.
     ///
     /// \param Loc The declaration name location to which the
     /// diagnostic refers in the source code.
@@ -853,10 +678,13 @@ namespace swift {
     InFlightDiagnostic 
     diagnose(DeclNameLoc Loc, Diag<ArgTypes...> ID,
              typename detail::PassArgument<ArgTypes>::type... Args) {
-      return diagnose(Loc.getBaseNameLoc(), Diagnostic(ID, std::move(Args)...));
+      assert(!ActiveDiagnostic && "Already have an active diagnostic");
+      ActiveDiagnostic = Diagnostic(ID, std::move(Args)...);
+      ActiveDiagnostic->setLoc(Loc.getBaseNameLoc());
+      return InFlightDiagnostic(*this);
     }
 
-    /// Emit a diagnostic using a preformatted array of diagnostic
+    /// \brief Emit a diagnostic using a preformatted array of diagnostic
     /// arguments.
     ///
     /// \param decl The declaration to which this diagnostic refers, which
@@ -871,10 +699,13 @@ namespace swift {
     /// be attached.
     InFlightDiagnostic diagnose(const Decl *decl, DiagID id,
                                 ArrayRef<DiagnosticArgument> args) {
-      return diagnose(decl, Diagnostic(id, args));
+      assert(!ActiveDiagnostic && "Already have an active diagnostic");
+      ActiveDiagnostic = Diagnostic(id, args);
+      ActiveDiagnostic->setDecl(decl);
+      return InFlightDiagnostic(*this);
     }
 
-    /// Emit an already-constructed diagnostic referencing the given
+    /// \brief Emit an already-constructed diagnostic referencing the given
     /// declaration.
     ///
     /// \param decl The declaration to which this diagnostic refers, which
@@ -891,7 +722,7 @@ namespace swift {
       return InFlightDiagnostic(*this);
     }
 
-    /// Emit a diagnostic with the given set of diagnostic arguments.
+    /// \brief Emit a diagnostic with the given set of diagnostic arguments.
     ///
     /// \param decl The declaration to which this diagnostic refers, which
     /// may or may not have associated source-location information.
@@ -904,17 +735,10 @@ namespace swift {
     InFlightDiagnostic
     diagnose(const Decl *decl, Diag<ArgTypes...> id,
              typename detail::PassArgument<ArgTypes>::type... args) {
-      return diagnose(decl, Diagnostic(id, std::move(args)...));
+      ActiveDiagnostic = Diagnostic(id, std::move(args)...);
+      ActiveDiagnostic->setDecl(decl);
+      return InFlightDiagnostic(*this);
     }
-
-    /// Emit a parent diagnostic and attached notes.
-    ///
-    /// \param parentDiag An InFlightDiagnostic representing the parent diag.
-    ///
-    /// \param builder A closure which builds and emits notes to be attached to
-    /// the parent diag.
-    void diagnoseWithNotes(InFlightDiagnostic parentDiag,
-                           llvm::function_ref<void(void)> builder);
 
     /// \returns true if diagnostic is marked with PointsToFirstBadToken
     /// option.
@@ -923,8 +747,8 @@ namespace swift {
     /// \returns true if any diagnostic consumer gave an error while invoking
     //// \c finishProcessing.
     bool finishProcessing();
-
-    /// Format the given diagnostic text and place the result in the given
+    
+    /// \brief Format the given diagnostic text and place the result in the given
     /// buffer.
     static void formatDiagnosticText(
         llvm::raw_ostream &Out, StringRef InText,
@@ -932,85 +756,48 @@ namespace swift {
         DiagnosticFormatOptions FormatOpts = DiagnosticFormatOptions());
 
   private:
-    /// Called when tentative diagnostic is about to be flushed,
-    /// to apply any required transformations e.g. copy string arguments
-    /// to extend their lifetime.
-    void onTentativeDiagnosticFlush(Diagnostic &diagnostic);
-
-    /// Flush the active diagnostic.
+    /// \brief Flush the active diagnostic.
     void flushActiveDiagnostic();
     
-    /// Retrieve the active diagnostic.
+    /// \brief Retrieve the active diagnostic.
     Diagnostic &getActiveDiagnostic() { return *ActiveDiagnostic; }
 
-    /// Generate DiagnosticInfo for a Diagnostic to be passed to consumers.
-    Optional<DiagnosticInfo>
-    diagnosticInfoForDiagnostic(const Diagnostic &diagnostic);
-
-    /// Send \c diag to all diagnostic consumers.
+    /// \brief Send \c diag to all diagnostic consumers.
     void emitDiagnostic(const Diagnostic &diag);
 
-    /// Send all tentative diagnostics to all diagnostic consumers and
+    /// \brief Send all tentative diagnostics to all diagnostic consumers and
     /// delete them.
     void emitTentativeDiagnostics();
-
-  public:
-    static const char *diagnosticStringFor(const DiagID id,
-                                           bool printDiagnosticName);
-
-    /// If there is no clear .dia file for a diagnostic, put it in the one
-    /// corresponding to the SourceLoc given here.
-    /// In particular, in batch mode when a diagnostic is located in
-    /// a non-primary file, use this affordance to place it in the .dia
-    /// file for the primary that is currently being worked on.
-    void setBufferIndirectlyCausingDiagnosticToInput(SourceLoc);
-    void resetBufferIndirectlyCausingDiagnostic();
-    SourceLoc getDefaultDiagnosticLoc() const {
-      return bufferIndirectlyCausingDiagnostic;
-    }
   };
 
-  class BufferIndirectlyCausingDiagnosticRAII {
-  private:
-    DiagnosticEngine &Diags;
-  public:
-    BufferIndirectlyCausingDiagnosticRAII(const SourceFile &SF);
-    ~BufferIndirectlyCausingDiagnosticRAII() {
-      Diags.resetBufferIndirectlyCausingDiagnostic();
-    }
-  };
-
-  /// Represents a diagnostic transaction. While a transaction is
+  /// \brief Represents a diagnostic transaction. While a transaction is
   /// open, all recorded diagnostics are saved until the transaction commits,
   /// at which point they are emitted. If the transaction is instead aborted,
   /// the diagnostics are erased. Transactions may be nested but must be closed
   /// in LIFO order. An open transaction is implicitly committed upon
   /// destruction.
   class DiagnosticTransaction {
-  protected:
     DiagnosticEngine &Engine;
 
-    /// How many tentative diagnostics there were when the transaction
+    /// \brief How many tentative diagnostics there were when the transaction
     /// was opened.
     unsigned PrevDiagnostics;
 
-    /// How many other transactions were open when this transaction was
+    /// \brief How many other transactions were open when this transaction was
     /// opened.
     unsigned Depth;
 
-    /// Whether this transaction is currently open.
+    /// \brief Whether this transaction is currently open.
     bool IsOpen = true;
 
   public:
-    DiagnosticTransaction(const DiagnosticTransaction &) = delete;
-    DiagnosticTransaction &operator=(const DiagnosticTransaction &) = delete;
-
     explicit DiagnosticTransaction(DiagnosticEngine &engine)
       : Engine(engine),
         PrevDiagnostics(Engine.TentativeDiagnostics.size()),
         Depth(Engine.TransactionCount),
         IsOpen(true)
     {
+      assert(!Engine.ActiveDiagnostic);
       Engine.TransactionCount++;
     }
 
@@ -1018,14 +805,9 @@ namespace swift {
       if (IsOpen) {
         commit();
       }
-
-      if (Depth == 0) {
-        Engine.TransactionStrings.clear();
-        Engine.TransactionAllocator.Reset();
-      }
     }
 
-    /// Abort and close this transaction and erase all diagnostics
+    /// \brief Abort and close this transaction and erase all diagnostics
     /// record while it was open.
     void abort() {
       close();
@@ -1034,7 +816,7 @@ namespace swift {
         Engine.TentativeDiagnostics.end());
     }
 
-    /// Commit and close this transaction. If this is the top-level
+    /// \brief Commit and close this transaction. If this is the top-level
     /// transaction, emit any diagnostics that were recorded while it was open.
     void commit() {
       close();
@@ -1053,61 +835,6 @@ namespace swift {
              "transactions must be closed LIFO");
     }
   };
-
-  /// Represents a diagnostic transaction which constructs a compound diagnostic
-  /// from any diagnostics emitted inside. A compound diagnostic consists of a
-  /// parent error, warning, or remark followed by a variable number of child
-  /// notes. The semantics are otherwise the same as a regular
-  /// DiagnosticTransaction.
-  class CompoundDiagnosticTransaction : public DiagnosticTransaction {
-  public:
-    explicit CompoundDiagnosticTransaction(DiagnosticEngine &engine)
-        : DiagnosticTransaction(engine) {}
-
-    ~CompoundDiagnosticTransaction() {
-      if (IsOpen) {
-        commit();
-      }
-
-      if (Depth == 0) {
-        Engine.TransactionStrings.clear();
-        Engine.TransactionAllocator.Reset();
-      }
-    }
-
-    void commit() {
-      assert(PrevDiagnostics < Engine.TentativeDiagnostics.size() &&
-             "CompoundDiagnosticTransaction must contain at least one diag");
-
-      // The first diagnostic is assumed to be the parent. If this is not an
-      // error or warning, we'll assert later when trying to add children.
-      Diagnostic &parent = Engine.TentativeDiagnostics[PrevDiagnostics];
-
-      // Associate the children with the parent.
-      for (auto diag =
-               Engine.TentativeDiagnostics.begin() + PrevDiagnostics + 1;
-           diag != Engine.TentativeDiagnostics.end(); ++diag) {
-        diag->setIsChildNote(true);
-        parent.addChildNote(std::move(*diag));
-      }
-
-      // Erase the children, they'll be emitted alongside their parent.
-      Engine.TentativeDiagnostics.erase(Engine.TentativeDiagnostics.begin() +
-                                            PrevDiagnostics + 1,
-                                        Engine.TentativeDiagnostics.end());
-
-      DiagnosticTransaction::commit();
-    }
-  };
-
-  inline void
-  DiagnosticEngine::diagnoseWithNotes(InFlightDiagnostic parentDiag,
-                                      llvm::function_ref<void(void)> builder) {
-    CompoundDiagnosticTransaction transaction(*this);
-    parentDiag.flush();
-    builder();
-  }
-
 } // end namespace swift
 
 #endif

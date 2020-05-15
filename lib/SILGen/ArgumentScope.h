@@ -27,13 +27,14 @@ namespace Lowering {
 /// Internally this creates a Scope and a FormalEvaluationScope. It ensures that
 /// they are destroyed/initialized in the appropriate order.
 class ArgumentScope {
+  SILGenFunction &SGF;
   Scope normalScope;
   FormalEvaluationScope formalEvalScope;
   SILLocation loc;
 
 public:
   ArgumentScope(SILGenFunction &SGF, SILLocation loc)
-      : normalScope(SGF.Cleanups, CleanupLocation::get(loc)),
+      : SGF(SGF), normalScope(SGF.Cleanups, CleanupLocation::get(loc)),
         formalEvalScope(SGF), loc(loc) {}
 
   ~ArgumentScope() {
@@ -46,7 +47,14 @@ public:
   ArgumentScope(const ArgumentScope &) = delete;
   ArgumentScope &operator=(const ArgumentScope &) = delete;
 
-  ArgumentScope(ArgumentScope &&other) = delete;
+  ArgumentScope(ArgumentScope &&other)
+      : SGF(other.SGF), normalScope(std::move(other.normalScope)),
+        formalEvalScope(std::move(other.formalEvalScope)), loc(other.loc) {}
+
+  /// Deleted move assignment operator.
+  ///
+  /// This is done on purpose, since we only want to be able to move
+  /// ArgumentScope into utility functions.
   ArgumentScope &operator=(ArgumentScope &&other) = delete;
 
   void pop() { popImpl(); }
@@ -54,18 +62,10 @@ public:
   /// Pop the formal evaluation and argument scopes preserving the value mv.
   ManagedValue popPreservingValue(ManagedValue mv);
 
-  // Pop the formal evaluation and argument scopes, preserving rv.
-  RValue popPreservingValue(RValue &&rv);
-
-  void verify() {
-    formalEvalScope.verify();
-  }
-
 private:
   void popImpl() {
     // We must always pop the formal eval scope before the normal scope since
     // the formal eval scope may have pointers into the normal scope.
-    normalScope.verify();
     formalEvalScope.pop();
     normalScope.pop();
   }

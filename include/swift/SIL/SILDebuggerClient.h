@@ -27,7 +27,7 @@ class SILBuilder;
 
 class SILDebuggerClient : public DebuggerClient {
 public:
-  using ResultVector = SmallVectorImpl<LookupResultEntry>;
+  typedef SmallVectorImpl<LookupResultEntry> ResultVector;
 
   SILDebuggerClient(ASTContext &C) : DebuggerClient(C) { }
   virtual ~SILDebuggerClient() = default;

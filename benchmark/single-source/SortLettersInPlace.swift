@@ -12,12 +12,8 @@
 
 // This test checks performance and correctness of Swift sortInPlace on an
 // array of letters.
+import Foundation
 import TestsUtils
-
-public let SortLettersInPlace = BenchmarkInfo(
-  name: "SortLettersInPlace",
-  runFunction: run_SortLettersInPlace,
-  tags: [.validation, .api, .algorithm, .String])
 
 class Letter {
   let value: String

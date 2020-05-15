@@ -18,15 +18,13 @@
 #define DEBUG_TYPE "sil-sroa"
 #include "swift/Basic/LLVM.h"
 #include "swift/Basic/Range.h"
-#include "swift/SIL/DebugUtils.h"
-#include "swift/SIL/Projection.h"
-#include "swift/SIL/SILBuilder.h"
 #include "swift/SIL/SILFunction.h"
 #include "swift/SIL/SILModule.h"
+#include "swift/SIL/SILBuilder.h"
 #include "swift/SIL/SILUndef.h"
-#include "swift/SILOptimizer/PassManager/Passes.h"
+#include "swift/SIL/DebugUtils.h"
 #include "swift/SILOptimizer/PassManager/Transforms.h"
-#include "swift/SILOptimizer/Utils/InstOptUtils.h"
+#include "swift/SILOptimizer/PassManager/Passes.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/Debug.h"
@@ -50,7 +48,7 @@ class SROAMemoryUseAnalyzer {
   // Stores to AI.
   llvm::SmallVector<StoreInst *, 4> Stores;
   // Instructions which extract from aggregates.
-  llvm::SmallVector<SingleValueInstruction *, 4> ExtractInsts;
+  llvm::SmallVector<SILInstruction *, 4> ExtractInsts;
 
   // TupleType if we are visiting a tuple.
   TupleType *TT = nullptr;
@@ -65,17 +63,17 @@ public:
   void chopUpAlloca(std::vector<AllocStackInst *> &Worklist);
 
 private:
-  SILValue createAgg(SILBuilder &B, SILLocation Loc, SILType Ty,
-                     ArrayRef<SILValue> Elements);
-  SILValue createAggProjection(SILBuilder &B, SILLocation Loc,
-                               SILValue Operand, unsigned EltNo);
+  SILInstruction *createAgg(SILBuilder &B, SILLocation Loc, SILType Ty,
+                                  ArrayRef<SILValue> Elements);
+  SILInstruction *createAggProjection(SILBuilder &B, SILLocation Loc,
+                                      SILValue Operand, unsigned EltNo);
   unsigned getEltNoForProjection(SILInstruction *Inst);
   void createAllocas(llvm::SmallVector<AllocStackInst *, 4> &NewAllocations);
 };
 
 } // end anonymous namespace
 
-SILValue 
+SILInstruction *
 SROAMemoryUseAnalyzer::createAgg(SILBuilder &B, SILLocation Loc,
                                  SILType Ty,
                                  ArrayRef<SILValue> Elements) {
@@ -87,7 +85,7 @@ SROAMemoryUseAnalyzer::createAgg(SILBuilder &B, SILLocation Loc,
   return B.createStruct(Loc, Ty, Elements);
 }
 
-SILValue
+SILInstruction *
 SROAMemoryUseAnalyzer::createAggProjection(SILBuilder &B, SILLocation Loc,
                                            SILValue Operand,
                                            unsigned EltNo) {
@@ -138,27 +136,22 @@ bool SROAMemoryUseAnalyzer::analyze() {
     return false;
   }
 
-  bool hasBenefit = false;
-
   // Go through uses of the memory allocation of AI...
   for (auto *Operand : getNonDebugUses(SILValue(AI))) {
     SILInstruction *User = Operand->getUser();
-    LLVM_DEBUG(llvm::dbgs() << "    Visiting use: " << *User);
+    DEBUG(llvm::dbgs() << "    Visiting use: " << *User);
 
     // If we store the alloca pointer, we cannot analyze its uses so bail...
     // It is ok if we store into the alloca pointer though.
     if (auto *SI = dyn_cast<StoreInst>(User)) {
       if (SI->getDest() == AI) {
-        LLVM_DEBUG(llvm::dbgs() << "        Found a store into the "
-                                   "projection.\n");
+        DEBUG(llvm::dbgs() << "        Found a store into the "
+              "projection.\n");
         Stores.push_back(SI);
-        SILValue Src = SI->getSrc();
-        if (isa<StructInst>(Src) || isa<TupleInst>(Src))
-          hasBenefit = true;
         continue;
       } else {
-        LLVM_DEBUG(llvm::dbgs() << "        Found a store of the "
-                                   "projection pointer. Escapes!.\n");
+        DEBUG(llvm::dbgs() << "        Found a store of the "
+              "projection pointer. Escapes!.\n");
         ++NumEscapingAllocas;
         return false;
       }
@@ -166,31 +159,24 @@ bool SROAMemoryUseAnalyzer::analyze() {
 
     // If the use is a load, keep track of it for splitting later...
     if (auto *LI = dyn_cast<LoadInst>(User)) {
-      LLVM_DEBUG(llvm::dbgs() << "        Found a load of the projection.\n");
+      DEBUG(llvm::dbgs() << "        Found a load of the projection.\n");
       Loads.push_back(LI);
-      for (auto useIter = LI->use_begin(), End = LI->use_end();
-           !hasBenefit && useIter != End; useIter++) {
-        hasBenefit = (isa<StructExtractInst>(useIter->get()) ||
-                      isa<TupleExtractInst>(useIter->get()));
-      }
       continue;
     }
 
     // If the use is a struct_element_addr, add it to the worklist so we check
     // if it or one of its descendants escape.
     if (auto *ASI = dyn_cast<StructElementAddrInst>(User)) {
-      LLVM_DEBUG(llvm::dbgs() << "        Found a struct subprojection!\n");
+      DEBUG(llvm::dbgs() << "        Found a struct subprojection!\n");
       ExtractInsts.push_back(ASI);
-      hasBenefit = true;
       continue;
     }
 
     // If the use is a tuple_element_addr, add it to the worklist so we check
     // if it or one of its descendants escape.
     if (auto *TSI = dyn_cast<TupleElementAddrInst>(User)) {
-      LLVM_DEBUG(llvm::dbgs() << "        Found a tuple subprojection!\n");
+      DEBUG(llvm::dbgs() << "        Found a tuple subprojection!\n");
       ExtractInsts.push_back(TSI);
-      hasBenefit = true;
       continue;
     }
 
@@ -200,14 +186,14 @@ bool SROAMemoryUseAnalyzer::analyze() {
     }
     
     // Otherwise we do not understand this instruction, so bail.
-    LLVM_DEBUG(llvm::dbgs() <<"        Found unknown user, pointer escapes!\n");
+    DEBUG(llvm::dbgs() << "        Found unknown user, pointer escapes!\n");
     ++NumEscapingAllocas;
     return false;
   }
 
   // Analysis was successful. We can break up this allocation!
   ++NumChoppedAllocas;
-  return hasBenefit;
+  return true;
 }
 
 void
@@ -215,22 +201,19 @@ SROAMemoryUseAnalyzer::
 createAllocas(llvm::SmallVector<AllocStackInst *, 4> &NewAllocations) {
   SILBuilderWithScope B(AI);
   SILType Type = AI->getType().getObjectType();
-  // Intentionally dropping the debug info.
-  // FIXME: VarInfo needs to be extended with fragment info to support this.
-  SILLocation Loc = RegularLocation::getAutoGeneratedLocation();
+
   if (TT) {
     for (unsigned EltNo : indices(TT->getElementTypes())) {
       SILType EltTy = Type.getTupleElementType(EltNo);
-      NewAllocations.push_back(B.createAllocStack(Loc, EltTy, {}));
+      NewAllocations.push_back(B.createAllocStack(AI->getLoc(), EltTy));
     }
   } else {
     assert(SD && "SD should not be null since either it or TT must be set at "
            "this point.");
     SILModule &M = AI->getModule();
     for (auto *D : SD->getStoredProperties())
-      NewAllocations.push_back(B.createAllocStack(
-          Loc, Type.getFieldType(D, M, TypeExpansionContext(B.getFunction())),
-          {}));
+      NewAllocations.push_back(B.createAllocStack(AI->getLoc(),
+                                                  Type.getFieldType(D, M)));
   }
 }
 
@@ -252,8 +235,8 @@ void SROAMemoryUseAnalyzer::chopUpAlloca(std::vector<AllocStackInst *> &Worklist
     for (auto *NewAI : NewAllocations)
       Elements.push_back(B.createLoad(LI->getLoc(), NewAI,
                                       LoadOwnershipQualifier::Unqualified));
-    SILValue Agg = createAgg(B, LI->getLoc(), LI->getType().getObjectType(),
-                             Elements);
+    auto *Agg = createAgg(B, LI->getLoc(), LI->getType().getObjectType(),
+                          Elements);
     LI->replaceAllUsesWith(Agg);
     LI->eraseFromParent();
   }
@@ -285,9 +268,9 @@ void SROAMemoryUseAnalyzer::chopUpAlloca(std::vector<AllocStackInst *> &Worklist
     // If the use is a DSI, add it to our memory analysis so that if we can chop
     // up allocas, we also chop up the relevant dealloc stack insts.
     if (auto *DSI = dyn_cast<DeallocStackInst>(User)) {
-      LLVM_DEBUG(llvm::dbgs() << "        Found DeallocStackInst!\n");
+      DEBUG(llvm::dbgs() << "        Found DeallocStackInst!\n");
       // Create the allocations in reverse order.
-      for (auto *NewAI : llvm::reverse(NewAllocations))
+      for (auto *NewAI : swift::reversed(NewAllocations))
         B.createDeallocStack(DSI->getLoc(), SILValue(NewAI));
       ToRemove.push_back(DSI);
     }
@@ -311,8 +294,7 @@ static bool runSROAOnFunction(SILFunction &Fn) {
     for (auto &I : BB)
       // If the instruction is an alloc stack inst, add it to the worklist.
       if (auto *AI = dyn_cast<AllocStackInst>(&I))
-        if (shouldExpand(Fn.getModule(), AI->getElementType()))
-          Worklist.push_back(AI);
+        Worklist.push_back(AI);
 
   while (!Worklist.empty()) {
     AllocStackInst *AI = Worklist.back();
@@ -335,13 +317,8 @@ class SILSROA : public SILFunctionTransform {
   /// The entry point to the transformation.
   void run() override {
     SILFunction *F = getFunction();
-
-    // FIXME: We should be able to handle ownership.
-    if (F->hasOwnership())
-      return;
-
-    LLVM_DEBUG(llvm::dbgs() << "***** SROA on function: " << F->getName()
-                            << " *****\n");
+    DEBUG(llvm::dbgs() << "***** SROA on function: " << F->getName() <<
+          " *****\n");
 
     if (runSROAOnFunction(*F))
       invalidateAnalysis(SILAnalysis::InvalidationKind::Instructions);

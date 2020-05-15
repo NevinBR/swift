@@ -7,9 +7,9 @@
 import Foundation
 
 class C : NSObject {
-  @objc static let i = 2
-  @objc static var j = "Hello"
-  @objc static var k: Double {
+  static let i = 2
+  static var j = "Hello"
+  static var k: Double {
     return 3.14
   }
 }

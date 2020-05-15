@@ -2,9 +2,6 @@
 
 typedef struct _NSZone NSZone;
 
-typedef long NSInteger;
-typedef unsigned long NSUInteger;
-
 @protocol NSCopying
 - copyWithZone:(nullable NSZone*)z;
 @end
@@ -17,5 +14,6 @@ typedef unsigned long NSUInteger;
 + (void) initialize;
 
 @property (readonly, copy) NSString *description;
-@property (readonly) NSUInteger hash;
 @end
+
+typedef long NSInteger;

@@ -1,5 +1,7 @@
-// RUN: %target-swift-frontend(mock-sdk: %clang-importer-sdk) -I %S/../Inputs/custom-modules -enable-objc-interop -import-objc-header %S/Inputs/mixed-target/header.h -typecheck -primary-file %s %S/Inputs/mixed-target/other-file.swift -disable-objc-attr-requires-foundation-module -verify
-// RUN: %target-swift-frontend(mock-sdk: %clang-importer-sdk) -I %S/../Inputs/custom-modules -enable-objc-interop -import-objc-header %S/Inputs/mixed-target/header.h -emit-sil -primary-file %s %S/Inputs/mixed-target/other-file.swift -disable-objc-attr-requires-foundation-module -o /dev/null -D SILGEN
+// RUN: %target-swift-frontend(mock-sdk: %clang-importer-sdk) -I %S/../Inputs/custom-modules -import-objc-header %S/Inputs/mixed-target/header.h -typecheck -primary-file %s %S/Inputs/mixed-target/other-file.swift -disable-objc-attr-requires-foundation-module -verify
+// RUN: %target-swift-frontend(mock-sdk: %clang-importer-sdk) -I %S/../Inputs/custom-modules -import-objc-header %S/Inputs/mixed-target/header.h -emit-sil -primary-file %s %S/Inputs/mixed-target/other-file.swift -disable-objc-attr-requires-foundation-module -o /dev/null -D SILGEN
+
+// REQUIRES: objc_interop
 
 func test(_ foo : FooProto) {
   _ = foo.bar as CInt
@@ -48,7 +50,7 @@ func testStruct(_ p: Point2D) -> Point2D {
 
 #if !SILGEN
 func testSuppressed() {
-  let _: __int128_t? = nil // expected-error{{cannot find type '__int128_t' in scope}}
+  let _: __int128_t? = nil // expected-error{{use of undeclared type '__int128_t'}}
 }
 #endif
 

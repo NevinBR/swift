@@ -200,11 +200,9 @@ public:
     // We are checking for retain. If this is a self-recursion. call
     // to the function (which returns an owned value) can be treated as
     // the retain instruction.
-    if (auto *AI = dyn_cast<ApplyInst>(II)) {
-      return AI->getCalleeFunction() == II->getParent()->getParent() &&
-             RCFI->getRCIdentityRoot(AI) ==
-             RCFI->getRCIdentityRoot(getArg(AI->getParent()));
-    }
+    if (auto *AI = dyn_cast<ApplyInst>(II))
+     if (AI->getCalleeFunction() == II->getParent()->getParent())
+       return true;
     // Check whether this is a retain instruction and the argument it
     // retains.
     return isRetainInstruction(II) &&
@@ -226,7 +224,7 @@ class EpilogueARCFunctionInfo {
   llvm::DenseMap<SILValue, ARCInstructions> EpilogueReleaseInstCache;
 
 public:
-  void handleDeleteNotification(SILNode *node) {
+  void handleDeleteNotification(ValueBase *V) {
     // Being conservative and clear everything for now.
     EpilogueRetainInstCache.clear();
     EpilogueReleaseInstCache.clear();
@@ -273,38 +271,36 @@ class EpilogueARCAnalysis : public FunctionAnalysisBase<EpilogueARCFunctionInfo>
 
 public:
   EpilogueARCAnalysis(SILModule *)
-      : FunctionAnalysisBase<EpilogueARCFunctionInfo>(
-            SILAnalysisKind::EpilogueARC),
-        PO(nullptr), AA(nullptr), RC(nullptr) {}
+    : FunctionAnalysisBase<EpilogueARCFunctionInfo>(AnalysisKind::EpilogueARC),
+      PO(nullptr), AA(nullptr), RC(nullptr) {}
 
   EpilogueARCAnalysis(const EpilogueARCAnalysis &) = delete;
   EpilogueARCAnalysis &operator=(const EpilogueARCAnalysis &) = delete;
 
-  virtual void handleDeleteNotification(SILNode *node) override {
+  virtual void handleDeleteNotification(ValueBase *V) override {
     // If the parent function of this instruction was just turned into an
     // external declaration, bail. This happens during SILFunction destruction.
-    SILFunction *F = node->getFunction();
+    SILFunction *F = V->getFunction();
     if (F->isExternalDeclaration()) {
       return;
     }
 
     // If we do have an analysis, tell it to handle its delete notifications.
     if (auto A = maybeGet(F)) {
-      A.get()->handleDeleteNotification(node);
+      A.get()->handleDeleteNotification(V);
     }
   }
 
   virtual bool needsNotifications() override { return true; }
 
   static bool classof(const SILAnalysis *S) {
-    return S->getKind() == SILAnalysisKind::EpilogueARC;
+    return S->getKind() == AnalysisKind::EpilogueARC;
   }
 
   virtual void initialize(SILPassManager *PM) override;
   
-  virtual std::unique_ptr<EpilogueARCFunctionInfo>
-  newFunctionAnalysis(SILFunction *F) override {
-    return std::make_unique<EpilogueARCFunctionInfo>(F, PO, AA, RC);
+  virtual EpilogueARCFunctionInfo *newFunctionAnalysis(SILFunction *F) override {
+    return new EpilogueARCFunctionInfo(F, PO, AA, RC);
   }
 
   virtual bool shouldInvalidate(SILAnalysis::InvalidationKind K) override {

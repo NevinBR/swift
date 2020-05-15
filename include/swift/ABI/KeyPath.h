@@ -14,8 +14,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef SWIFT_ABI_KEYPATH_H
-#define SWIFT_ABI_KEYPATH_H
+#ifndef __SWIFT_ABI_KEYPATH_H__
+#define __SWIFT_ABI_KEYPATH_H__
 
 // We include the basic constants in a shim header so that it can be shared with
 // the Swift implementation in the standard library.
@@ -82,78 +82,65 @@ class KeyPathComponentHeader {
            offset;
   }
 
-  static constexpr uint32_t isLetBit(bool isLet) {
-    return isLet ? 0 : _SwiftKeyPathComponentHeader_StoredMutableFlag;
-  }
-
 public:
   static constexpr bool offsetCanBeInline(unsigned offset) {
     return offset <= _SwiftKeyPathComponentHeader_MaximumOffsetPayload;
   }
 
   constexpr static KeyPathComponentHeader
-  forStructComponentWithInlineOffset(bool isLet,
-                                     unsigned offset) {
+  forStructComponentWithInlineOffset(unsigned offset) {
     return KeyPathComponentHeader(
       (_SwiftKeyPathComponentHeader_StructTag
-       << _SwiftKeyPathComponentHeader_DiscriminatorShift)
-      | validateInlineOffset(offset)
-      | isLetBit(isLet));
+      << _SwiftKeyPathComponentHeader_DiscriminatorShift)
+      | validateInlineOffset(offset));
   }
   
   constexpr static KeyPathComponentHeader
-  forStructComponentWithOutOfLineOffset(bool isLet) {
+  forStructComponentWithOutOfLineOffset() {
     return KeyPathComponentHeader(
       (_SwiftKeyPathComponentHeader_StructTag
-       << _SwiftKeyPathComponentHeader_DiscriminatorShift)
-      | _SwiftKeyPathComponentHeader_OutOfLineOffsetPayload
-      | isLetBit(isLet));
+      << _SwiftKeyPathComponentHeader_DiscriminatorShift)
+      | _SwiftKeyPathComponentHeader_OutOfLineOffsetPayload);
   }
 
   constexpr static KeyPathComponentHeader
-  forStructComponentWithUnresolvedFieldOffset(bool isLet) {
+  forStructComponentWithUnresolvedFieldOffset() {
     return KeyPathComponentHeader(
       (_SwiftKeyPathComponentHeader_StructTag
-       << _SwiftKeyPathComponentHeader_DiscriminatorShift)
-      | _SwiftKeyPathComponentHeader_UnresolvedFieldOffsetPayload
-      | isLetBit(isLet));
+      << _SwiftKeyPathComponentHeader_DiscriminatorShift)
+      | _SwiftKeyPathComponentHeader_UnresolvedFieldOffsetPayload);
   }
   
   constexpr static KeyPathComponentHeader
-  forClassComponentWithInlineOffset(bool isLet,
-                                    unsigned offset) {
+  forClassComponentWithInlineOffset(unsigned offset) {
     return KeyPathComponentHeader(
       (_SwiftKeyPathComponentHeader_ClassTag
-       << _SwiftKeyPathComponentHeader_DiscriminatorShift)
-      | validateInlineOffset(offset)
-      | isLetBit(isLet));
+      << _SwiftKeyPathComponentHeader_DiscriminatorShift)
+      | validateInlineOffset(offset));
   }
 
   constexpr static KeyPathComponentHeader
-  forClassComponentWithOutOfLineOffset(bool isLet) {
+  forClassComponentWithOutOfLineOffset() {
     return KeyPathComponentHeader(
       (_SwiftKeyPathComponentHeader_ClassTag
-       << _SwiftKeyPathComponentHeader_DiscriminatorShift)
-      | _SwiftKeyPathComponentHeader_OutOfLineOffsetPayload
-      | isLetBit(isLet));
+      << _SwiftKeyPathComponentHeader_DiscriminatorShift)
+      | _SwiftKeyPathComponentHeader_OutOfLineOffsetPayload);
   }
   
   constexpr static KeyPathComponentHeader
-  forClassComponentWithUnresolvedFieldOffset(bool isLet) {
+  forClassComponentWithUnresolvedFieldOffset() {
     return KeyPathComponentHeader(
       (_SwiftKeyPathComponentHeader_ClassTag
-       << _SwiftKeyPathComponentHeader_DiscriminatorShift)
-      | _SwiftKeyPathComponentHeader_UnresolvedFieldOffsetPayload
-      | isLetBit(isLet));
+      << _SwiftKeyPathComponentHeader_DiscriminatorShift)
+      | _SwiftKeyPathComponentHeader_UnresolvedFieldOffsetPayload);
   }
   
   constexpr static KeyPathComponentHeader
-  forClassComponentWithUnresolvedIndirectOffset(bool isLet) {
+  forClassComponentWithUnresolvedIndirectOffset() {
     return KeyPathComponentHeader(
       (_SwiftKeyPathComponentHeader_ClassTag
-       << _SwiftKeyPathComponentHeader_DiscriminatorShift)
-      | _SwiftKeyPathComponentHeader_UnresolvedIndirectOffsetPayload
-      | isLetBit(isLet));
+      << _SwiftKeyPathComponentHeader_DiscriminatorShift)
+      | _SwiftKeyPathComponentHeader_UnresolvedIndirectOffsetPayload);
   }
   
   constexpr static KeyPathComponentHeader
@@ -190,20 +177,20 @@ public:
     VTableOffset,
   };
   
-  enum ComputedPropertyIDResolution {
-    Resolved,
-    IndirectPointer,
-    FunctionCall,
-  };
+  constexpr static uint32_t
+  getResolutionStrategy(ComputedPropertyIDKind idKind) {
+    return idKind == Pointer ? _SwiftKeyPathComponentHeader_ComputedIDUnresolvedIndirectPointer
+         : (assert("no resolution strategy implemented" && false), 0);
+  }
   
   constexpr static KeyPathComponentHeader
   forComputedProperty(ComputedPropertyKind kind,
                       ComputedPropertyIDKind idKind,
                       bool hasArguments,
-                      ComputedPropertyIDResolution resolution) {
+                      bool resolvedID) {
     return KeyPathComponentHeader(
       (_SwiftKeyPathComponentHeader_ComputedTag
-        << _SwiftKeyPathComponentHeader_DiscriminatorShift)
+      << _SwiftKeyPathComponentHeader_DiscriminatorShift)
       | (kind != GetOnly
            ? _SwiftKeyPathComponentHeader_ComputedSettableFlag : 0)
       | (kind == SettableMutating
@@ -213,21 +200,8 @@ public:
       | (idKind == VTableOffset
            ? _SwiftKeyPathComponentHeader_ComputedIDByVTableOffsetFlag : 0)
       | (hasArguments ? _SwiftKeyPathComponentHeader_ComputedHasArgumentsFlag : 0)
-      | (resolution == Resolved ? _SwiftKeyPathComponentHeader_ComputedIDResolved
-       : resolution == IndirectPointer ? _SwiftKeyPathComponentHeader_ComputedIDUnresolvedIndirectPointer
-       : resolution == FunctionCall ? _SwiftKeyPathComponentHeader_ComputedIDUnresolvedFunctionCall
-       : (assert(false && "invalid resolution"), 0)));
-  }
-  
-  constexpr static KeyPathComponentHeader
-  forExternalComponent(unsigned numSubstitutions) {
-    return assert(numSubstitutions <
-        (1u << _SwiftKeyPathComponentHeader_DiscriminatorShift) - 1u
-        && "too many substitutions"),
-      KeyPathComponentHeader(
-        (_SwiftKeyPathComponentHeader_ExternalTag
-          << _SwiftKeyPathComponentHeader_DiscriminatorShift)
-        | numSubstitutions);
+      | (resolvedID ? _SwiftKeyPathComponentHeader_ComputedIDResolved
+                    : getResolutionStrategy(idKind)));
   }
   
   constexpr uint32_t getData() const { return Data; }
@@ -235,4 +209,4 @@ public:
 
 }
 
-#endif // SWIFT_ABI_KEYPATH_H
+#endif

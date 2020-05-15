@@ -2,15 +2,15 @@
 @_exported import ObjectiveC
 
 public struct ObjCBool : CustomStringConvertible {
-#if os(macOS) || (os(iOS) && (arch(i386) || arch(arm)))
-  // On macOS and 32-bit iOS, Objective-C's BOOL type is a "signed char".
+#if os(OSX) || (os(iOS) && (arch(i386) || arch(arm)))
+  // On OS X and 32-bit iOS, Objective-C's BOOL type is a "signed char".
   private var value: Int8
 
   public init(_ value: Bool) {
     self.value = value ? 1 : 0
   }
 
-  /// Allow use in a Boolean context.
+  /// \brief Allow use in a Boolean context.
   public var boolValue: Bool {
     return value != 0
   }
@@ -47,7 +47,7 @@ public func _convertObjCBoolToBool(_ x: ObjCBool) -> Bool {
 }
 
 extension NSObject : Hashable {
-  public func hash(into hasher: inout Hasher) {}
+  open var hashValue: Int { return 0 }
 }
 public func ==(x: NSObject, y: NSObject) -> Bool { return x === y }
 

@@ -13,19 +13,11 @@
 import TestsUtils
 #if os(Linux)
 import Glibc
-#elseif os(Windows)
-import MSVCRT
 #else
 import Darwin
 #endif
 
-public let StringEdits = BenchmarkInfo(
-  name: "StringEdits",
-  runFunction: run_StringEdits,
-  tags: [.validation, .api, .String],
-  legacyFactor: 100)
-
-let editWords: [String] = [
+var editWords: [String] = [
   "woodshed",
   "lakism",
   "gastroperiodynia",
@@ -34,16 +26,19 @@ let editWords: [String] = [
 let alphabet = "abcdefghijklmnopqrstuvwxyz"
 /// All edits that are one edit away from `word`
 func edits(_ word: String) -> Set<String> {
-  let splits = word.indices.map {
-    (String(word[..<$0]), String(word[$0...]))
+  // create right/left splits as CharacterViews instead
+  let splits = word.characters.indices.map {
+    (word.characters[word.characters.startIndex..<$0],word.characters[$0..<word.characters.endIndex])
   }
-
-  var result: Array<String> = []
-
-  for (left, right) in splits {
+  
+  // though it should be, CharacterView isn't hashable
+  // so using an array for now, ignore that aspect...
+  var result: [String.CharacterView] = []
+  
+  for (left,right) in splits {
     // drop a character
     result.append(left + right.dropFirst())
-
+    
     // transpose two characters
     if let fst = right.first {
       let drop1 = right.dropFirst()
@@ -51,27 +46,28 @@ func edits(_ word: String) -> Set<String> {
         result.append(left + [snd,fst] + drop1.dropFirst())
       }
     }
-
+    
     // replace each character with another
     for letter in alphabet {
       result.append(left + [letter] + right.dropFirst())
     }
-
+    
     // insert rogue characters
     for letter in alphabet {
       result.append(left + [letter] + right)
     }
   }
-
+  
   // have to map back to strings right at the end
-  return Set(result)
+  return Set(result.lazy.map(String.init))
 }
 
 @inline(never)
 public func run_StringEdits(_ N: Int) {
-  for _ in 1...N {
+  for _ in 1...N*100 {
     for word in editWords {
-      _ = edits(word)
+      _ = edits(word)      
     }
   }
 }
+

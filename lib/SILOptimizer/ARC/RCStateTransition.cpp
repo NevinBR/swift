@@ -28,7 +28,7 @@ static bool isAutoreleasePoolCall(SILInstruction *I) {
   if (!AI)
     return false;
 
-  auto *Fn = AI->getReferencedFunctionOrNull();
+  auto *Fn = AI->getReferencedFunction();
   if (!Fn)
     return false;
 
@@ -42,25 +42,25 @@ static bool isAutoreleasePoolCall(SILInstruction *I) {
 //                           RCStateTransitionKind
 //===----------------------------------------------------------------------===//
 
-RCStateTransitionKind swift::getRCStateTransitionKind(SILNode *N) {
-  switch (N->getKind()) {
-  case SILNodeKind::StrongRetainInst:
-  case SILNodeKind::RetainValueInst:
+RCStateTransitionKind swift::getRCStateTransitionKind(ValueBase *V) {
+  switch (V->getKind()) {
+  case ValueKind::StrongRetainInst:
+  case ValueKind::RetainValueInst:
     return RCStateTransitionKind::StrongIncrement;
 
-  case SILNodeKind::StrongReleaseInst:
-  case SILNodeKind::ReleaseValueInst:
+  case ValueKind::StrongReleaseInst:
+  case ValueKind::ReleaseValueInst:
     return RCStateTransitionKind::StrongDecrement;
 
-  case SILNodeKind::SILFunctionArgument: {
-    auto *Arg = cast<SILFunctionArgument>(N);
+  case ValueKind::SILFunctionArgument: {
+    auto *Arg = cast<SILFunctionArgument>(V);
     if (Arg->hasConvention(SILArgumentConvention::Direct_Owned))
       return RCStateTransitionKind::StrongEntrance;
     return RCStateTransitionKind::Unknown;
   }
 
-  case SILNodeKind::ApplyInst: {
-    auto *AI = cast<ApplyInst>(N);
+  case ValueKind::ApplyInst: {
+    auto *AI = cast<ApplyInst>(V);
     if (isAutoreleasePoolCall(AI))
       return RCStateTransitionKind::AutoreleasePoolCall;
 
@@ -78,15 +78,14 @@ RCStateTransitionKind swift::getRCStateTransitionKind(SILNode *N) {
     return RCStateTransitionKind::Unknown;
   }
 
-  // Alloc* are always allocating new classes so they are introducing new
-  // values at +1.
-  case SILNodeKind::AllocRefInst:
-  case SILNodeKind::AllocRefDynamicInst:
-  case SILNodeKind::AllocBoxInst:
+  case ValueKind::AllocRefInst:
+  case ValueKind::AllocRefDynamicInst:
+    // AllocRef* are always allocating new classes so they are introducing new
+    // values at +1.
     return RCStateTransitionKind::StrongEntrance;
 
-  case SILNodeKind::PartialApplyInst:
-    // Partial apply boxes are introduced at +1.
+  case ValueKind::AllocBoxInst:
+    // AllocBox introduce their container result at +1.
     return RCStateTransitionKind::StrongEntrance;
 
   default:

@@ -13,7 +13,6 @@ public struct X : P {
   public init() {}
 }
 
-@inlinable
 public func whatShouldIDo(_ p : P) {
   p.doSomething()
 }

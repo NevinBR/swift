@@ -53,7 +53,7 @@ void DocSupportAnnotationArrayBuilder::add(const DocEntityInfo &Info) {
 
 std::unique_ptr<llvm::MemoryBuffer>
 DocSupportAnnotationArrayBuilder::createBuffer() {
-  return Impl.Builder.createBuffer(CustomBufferKind::DocSupportAnnotationArray);
+  return Impl.Builder.createBuffer();
 }
 
 namespace {

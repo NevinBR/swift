@@ -12,7 +12,6 @@
 
 #include "swift/SILOptimizer/Utils/SpecializationMangler.h"
 #include "swift/SIL/SILGlobalVariable.h"
-#include "swift/AST/GenericSignature.h"
 #include "swift/AST/SubstitutionMap.h"
 #include "swift/Demangling/ManglingMacros.h"
 
@@ -33,7 +32,7 @@ class AttributeDemangler : public Demangle::Demangler {
 public:
   void demangleAndAddAsChildren(StringRef MangledSpecialization,
                                 NodePointer Parent) {
-    DemangleInitRAII state(*this, MangledSpecialization, nullptr);
+    init(MangledSpecialization);
     if (!parseAndPushNodes()) {
       llvm::errs() << "Can't demangle: " << MangledSpecialization << '\n';
       abort();
@@ -74,27 +73,21 @@ std::string SpecializationMangler::finalize() {
 //                           Generic Specialization
 //===----------------------------------------------------------------------===//
 
-std::string GenericSpecializationMangler::mangle(GenericSignature Sig) {
+std::string GenericSpecializationMangler::mangle() {
   beginMangling();
+  
+  SILFunctionType *FTy = Function->getLoweredFunctionType();
+  CanGenericSignature Sig = FTy->getGenericSignature();
 
-  if (!Sig) {
-    SILFunctionType *FTy = Function->getLoweredFunctionType();
-    Sig = FTy->getInvocationGenericSignature();
-  }
-
+  auto SubMap = Sig->getSubstitutionMap(Subs);
   bool First = true;
-  Sig->forEachParam([&](GenericTypeParamType *ParamType, bool Canonical) {
-    if (Canonical) {
-      appendType(Type(ParamType).subst(SubMap)->getCanonicalType());
-      appendListSeparator(First);
-    }
-  });
+  for (auto ParamType : Sig->getSubstitutableParams()) {
+    appendType(Type(ParamType).subst(SubMap)->getCanonicalType());
+    appendListSeparator(First);
+  }
   assert(!First && "no generic substitutions");
-
-  if (isInlined)
-    appendSpecializationOperator("Ti");
-  else
-    appendSpecializationOperator(isReAbstracted ? "Tg" : "TG");
+  
+  appendSpecializationOperator(isReAbstracted ? "Tg" : "TG");
   return finalize();
 }
 
@@ -163,18 +156,6 @@ void FunctionSignatureSpecializationMangler::setArgumentSROA(
   OrigArgs[OrigArgIdx].first |= ArgumentModifierIntBase(ArgumentModifier::SROA);
 }
 
-void FunctionSignatureSpecializationMangler::setArgumentGuaranteedToOwned(
-    unsigned OrigArgIdx) {
-  OrigArgs[OrigArgIdx].first |=
-      ArgumentModifierIntBase(ArgumentModifier::GuaranteedToOwned);
-}
-
-void FunctionSignatureSpecializationMangler::setArgumentExistentialToGeneric(
-    unsigned OrigArgIdx) {
-  OrigArgs[OrigArgIdx].first |=
-      ArgumentModifierIntBase(ArgumentModifier::ExistentialToGeneric);
-}
-
 void FunctionSignatureSpecializationMangler::setArgumentBoxToValue(
     unsigned OrigArgIdx) {
   OrigArgs[OrigArgIdx].first =
@@ -202,37 +183,34 @@ FunctionSignatureSpecializationMangler::mangleConstantProp(LiteralInst *LI) {
   switch (LI->getKind()) {
   default:
     llvm_unreachable("unknown literal");
-  case SILInstructionKind::PreviousDynamicFunctionRefInst:
-  case SILInstructionKind::DynamicFunctionRefInst:
-  case SILInstructionKind::FunctionRefInst: {
-    SILFunction *F =
-        cast<FunctionRefBaseInst>(LI)->getInitiallyReferencedFunction();
+  case ValueKind::FunctionRefInst: {
+    SILFunction *F = cast<FunctionRefInst>(LI)->getReferencedFunction();
     ArgOpBuffer << 'f';
     appendIdentifier(F->getName());
     break;
   }
-  case SILInstructionKind::GlobalAddrInst: {
+  case ValueKind::GlobalAddrInst: {
     SILGlobalVariable *G = cast<GlobalAddrInst>(LI)->getReferencedGlobal();
     ArgOpBuffer << 'g';
     appendIdentifier(G->getName());
     break;
   }
-  case SILInstructionKind::IntegerLiteralInst: {
+  case ValueKind::IntegerLiteralInst: {
     APInt apint = cast<IntegerLiteralInst>(LI)->getValue();
     ArgOpBuffer << 'i' << apint;
     break;
   }
-  case SILInstructionKind::FloatLiteralInst: {
+  case ValueKind::FloatLiteralInst: {
     APInt apint = cast<FloatLiteralInst>(LI)->getBits();
     ArgOpBuffer << 'd' << apint;
     break;
   }
-  case SILInstructionKind::StringLiteralInst: {
+  case ValueKind::StringLiteralInst: {
     StringLiteralInst *SLI = cast<StringLiteralInst>(LI);
     StringRef V = SLI->getValue();
     assert(V.size() <= 32 && "Cannot encode string of length > 32");
     std::string VBuffer;
-    if (!V.empty() && (isDigit(V[0]) || V[0] == '_')) {
+    if (V.size() > 0 && (isDigit(V[0]) || V[0] == '_')) {
       VBuffer = "_";
       VBuffer.append(V.data(), V.size());
       V = VBuffer;
@@ -241,7 +219,6 @@ FunctionSignatureSpecializationMangler::mangleConstantProp(LiteralInst *LI) {
 
     ArgOpBuffer << 's';
     switch (SLI->getEncoding()) {
-      case StringLiteralInst::Encoding::Bytes: ArgOpBuffer << 'B'; break;
       case StringLiteralInst::Encoding::UTF8: ArgOpBuffer << 'b'; break;
       case StringLiteralInst::Encoding::UTF16: ArgOpBuffer << 'w'; break;
       case StringLiteralInst::Encoding::ObjCSelector: ArgOpBuffer << 'c'; break;
@@ -261,18 +238,18 @@ FunctionSignatureSpecializationMangler::mangleClosureProp(SILInstruction *Inst) 
   // restriction is removed, the assert here will fire.
   if (auto *TTTFI = dyn_cast<ThinToThickFunctionInst>(Inst)) {
     auto *FRI = cast<FunctionRefInst>(TTTFI->getCallee());
-    appendIdentifier(FRI->getInitiallyReferencedFunction()->getName());
+    appendIdentifier(FRI->getReferencedFunction()->getName());
     return;
   }
   auto *PAI = cast<PartialApplyInst>(Inst);
   auto *FRI = cast<FunctionRefInst>(PAI->getCallee());
-  appendIdentifier(FRI->getInitiallyReferencedFunction()->getName());
+  appendIdentifier(FRI->getReferencedFunction()->getName());
 
   // Then we mangle the types of the arguments that the partial apply is
   // specializing.
   for (auto &Op : PAI->getArgumentOperands()) {
     SILType Ty = Op.get()->getType();
-    appendType(Ty.getASTType());
+    appendType(Ty.getSwiftRValueType());
   }
 }
 
@@ -304,11 +281,6 @@ void FunctionSignatureSpecializationMangler::mangleArgument(
   }
 
   bool hasSomeMod = false;
-  if (ArgMod & ArgumentModifierIntBase(ArgumentModifier::ExistentialToGeneric)) {
-    ArgOpBuffer << 'e';
-    hasSomeMod = true;
-  }
-
   if (ArgMod & ArgumentModifierIntBase(ArgumentModifier::Dead)) {
     ArgOpBuffer << 'd';
     hasSomeMod = true;
@@ -318,12 +290,6 @@ void FunctionSignatureSpecializationMangler::mangleArgument(
     ArgOpBuffer << (hasSomeMod ? 'G' : 'g');
     hasSomeMod = true;
   }
-
-  if (ArgMod & ArgumentModifierIntBase(ArgumentModifier::GuaranteedToOwned)) {
-    ArgOpBuffer << (hasSomeMod ? 'O' : 'o');
-    hasSomeMod = true;
-  }
-
   if (ArgMod & ArgumentModifierIntBase(ArgumentModifier::SROA)) {
     ArgOpBuffer << (hasSomeMod ? 'X' : 'x');
     hasSomeMod = true;
@@ -350,9 +316,12 @@ mangleReturnValue(ReturnValueModifierIntBase RetMod) {
   }
 }
 
-std::string FunctionSignatureSpecializationMangler::mangle() {
+std::string FunctionSignatureSpecializationMangler::mangle(int UniqueID) {
   ArgOpStorage.clear();
   beginMangling();
+
+  if (UniqueID)
+    ArgOpBuffer << UniqueID;
 
   for (unsigned i : indices(OrigArgs)) {
     ArgumentModifierIntBase ArgMod;

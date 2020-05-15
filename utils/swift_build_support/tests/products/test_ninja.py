@@ -23,11 +23,9 @@ except ImportError:
     # py3
     from io import StringIO
 
-from build_swift.build_swift.wrappers import xcrun
-
 from swift_build_support import shell
+from swift_build_support import xcrun
 from swift_build_support.products import Ninja
-from swift_build_support.targets import StdlibDeploymentTarget
 from swift_build_support.toolchain import host_toolchain
 from swift_build_support.workspace import Workspace
 
@@ -42,8 +40,6 @@ class NinjaTestCase(unittest.TestCase):
 
         self.workspace = Workspace(source_root=tmpdir1,
                                    build_root=tmpdir2)
-
-        self.host = StdlibDeploymentTarget.host_target()
 
         # Setup toolchain
         self.toolchain = host_toolchain()
@@ -75,25 +71,22 @@ class NinjaTestCase(unittest.TestCase):
         self.args = None
 
     def test_ninja_bin_path(self):
-        ninja_build = Ninja.new_builder(
+        ninja_build = Ninja(
             args=self.args,
             toolchain=self.toolchain,
-            workspace=self.workspace,
-            host=self.host)
+            source_dir='/path/to/src',
+            build_dir='/path/to/build')
 
-        self.assertEqual(ninja_build.ninja_bin_path,
-                         os.path.join(
-                             self.workspace.build_dir('build', 'ninja'),
-                             'ninja'))
+        self.assertEqual(ninja_build.ninja_bin_path, '/path/to/build/ninja')
 
-    def test_build(self):
-        ninja_build = Ninja.new_builder(
+    def test_do_build(self):
+        ninja_build = Ninja(
             args=self.args,
             toolchain=self.toolchain,
-            workspace=self.workspace,
-            host=self.host)
+            source_dir=self.workspace.source_dir('ninja'),
+            build_dir=self.workspace.build_dir('build', 'ninja'))
 
-        ninja_build.build()
+        ninja_build.do_build()
 
         expect_env = ""
         if platform.system() == "Darwin":
@@ -120,15 +113,8 @@ class NinjaTestCase(unittest.TestCase):
 + pushd {build_dir}
 + {expect_env}{python} configure.py --bootstrap
 + popd
-""".format(source_dir=self._platform_quote(
-            self.workspace.source_dir('ninja')),
-           build_dir=self._platform_quote(
-            self.workspace.build_dir('build', 'ninja')),
-           expect_env=expect_env,
-           python=self._platform_quote(sys.executable)))
-
-    def _platform_quote(self, path):
-        if platform.system() == 'Windows':
-            return "'{}'".format(path)
-        else:
-            return path
+""".format(
+            source_dir=os.path.join(self.workspace.source_root, 'ninja'),
+            build_dir=os.path.join(self.workspace.build_root, 'ninja-build'),
+            expect_env=expect_env,
+            python=sys.executable))

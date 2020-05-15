@@ -14,8 +14,6 @@
 #define SWIFT_SEMA_MISC_DIAGNOSTICS_H
 
 #include "swift/AST/AttrKind.h"
-#include "swift/AST/Pattern.h"
-#include "swift/AST/Expr.h"
 #include "swift/AST/Identifier.h"
 #include "swift/Basic/LLVM.h"
 #include "swift/Basic/SourceLoc.h"
@@ -31,28 +29,28 @@ namespace swift {
   class InFlightDiagnostic;
   class Stmt;
   class TopLevelCodeDecl;
+  class TypeChecker;
   class ValueDecl;
 
-/// Emit diagnostics for syntactic restrictions on a given expression.
-void performSyntacticExprDiagnostics(const Expr *E, const DeclContext *DC,
+/// \brief Emit diagnostics for syntactic restrictions on a given expression.
+void performSyntacticExprDiagnostics(TypeChecker &TC, const Expr *E,
+                                     const DeclContext *DC,
                                      bool isExprStmt);
 
-/// Emit diagnostics for a given statement.
-void performStmtDiagnostics(ASTContext &ctx, const Stmt *S);
+/// \brief Emit diagnostics for a given statement.
+void performStmtDiagnostics(TypeChecker &TC, const Stmt *S);
 
-void performAbstractFuncDeclDiagnostics(AbstractFunctionDecl *AFD);
+void performAbstractFuncDeclDiagnostics(TypeChecker &TC,
+                                        AbstractFunctionDecl *AFD);
 
 /// Perform diagnostics on the top level code declaration.
-void performTopLevelDeclDiagnostics(TopLevelCodeDecl *TLCD);
+void performTopLevelDeclDiagnostics(TypeChecker &TC, TopLevelCodeDecl *TLCD);
   
-/// Emit a fix-it to set the access of \p VD to \p desiredAccess.
+/// Emit a fix-it to set the accessibility of \p VD to \p desiredAccess.
 ///
 /// This actually updates \p VD as well.
-void fixItAccess(InFlightDiagnostic &diag,
-                 ValueDecl *VD,
-                 AccessLevel desiredAccess,
-                 bool isForSetter = false,
-                 bool shouldUseDefaultAccess = false);
+void fixItAccessibility(InFlightDiagnostic &diag, ValueDecl *VD,
+                        Accessibility desiredAccess, bool isForSetter = false);
 
 /// Emit fix-its to correct the argument labels in \p expr, which is the
 /// argument tuple or single argument of a call.
@@ -61,49 +59,22 @@ void fixItAccess(InFlightDiagnostic &diag,
 /// error diagnostic.
 ///
 /// \returns true if the issue was diagnosed
-bool diagnoseArgumentLabelError(ASTContext &ctx,
-                                Expr *expr,
+bool diagnoseArgumentLabelError(TypeChecker &TC, const Expr *expr,
                                 ArrayRef<Identifier> newNames,
                                 bool isSubscript,
                                 InFlightDiagnostic *existingDiag = nullptr);
-
-/// If \p assignExpr has a destination expression that refers to a declaration
-/// with a non-owning attribute, such as 'weak' or 'unowned' and the initializer
-/// expression refers to a class constructor, emit a warning that the assigned
-/// instance will be immediately deallocated.
-void diagnoseUnownedImmediateDeallocation(ASTContext &ctx,
-                                          const AssignExpr *assignExpr);
-
-/// If \p pattern binds to a declaration with a non-owning attribute, such as
-/// 'weak' or 'unowned' and \p initializer refers to a class constructor,
-/// emit a warning that the bound instance will be immediately deallocated.
-void diagnoseUnownedImmediateDeallocation(ASTContext &ctx,
-                                          const Pattern *pattern,
-                                          SourceLoc equalLoc,
-                                          const Expr *initializer);
-
-/// If \p expr is a call to a known function with a requirement that some
-/// arguments must be constants, whether those arguments are passed only
-/// constants. Otherwise, diagnose and emit errors.
-void diagnoseConstantArgumentRequirement(const Expr *expr,
-                                         const DeclContext *declContext);
 
 /// Attempt to fix the type of \p decl so that it's a valid override for
 /// \p base...but only if we're highly confident that we know what the user
 /// should have written.
 ///
-/// The \p diag closure allows the caller to control the diagnostic that is
-/// emitted. It is passed true if the diagnostic will be emitted with fixits
-/// attached, and false otherwise. If None is returned, no diagnostics are
-/// emitted.  Else the fixits are attached to the returned diagnostic.
-///
 /// \returns true iff any fix-its were attached to \p diag.
-bool computeFixitsForOverridenDeclaration(
-    ValueDecl *decl, const ValueDecl *base,
-    llvm::function_ref<Optional<InFlightDiagnostic>(bool)> diag);
+bool fixItOverrideDeclarationTypes(InFlightDiagnostic &diag,
+                                   ValueDecl *decl,
+                                   const ValueDecl *base);
 
 /// Emit fix-its to enclose trailing closure in argument parens.
-void fixItEncloseTrailingClosure(ASTContext &ctx,
+void fixItEncloseTrailingClosure(TypeChecker &TC,
                                  InFlightDiagnostic &diag,
                                  const CallExpr *call,
                                  Identifier closureLabel);

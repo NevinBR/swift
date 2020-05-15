@@ -1,4 +1,4 @@
-// RUN: %target-typecheck-verify-swift
+// RUN: %target-swift-frontend -typecheck -verify %s
 
 // REQUIRES: objc_interop
 
@@ -15,7 +15,7 @@ class A<T> : NSObject {
 }
 extension A {
     // This should throw an error
-    @objc func a1() {} // expected-error{{extensions of generic classes cannot contain '@objc' members}}
+    @objc func a1() {} // expected-error{{@objc is not supported within extensions of generic classes or classes that inherit from generic classes}}
     // This should *not* throw an error
     func a2() {}
 }
@@ -27,8 +27,9 @@ class B : A<Int> {
     }
 }
 extension B {
-    // This is supported now
-    @objc func b1() {}
+    // This should throw an error
+    @objc func b1() {} // expected-error{{@objc is not supported within extensions of generic classes or classes that inherit from generic classes}}
+    // This should *not* throw an error
     func b2() {}
 }
 
@@ -40,17 +41,9 @@ class D : C {
     }
 }
 extension D {
-    // This is supported now
-    @objc func d1() {}
+    // This should throw an error
+    @objc func d1() {} // expected-error{{@objc is not supported within extensions of generic classes or classes that inherit from generic classes}}
+    // This should *not* throw an error
     func d2() {}
 }
 
-class Outer<T> {
-    class Inner {}
-}
-
-extension Outer.Inner {
-    @objc func outerInner1() {}
-    // expected-error@-1{{extensions of classes from generic context cannot contain '@objc' members}}
-    func outerInner2() {}
-}

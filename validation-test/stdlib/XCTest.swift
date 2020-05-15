@@ -1,25 +1,12 @@
 // RUN: rm -rf %t ; mkdir -p %t
-// RUN: %target-build-swift %s -o %t/a.out -swift-version 4
+// RUN: %target-build-swift %s -o %t/a.out3 -swift-version 3 && %target-run %t/a.out3
+// RUN: %target-build-swift %s -o %t/a.out4 -swift-version 4 && %target-run %t/a.out4
 
-// The actual XCTest overlay is not maintained in this repository -- it is
-// distributed in Xcode (libXCTestSwiftSupport.dylib), along with
-// XCTest.framework itself.
-//
-// The codebase here builds the obsolete /usr/lib/swift/libswiftXCTest.dylib
-// that currently ships in the OS. There is no expectation that that library is
-// usable for anything; it only exists to maintain a superficial level of binary
-// compatibility with existing apps that happen to link to it by mistake.
-//
-// Accordingly, this test is now a build-only test. The code here is only
-// compiled, it is never run.
-//
-// rdar://problem/55270944
-
+// REQUIRES: executable_test
 // REQUIRES: objc_interop
 
 // FIXME: Add a feature for "platforms that support XCTest".
 // REQUIRES: OS=macosx
-// UNSUPPORTED: remote_run
 
 import StdlibUnittest
 
@@ -36,20 +23,33 @@ var XCTestTestSuite = TestSuite("XCTest")
 
 func execute(observers: [XCTestObservation] = [], _ run: () -> Void) {
   for observer in observers {
+#if swift(>=4.0)
     XCTestObservationCenter.shared.addTestObserver(observer)
+#else
+    XCTestObservationCenter.shared().addTestObserver(observer)
+#endif
+
   }
 
   run()
 
   for observer in observers {
+#if swift(>=4.0)
     XCTestObservationCenter.shared.removeTestObserver(observer)
+#else
+    XCTestObservationCenter.shared().removeTestObserver(observer)
+#endif
   }
 }
 
 class FailureDescriptionObserver: NSObject, XCTestObservation {
   var failureDescription: String?
 
+#if swift(>=4.0)
   typealias LineNumber=Int
+#else
+  typealias LineNumber=UInt
+#endif
 
   func testCase(_ testCase: XCTestCase, didFailWithDescription description: String, inFile filePath: String?, atLine lineNumber: LineNumber) {
     failureDescription = description
@@ -126,7 +126,7 @@ XCTestTestSuite.test("XCTAssertEqual/T") {
   let failingTestRun = failingTestCase.testRun!
   expectEqual(1, failingTestRun.failureCount)
   expectEqual(0, failingTestRun.unexpectedExceptionCount)
-  expectTrue(observer.failureDescription!.starts(with:  "XCTAssertEqual failed: (\"1\") is not equal to (\"2\")"))
+  expectEqual(observer.failureDescription, "XCTAssertEqual failed: (\"1\") is not equal to (\"2\") - ")
 }
 
 XCTestTestSuite.test("XCTAssertEqual/Optional<T>") {
@@ -160,7 +160,7 @@ XCTestTestSuite.test("XCTAssertEqual/Optional<T>") {
   expectEqual(0, failingTestRun.unexpectedExceptionCount)
   expectEqual(1, failingTestRun.totalFailureCount)
   expectFalse(failingTestRun.hasSucceeded)
-  expectTrue(observer.failureDescription!.starts(with:  "XCTAssertEqual failed: (\"Optional(1)\") is not equal to (\"Optional(2)\")"))
+  expectEqual(observer.failureDescription, "XCTAssertEqual failed: (\"Optional(1)\") is not equal to (\"Optional(2)\") - ")
 }
 
 XCTestTestSuite.test("XCTAssertEqual/Array<T>") {
@@ -521,8 +521,13 @@ if #available(macOS 10.11, *) {
     XCTestTestSuite.test("XCUIElement/typeKey(_:modifierFlags:)") {
         class TypeKeyTestCase: XCTestCase {
             func testTypeKey() {
-                XCUIApplication().typeKey("a", modifierFlags: [])
-                XCUIApplication().typeKey(.delete, modifierFlags: [])
+                #if swift(>=4.0)
+                    XCUIApplication().typeKey("a", modifierFlags: [])
+                    XCUIApplication().typeKey(.delete, modifierFlags: [])
+                #else
+                    XCUIApplication().typeKey("a", modifierFlags: [])
+                    XCUIApplication().typeKey(XCUIKeyboardKeyDelete, modifierFlags: [])
+                #endif
             }
         }
     }

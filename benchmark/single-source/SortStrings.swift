@@ -9,24 +9,10 @@
 // See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
-import TestsUtils
 
-let t: [BenchmarkCategory] = [.validation, .api, .algorithm, .String]
 // Sort an array of strings using an explicit sort predicate.
-public let SortStrings = [
-  BenchmarkInfo(name: "SortSortedStrings",
-    runFunction: run_SortSortedStrings, tags: t,
-    setUpFunction: { blackHole(sortedWords) }),
-  BenchmarkInfo(name: "SortStrings",
-    runFunction: run_SortStrings, tags: t,
-    setUpFunction: { blackHole(words) }),
-  BenchmarkInfo(name: "SortStringsUnicode",
-    runFunction: run_SortStringsUnicode, tags: t,
-    setUpFunction: { blackHole(unicodeWords) }, legacyFactor: 5),
-]
 
-let sortedWords = words.sorted()
-let words: [String] = [
+var stringBenchmarkWords: [String] = [
   "woodshed",
   "lakism",
   "gastroperiodynia",
@@ -1040,17 +1026,18 @@ func benchSortStrings(_ words: [String]) {
 
 public func run_SortStrings(_ N: Int) {
   for _ in 1...5*N {
-    benchSortStrings(words)
+    benchSortStrings(stringBenchmarkWords)
   }
 }
 
 public func run_SortSortedStrings(_ N: Int) {
+  let sortedBenchmarkWords = stringBenchmarkWords.sorted()
   for _ in 1...5*N {
-    benchSortStrings(sortedWords)
+    benchSortStrings(sortedBenchmarkWords)
   }
 }
 
-let unicodeWords: [String] = [
+var stringBenchmarkWordsUnicode: [String] = [
   "❄️woodshed",
   "❄️lakism",
   "❄️gastroperiodynia",
@@ -2054,7 +2041,7 @@ let unicodeWords: [String] = [
   ]
 
 public func run_SortStringsUnicode(_ N: Int) {
-  for _ in 1...N {
-    benchSortStrings(unicodeWords)
+  for _ in 1...5*N {
+    benchSortStrings(stringBenchmarkWordsUnicode)
   }
 }

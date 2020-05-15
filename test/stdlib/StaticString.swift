@@ -8,7 +8,6 @@ var StaticStringTestSuite = TestSuite("StaticString")
 
 StaticStringTestSuite.test("PointerRepresentation/ASCII/Empty") {
   let str = StaticString()
-  expectEqual(0x00, str.utf8Start[0])
   expectEqual(0, str.utf8CodeUnitCount)
   expectTrue(str.hasPointerRepresentation)
   expectTrue(str.isASCII)
@@ -27,7 +26,6 @@ StaticStringTestSuite.test("PointerRepresentation/ASCII") {
   expectEqual(0x61, str.utf8Start[0])
   expectEqual(0x62, str.utf8Start[1])
   expectEqual(0x63, str.utf8Start[2])
-  expectEqual(0x00, str.utf8Start[3])
   expectEqual(3, str.utf8CodeUnitCount)
   expectTrue(str.hasPointerRepresentation)
   expectTrue(str.isASCII)
@@ -52,7 +50,6 @@ StaticStringTestSuite.test("PointerRepresentation/NonASCII") {
   expectEqual(0xb1, str.utf8Start[3])
   expectEqual(0xd0, str.utf8Start[4])
   expectEqual(0xb2, str.utf8Start[5])
-  expectEqual(0x00, str.utf8Start[6])
   expectEqual(6, str.utf8CodeUnitCount)
   expectTrue(str.hasPointerRepresentation)
   expectFalse(str.isASCII)

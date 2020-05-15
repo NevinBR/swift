@@ -17,61 +17,38 @@
 //
 //===----------------------------------------------------------------------===//
 
-/// A collection whose element type is `Element` but that is always empty.
-@frozen // trivial-implementation
-public struct EmptyCollection<Element> {
-  // no properties
-
+/// An iterator that never produces an element.
+public struct EmptyIterator<Element> : IteratorProtocol, Sequence {
   /// Creates an instance.
-  @inlinable // trivial-implementation
   public init() {}
-}
 
-extension EmptyCollection {
-  /// An iterator that never produces an element.
-  @frozen // trivial-implementation
-  public struct Iterator {
-    // no properties
-  
-    /// Creates an instance.
-    @inlinable // trivial-implementation
-    public init() {}
-  }  
-}
-
-extension EmptyCollection.Iterator: IteratorProtocol, Sequence {
   /// Returns `nil`, indicating that there are no more elements.
-  @inlinable // trivial-implementation
   public mutating func next() -> Element? {
     return nil
   }
 }
 
-extension EmptyCollection: Sequence {
-  /// Returns an empty iterator.
-  @inlinable // trivial-implementation
-  public func makeIterator() -> Iterator {
-    return Iterator()
-  }
-}
-
-extension EmptyCollection: RandomAccessCollection, MutableCollection {
+/// A collection whose element type is `Element` but that is always empty.
+public struct EmptyCollection<Element> :
+  RandomAccessCollection, MutableCollection
+{
   /// A type that represents a valid position in the collection.
   ///
   /// Valid indices consist of the position of every element and a
   /// "past the end" position that's not valid for use as a subscript.
   public typealias Index = Int
-  public typealias Indices = Range<Int>
+  public typealias IndexDistance = Int
   public typealias SubSequence = EmptyCollection<Element>
 
+  /// Creates an instance.
+  public init() {}
+
   /// Always zero, just like `endIndex`.
-  @inlinable // trivial-implementation
   public var startIndex: Index {
     return 0
   }
 
   /// Always zero, just like `startIndex`.
-  @inlinable // trivial-implementation
   public var endIndex: Index {
     return 0
   }
@@ -80,7 +57,6 @@ extension EmptyCollection: RandomAccessCollection, MutableCollection {
   ///
   /// `EmptyCollection` does not have any element indices, so it is not
   /// possible to advance indices.
-  @inlinable // trivial-implementation
   public func index(after i: Index) -> Index {
     _preconditionFailure("EmptyCollection can't advance indices")
   }
@@ -89,15 +65,18 @@ extension EmptyCollection: RandomAccessCollection, MutableCollection {
   ///
   /// `EmptyCollection` does not have any element indices, so it is not
   /// possible to advance indices.
-  @inlinable // trivial-implementation
   public func index(before i: Index) -> Index {
     _preconditionFailure("EmptyCollection can't advance indices")
+  }
+
+  /// Returns an empty iterator.
+  public func makeIterator() -> EmptyIterator<Element> {
+    return EmptyIterator()
   }
 
   /// Accesses the element at the given position.
   ///
   /// Must never be called, since this collection is always empty.
-  @inlinable // trivial-implementation
   public subscript(position: Index) -> Element {
     get {
       _preconditionFailure("Index out of range")
@@ -107,8 +86,7 @@ extension EmptyCollection: RandomAccessCollection, MutableCollection {
     }
   }
 
-  @inlinable // trivial-implementation
-  public subscript(bounds: Range<Index>) -> SubSequence {
+  public subscript(bounds: Range<Index>) -> EmptyCollection<Element> {
     get {
       _debugPrecondition(bounds.lowerBound == 0 && bounds.upperBound == 0,
         "Index out of range")
@@ -121,20 +99,17 @@ extension EmptyCollection: RandomAccessCollection, MutableCollection {
   }
 
   /// The number of elements (always zero).
-  @inlinable // trivial-implementation
   public var count: Int {
     return 0
   }
 
-  @inlinable // trivial-implementation
-  public func index(_ i: Index, offsetBy n: Int) -> Index {
+  public func index(_ i: Index, offsetBy n: IndexDistance) -> Index {
     _debugPrecondition(i == startIndex && n == 0, "Index out of range")
     return i
   }
 
-  @inlinable // trivial-implementation
   public func index(
-    _ i: Index, offsetBy n: Int, limitedBy limit: Index
+    _ i: Index, offsetBy n: IndexDistance, limitedBy limit: Index
   ) -> Index? {
     _debugPrecondition(i == startIndex && limit == startIndex,
       "Index out of range")
@@ -142,33 +117,44 @@ extension EmptyCollection: RandomAccessCollection, MutableCollection {
   }
 
   /// The distance between two indexes (always zero).
-  @inlinable // trivial-implementation
-  public func distance(from start: Index, to end: Index) -> Int {
+  public func distance(from start: Index, to end: Index) -> IndexDistance {
     _debugPrecondition(start == 0, "From must be startIndex (or endIndex)")
     _debugPrecondition(end == 0, "To must be endIndex (or startIndex)")
     return 0
   }
 
-  @inlinable // trivial-implementation
   public func _failEarlyRangeCheck(_ index: Index, bounds: Range<Index>) {
     _debugPrecondition(index == 0, "out of bounds")
-    _debugPrecondition(bounds == indices, "invalid bounds for an empty collection")
+    _debugPrecondition(bounds == Range(indices),
+      "invalid bounds for an empty collection")
   }
 
-  @inlinable // trivial-implementation
   public func _failEarlyRangeCheck(
     _ range: Range<Index>, bounds: Range<Index>
   ) {
-    _debugPrecondition(range == indices, "invalid range for an empty collection")
-    _debugPrecondition(bounds == indices, "invalid bounds for an empty collection")
+    _debugPrecondition(range == Range(indices),
+      "invalid range for an empty collection")
+    _debugPrecondition(bounds == Range(indices),
+      "invalid bounds for an empty collection")
   }
+
+  public typealias Indices = CountableRange<Int>
 }
 
-extension EmptyCollection: Equatable {
-  @inlinable // trivial-implementation
+extension EmptyCollection : Equatable {
   public static func == (
     lhs: EmptyCollection<Element>, rhs: EmptyCollection<Element>
   ) -> Bool {
     return true
+  }
+}
+
+@available(*, unavailable, renamed: "EmptyIterator")
+public struct EmptyGenerator<Element> {}
+
+extension EmptyIterator {
+  @available(*, unavailable, renamed: "makeIterator()")
+  public func generate() -> EmptyIterator<Element> {
+    Builtin.unreachable()
   }
 }

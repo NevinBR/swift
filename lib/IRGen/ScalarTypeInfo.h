@@ -42,30 +42,30 @@ protected:
   }
 
 public:
-  void initializeFromParams(IRGenFunction &IGF, Explosion &params, Address dest,
-                            SILType T, bool isOutlined) const override {
-    asDerived().Derived::initialize(IGF, params, dest, isOutlined);
+  void initializeFromParams(IRGenFunction &IGF, Explosion &params,
+                            Address dest, SILType T) const override {
+    asDerived().Derived::initialize(IGF, params, dest);
   }
 
   void initializeWithCopy(IRGenFunction &IGF, Address dest, Address src,
-                          SILType T, bool isOutlined) const override {
+                          SILType T) const override {
     Explosion temp;
     asDerived().Derived::loadAsCopy(IGF, src, temp);
-    asDerived().Derived::initialize(IGF, temp, dest, isOutlined);
+    asDerived().Derived::initialize(IGF, temp, dest);
   }
 
-  void assignWithCopy(IRGenFunction &IGF, Address dest, Address src, SILType T,
-                      bool isOutlined) const override {
+  void assignWithCopy(IRGenFunction &IGF, Address dest, Address src,
+                      SILType T) const override {
     Explosion temp;
     asDerived().Derived::loadAsCopy(IGF, src, temp);
-    asDerived().Derived::assign(IGF, temp, dest, isOutlined);
+    asDerived().Derived::assign(IGF, temp, dest);
   }
 
-  void assignWithTake(IRGenFunction &IGF, Address dest, Address src, SILType T,
-                      bool isOutlined) const override {
+  void assignWithTake(IRGenFunction &IGF, Address dest, Address src,
+                      SILType T) const override {
     Explosion temp;
     asDerived().Derived::loadAsTake(IGF, src, temp);
-    asDerived().Derived::assign(IGF, temp, dest, isOutlined);
+    asDerived().Derived::assign(IGF, temp, dest);
   }
 
   void reexplode(IRGenFunction &IGF, Explosion &in,
@@ -117,8 +117,8 @@ public:
     schema.add(ExplosionSchema::Element::forScalar(ty));
   }
 
-  void initialize(IRGenFunction &IGF, Explosion &src, Address addr,
-                  bool isOutlined) const override {
+  void initialize(IRGenFunction &IGF, Explosion &src,
+                  Address addr) const override {
     addr = asDerived().projectScalar(IGF, addr);
     IGF.Builder.CreateStore(src.claimNext(), addr);
   }
@@ -137,8 +137,7 @@ public:
     out.add(IGF.Builder.CreateLoad(addr));
   }
 
-  void assign(IRGenFunction &IGF, Explosion &src, Address dest,
-              bool isOutlined) const override {
+  void assign(IRGenFunction &IGF, Explosion &src, Address dest) const override {
     // Project down.
     dest = asDerived().projectScalar(IGF, dest);
 
@@ -176,8 +175,7 @@ public:
     asDerived().emitScalarFixLifetime(IGF, value);
   }
 
-  void destroy(IRGenFunction &IGF, Address addr, SILType T,
-               bool isOutlined) const override {
+  void destroy(IRGenFunction &IGF, Address addr, SILType T) const override {
     if (!Derived::IsScalarPOD) {
       addr = asDerived().projectScalar(IGF, addr);
       llvm::Value *value = IGF.Builder.CreateLoad(addr, "toDestroy");
@@ -207,31 +205,6 @@ public:
         IGM, lowering, asDerived().getScalarType(), offset,
         Size(IGM.DataLayout.getTypeStoreSize(asDerived().getScalarType())));
   }
-
-};
-
-/// SingleScalarTypeInfoWithTypeLayout - A further specialization of
-/// SingleScalarTypeInfo for types which knows how-to construct a type layout
-/// from its derived type which must be a TypeInfo.
-template <class Derived, class Base>
-class SingleScalarTypeInfoWithTypeLayout
-    : public SingleScalarTypeInfo<Derived, Base> {
-protected:
-  template <class... T>
-  SingleScalarTypeInfoWithTypeLayout(T &&... args)
-      : SingleScalarTypeInfo<Derived, Base>(::std::forward<T>(args)...) {}
-
-  const Derived &asDerived() const {
-    return static_cast<const Derived &>(*this);
-  }
-
-public:
-  friend class SingleScalarTypeInfo<Derived, Base>;
-
-  TypeLayoutEntry *buildTypeLayoutEntry(IRGenModule &IGM,
-                                        SILType T) const override {
-    return IGM.typeLayoutCache.getOrCreateScalarEntry(asDerived(), T);
-  }
 };
 
 /// PODSingleScalarTypeInfo - A further specialization of
@@ -248,10 +221,6 @@ protected:
                                           IsPOD, IsFixedSize,
                                           ::std::forward<T>(args)...) {}
 
-  const Derived &asDerived() const {
-    return static_cast<const Derived &>(*this);
-  }
-
 private:
   friend class SingleScalarTypeInfo<Derived, Base>;
   static const bool IsScalarPOD = true;
@@ -264,12 +233,6 @@ private:
 
   void emitScalarFixLifetime(IRGenFunction &IGF, llvm::Value *value) const {
   }
-
-  TypeLayoutEntry *buildTypeLayoutEntry(IRGenModule &IGM,
-                                        SILType T) const override {
-    return IGM.typeLayoutCache.getOrCreateScalarEntry(asDerived(), T);
-  }
-
 };
 
 }

@@ -32,8 +32,6 @@
 
 #include <iostream>
 
-using namespace swift::Demangle;
-
 static llvm::cl::opt<bool>
 ExpandMode("expand",
                llvm::cl::desc("Expand mode (show node structure of the demangling)"));
@@ -47,16 +45,8 @@ TreeOnly("tree-only",
            llvm::cl::desc("Tree-only mode (do not show the demangled string)"));
 
 static llvm::cl::opt<bool>
-StripSpecialization("strip-specialization",
-           llvm::cl::desc("Remangle the origin of a specialized function"));
-
-static llvm::cl::opt<bool>
 RemangleMode("test-remangle",
            llvm::cl::desc("Remangle test mode (show the remangled string)"));
-
-static llvm::cl::opt<bool>
-RemangleRtMode("remangle-objc-rt",
-           llvm::cl::desc("Remangle to the ObjC runtime name mangling scheme"));
 
 static llvm::cl::opt<bool>
 RemangleNew("remangle-new",
@@ -88,22 +78,6 @@ static llvm::StringRef substrAfter(llvm::StringRef whole,
   return whole.substr((part.data() - whole.data()) + part.size());
 }
 
-static void stripSpecialization(NodePointer Node) {
-  if (Node->getKind() != Node::Kind::Global)
-    return;
-  switch (Node->getFirstChild()->getKind()) {
-    case Node::Kind::FunctionSignatureSpecialization:
-    case Node::Kind::GenericSpecialization:
-    case Node::Kind::GenericSpecializationNotReAbstracted:
-    case Node::Kind::GenericPartialSpecialization:
-    case Node::Kind::GenericPartialSpecializationNotReAbstracted:
-      Node->removeChildAt(0);
-      break;
-    default:
-      break;
-  }
-}
-
 static void demangle(llvm::raw_ostream &os, llvm::StringRef name,
                      swift::Demangle::Context &DCtx,
                      const swift::Demangle::DemangleOptions &options) {
@@ -125,15 +99,15 @@ static void demangle(llvm::raw_ostream &os, llvm::StringRef name,
       // the old mangling scheme.
       // This makes it easier to share the same database between the
       // mangling and demangling tests.
-      remangled = name.str();
+      remangled = name;
     } else {
       remangled = swift::Demangle::mangleNode(pointer);
-      unsigned prefixLen = swift::Demangle::getManglingPrefixLength(remangled);
+      unsigned prefixLen = swift::Demangle::getManglingPrefixLength(remangled.data());
       assert(prefixLen > 0);
       // Replace the prefix if we remangled with a different prefix.
       if (!name.startswith(remangled.substr(0, prefixLen))) {
         unsigned namePrefixLen =
-          swift::Demangle::getManglingPrefixLength(name);
+          swift::Demangle::getManglingPrefixLength(name.data());
         assert(namePrefixLen > 0);
         remangled = name.take_front(namePrefixLen).str() +
                       remangled.substr(prefixLen);
@@ -147,12 +121,6 @@ static void demangle(llvm::raw_ostream &os, llvm::StringRef name,
     if (hadLeadingUnderscore) llvm::outs() << '_';
     llvm::outs() << remangled;
     return;
-  } else if (RemangleRtMode) {
-    std::string remangled = name.str();
-    if (pointer) {
-      remangled = swift::Demangle::mangleNodeOld(pointer);
-    }
-    llvm::outs() << remangled;
   }
   if (!TreeOnly) {
     if (RemangleNew) {
@@ -164,19 +132,14 @@ static void demangle(llvm::raw_ostream &os, llvm::StringRef name,
       llvm::outs() << remangled;
       return;
     }
-    if (StripSpecialization) {
-      stripSpecialization(pointer);
-      std::string remangled = swift::Demangle::mangleNode(pointer);
-      llvm::outs() << remangled;
-      return;
-    }
     std::string string = swift::Demangle::nodeToString(pointer, options);
     if (!CompactMode)
       llvm::outs() << name << " ---> ";
 
     if (Classify) {
       std::string Classifications;
-      if (!swift::Demangle::isSwiftSymbol(name))
+      std::string cName = name.str();
+      if (!swift::Demangle::isSwiftSymbol(cName.c_str()))
         Classifications += 'N';
       if (DCtx.isThunkSymbol(name)) {
         if (!Classifications.empty())
@@ -202,7 +165,8 @@ static void demangle(llvm::raw_ostream &os, llvm::StringRef name,
 static int demangleSTDIN(const swift::Demangle::DemangleOptions &options) {
   // This doesn't handle Unicode symbols, but maybe that's okay.
   // Also accept the future mangling prefix.
-  llvm::Regex maybeSymbol("(_T|_?\\$[Ss])[_a-zA-Z0-9$.]+");
+  // TODO: remove the "_S" as soon as MANGLING_PREFIX_STR gets "_S".
+  llvm::Regex maybeSymbol("(_T|_*\\$S|" MANGLING_PREFIX_STR ")[_a-zA-Z0-9$.]+");
 
   swift::Demangle::Context DCtx;
   for (std::string mangled; std::getline(std::cin, mangled);) {
@@ -240,12 +204,7 @@ int main(int argc, char **argv) {
   } else {
     swift::Demangle::Context DCtx;
     for (llvm::StringRef name : InputNames) {
-      if (name.startswith("S") || name.startswith("s") ) {
-        std::string correctedName = std::string("$") + name.str();
-        demangle(llvm::outs(), correctedName, DCtx, options);
-      } else {
-        demangle(llvm::outs(), name, DCtx, options);
-      }
+      demangle(llvm::outs(), name, DCtx, options);
       llvm::outs() << '\n';
     }
 

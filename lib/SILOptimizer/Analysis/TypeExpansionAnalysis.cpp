@@ -14,7 +14,6 @@
 #include "swift/SILOptimizer/Analysis/TypeExpansionAnalysis.h"
 #include "swift/SIL/SILInstruction.h"
 #include "swift/SIL/SILModule.h"
-#include "swift/SILOptimizer/Utils/InstOptUtils.h"
 #include "llvm/Support/Debug.h"
 
 using namespace swift;
@@ -24,24 +23,13 @@ using namespace swift;
 // memory usage of this cache.
 static const int TypeExpansionAnalysisMaxCacheSize = 4096;
 
-const ProjectionPathList &
-TypeExpansionAnalysis::getTypeExpansion(SILType B, SILModule *Mod,
-                                        TypeExpansionContext context) {
+const ProjectionPathList&
+TypeExpansionAnalysis::getTypeExpansion(SILType B, SILModule *Mod) {
   // Check whether we have the type expansion.
-  auto key = std::make_pair(B, context);
-  auto Iter = ExpansionCache.find(key);
-  //
+  auto Iter = ExpansionCache.find(B);
   if (Iter != ExpansionCache.end()) {
     return Iter->second;
-  }
-
-  // Don't expand large types. This would defeat keeping them in memory.
-  if (!shouldExpand(*Mod, B)) {
-    // Push the empty projection path.
-    ProjectionPath P(B);
-    ExpansionCache[key].push_back(P);
-    return ExpansionCache[key];
-  }
+  }   
 
   // Flush the cache if the size of the cache is too large.
   if (ExpansionCache.size() > TypeExpansionAnalysisMaxCacheSize) {
@@ -49,9 +37,8 @@ TypeExpansionAnalysis::getTypeExpansion(SILType B, SILModule *Mod,
   }
 
   // Build the type expansion for the leaf nodes.
-  ProjectionPath::expandTypeIntoLeafProjectionPaths(B, Mod, context,
-                                                    ExpansionCache[key]);
-  return ExpansionCache[key];
+  ProjectionPath::expandTypeIntoLeafProjectionPaths(B, Mod, ExpansionCache[B]);
+  return ExpansionCache[B];
 }
 
 SILAnalysis *swift::createTypeExpansionAnalysis(SILModule *M) {

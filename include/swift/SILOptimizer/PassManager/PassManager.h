@@ -10,7 +10,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "swift/SIL/Notifications.h"
 #include "swift/SILOptimizer/Analysis/Analysis.h"
 #include "swift/SILOptimizer/PassManager/PassPipeline.h"
 #include "swift/SILOptimizer/PassManager/Passes.h"
@@ -37,15 +36,8 @@ namespace irgen {
 class IRGenModule;
 }
 
-/// The main entrypoint for executing a pipeline pass on a SIL module.
-void executePassPipelinePlan(SILModule *SM, const SILPassPipelinePlan &plan,
-                             bool isMandatory = false,
-                             irgen::IRGenModule *IRMod = nullptr);
-
-/// The SIL pass manager.
+/// \brief The SIL pass manager.
 class SILPassManager {
-  friend class ExecuteSILPipelineRequest;
-
   /// The module that the pass manager will transform.
   SILModule *Mod;
 
@@ -56,7 +48,7 @@ class SILPassManager {
   llvm::SmallVector<SILTransform *, 16> Transformations;
 
   /// A list of registered analysis.
-  llvm::SmallVector<SILAnalysis *, 16> Analyses;
+  llvm::SmallVector<SILAnalysis *, 16> Analysis;
 
   /// An entry in the FunctionWorkList.
   struct WorklistEntry {
@@ -80,6 +72,9 @@ class SILPassManager {
   /// The number of passes run so far.
   unsigned NumPassesRun = 0;
 
+  /// Number of optimization iterations run.
+  unsigned NumOptimizationIterations = 0;
+
   /// A mask which has one bit for each pass. A one for a pass-bit means that
   /// the pass doesn't need to run, because nothing has changed since the
   /// previous run of that pass.
@@ -102,31 +97,27 @@ class SILPassManager {
   /// same function.
   bool RestartPipeline = false;
 
-  /// If true, passes are also run for functions which have
-  /// OptimizationMode::NoOptimization.
-  bool isMandatory = false;
 
-  /// The notification handler for this specific SILPassManager.
-  ///
-  /// This is not owned by the pass manager, it is owned by the SILModule which
-  /// is guaranteed to outlive any pass manager associated with it. We keep this
-  /// bare pointer to ensure that we can deregister the notification after this
-  /// pass manager is destroyed.
-  DeserializationNotificationHandler *deserializationNotificationHandler;
-
-  /// C'tor. It creates and registers all analysis passes, which are defined
-  /// in Analysis.def. This is private as it should only be used by
-  /// ExecuteSILPipelineRequest.
-  SILPassManager(SILModule *M, bool isMandatory, irgen::IRGenModule *IRMod);
+  /// The IRGen SIL passes. These have to be dynamically added by IRGen.
+  llvm::DenseMap<unsigned, SILTransform *> IRGenPasses;
 
 public:
+  /// C'tor. It creates and registers all analysis passes, which are defined
+  /// in Analysis.def.
+  SILPassManager(SILModule *M, llvm::StringRef Stage = "");
+
+  /// C'tor. It creates an IRGen pass manager. Passes can query for the
+  /// IRGenModule.
+  SILPassManager(SILModule *M, irgen::IRGenModule *IRMod,
+                 llvm::StringRef Stage = "");
+
   const SILOptions &getOptions() const;
 
-  /// Searches for an analysis of type T in the list of registered
+  /// \brief Searches for an analysis of type T in the list of registered
   /// analysis. If the analysis is not found, the program terminates.
   template<typename T>
   T *getAnalysis() {
-    for (SILAnalysis *A : Analyses)
+    for (SILAnalysis *A : Analysis)
       if (auto *R = llvm::dyn_cast<T>(A))
         return R;
 
@@ -140,16 +131,19 @@ public:
   /// pass manager.
   irgen::IRGenModule *getIRGenModule() { return IRMod; }
 
-  /// Restart the function pass pipeline on the same function
+  /// \brief Run one iteration of the optimization pipeline.
+  void runOneIteration();
+
+  /// \brief Restart the function pass pipeline on the same function
   /// that is currently being processed.
   void restartWithCurrentFunction(SILTransform *T);
   void clearRestartPipeline() { RestartPipeline = false; }
   bool shouldRestartPipeline() { return RestartPipeline; }
 
-  /// Iterate over all analysis and invalidate them.
+  /// \brief Iterate over all analysis and invalidate them.
   void invalidateAllAnalysis() {
     // Invalidate the analysis (unless they are locked)
-    for (auto AP : Analyses)
+    for (auto AP : Analysis)
       if (!AP->isLocked())
         AP->invalidate();
 
@@ -159,31 +153,26 @@ public:
     CompletedPassesMap.clear();
   }
 
-  /// Notify the pass manager of a newly create function for tracing.
-  void notifyOfNewFunction(SILFunction *F, SILTransform *T);
-
-  /// Add the function \p F to the function pass worklist.
+  /// \brief Add the function \p F to the function pass worklist.
   /// If not null, the function \p DerivedFrom is the function from which \p F
   /// is derived. This is used to avoid an infinite amount of functions pushed
   /// on the worklist (e.g. caused by a bug in a specializing optimization).
   void addFunctionToWorklist(SILFunction *F, SILFunction *DerivedFrom);
-
-  /// Iterate over all analysis and notify them of the function.
-  ///
+  
+  /// \brief Iterate over all analysis and notify them of the function.
   /// This function does not necessarily have to be newly created function. It
   /// is the job of the analysis to make sure no extra work is done if the
   /// particular analysis has been done on the function.
   void notifyAnalysisOfFunction(SILFunction *F) {
-    for (auto AP : Analyses) {
-      AP->notifyAddedOrModifiedFunction(F);
-    }
+    for (auto AP : Analysis)
+      AP->notifyAddFunction(F);
   }
 
-  /// Broadcast the invalidation of the function to all analysis.
+  /// \brief Broadcast the invalidation of the function to all analysis.
   void invalidateAnalysis(SILFunction *F,
                           SILAnalysis::InvalidationKind K) {
     // Invalidate the analysis (unless they are locked)
-    for (auto AP : Analyses)
+    for (auto AP : Analysis)
       if (!AP->isLocked())
         AP->invalidate(F, K);
     
@@ -192,11 +181,11 @@ public:
     CompletedPassesMap[F].reset();
   }
 
-  /// Iterate over all analysis and notify them of a change in witness-
+  /// \brief Iterate over all analysis and notify them of a change in witness-
   /// or vtables.
   void invalidateFunctionTables() {
     // Invalidate the analysis (unless they are locked)
-    for (auto AP : Analyses)
+    for (auto AP : Analysis)
       if (!AP->isLocked())
         AP->invalidateFunctionTables();
 
@@ -206,46 +195,32 @@ public:
     CompletedPassesMap.clear();
   }
 
-  /// Iterate over all analysis and notify them of a deleted function.
-  void notifyWillDeleteFunction(SILFunction *F) {
+  /// \brief Iterate over all analysis and notify them of a deleted function.
+  void notifyDeleteFunction(SILFunction *F) {
     // Invalidate the analysis (unless they are locked)
-    for (auto AP : Analyses)
+    for (auto AP : Analysis)
       if (!AP->isLocked())
-        AP->notifyWillDeleteFunction(F);
-
+        AP->notifyDeleteFunction(F);
+    
     CurrentPassHasInvalidated = true;
     // Any change let all passes run again.
     CompletedPassesMap[F].reset();
   }
 
-  /// Reset the state of the pass manager and remove all transformation
+  /// \brief Reset the state of the pass manager and remove all transformation
   /// owned by the pass manager. Analysis passes will be kept.
   void resetAndRemoveTransformations();
 
-  /// Set the name of the current optimization stage.
-  ///
-  /// This is useful for debugging.
+  // Sets the name of the current optimization stage used for debugging.
   void setStageName(llvm::StringRef NextStage = "");
-
-  /// Get the name of the current optimization stage.
-  ///
-  /// This is useful for debugging.
-  StringRef getStageName() const;
 
   /// D'tor.
   ~SILPassManager();
 
   /// Verify all analyses.
   void verifyAnalyses() const {
-    for (auto *A : Analyses) {
+    for (auto *A : Analysis) {
       A->verify();
-    }
-  }
-
-  /// Precompute all analyses.
-  void forcePrecomputeAnalyses(SILFunction *F) {
-    for (auto *A : Analyses) {
-      A->forcePrecompute(F);
     }
   }
 
@@ -256,15 +231,35 @@ public:
   /// this. If no override is provided the SILAnalysis should just call the
   /// normal verify method.
   void verifyAnalyses(SILFunction *F) const {
-    for (auto *A : Analyses) {
+    for (auto *A : Analysis) {
       A->verify(F);
     }
   }
 
-  void executePassPipelinePlan(const SILPassPipelinePlan &Plan);
+  void executePassPipelinePlan(const SILPassPipelinePlan &Plan) {
+    for (const SILPassPipeline &Pipeline : Plan.getPipelines()) {
+      setStageName(Pipeline.Name);
+      resetAndRemoveTransformations();
+      for (PassKind Kind : Plan.getPipelinePasses(Pipeline)) {
+        addPass(Kind);
+      }
+      execute();
+    }
+  }
+
+  void registerIRGenPass(PassKind Kind, SILTransform *Transform) {
+    assert(IRGenPasses.find(unsigned(Kind)) == IRGenPasses.end() &&
+           "Pass already registered");
+    assert(
+        IRMod &&
+        "Attempting to register an IRGen pass with a non-IRGen pass manager");
+    IRGenPasses[unsigned(Kind)] = Transform;
+  }
 
 private:
-  void execute();
+  void execute() {
+    runOneIteration();
+  }
 
   /// Add a pass of a specific kind.
   void addPass(PassKind Kind);
@@ -272,15 +267,17 @@ private:
   /// Add a pass with a given name.
   void addPassForName(StringRef Name);
 
-  /// Run the \p TransIdx'th SIL module transform over all the functions in
+  /// Run the SIL module transform \p SMT over all the functions in
   /// the module.
-  void runModulePass(unsigned TransIdx);
+  void runModulePass(SILModuleTransform *SMT);
 
-  /// Run the \p TransIdx'th pass on the function \p F.
-  void runPassOnFunction(unsigned TransIdx, SILFunction *F);
+  /// Run the pass \p SFT on the function \p F.
+  void runPassOnFunction(SILFunctionTransform *SFT, SILFunction *F);
 
-  /// Run the passes in Transform from \p FromTransIdx to \p ToTransIdx.
-  void runFunctionPasses(unsigned FromTransIdx, unsigned ToTransIdx);
+  /// Run the passes in \p FuncTransforms. Return true
+  /// if the pass manager requested to stop the execution
+  /// of the optimization cycle (this is a debug feature).
+  void runFunctionPasses(ArrayRef<SILFunctionTransform *> FuncTransforms);
 
   /// A helper function that returns (based on SIL stage and debug
   /// options) whether we should continue running passes.
@@ -288,13 +285,6 @@ private:
 
   /// Return true if all analyses are unlocked.
   bool analysesUnlocked();
-
-  /// Dumps information about the pass with index \p TransIdx to llvm::dbgs().
-  void dumpPassInfo(const char *Title, SILTransform *Tr, SILFunction *F);
-
-  /// Dumps information about the pass with index \p TransIdx to llvm::dbgs().
-  void dumpPassInfo(const char *Title, unsigned TransIdx,
-                    SILFunction *F = nullptr);
 
   /// Displays the call graph in an external dot-viewer.
   /// This function is meant for use from the debugger.

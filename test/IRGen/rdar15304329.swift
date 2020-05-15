@@ -5,7 +5,7 @@
 // REQUIRES: objc_interop
 
 // CHECK-NOT: @_TWvi{{.*}}
-// CHECK: $s12rdar153043293BarC3fooAA3FooVySiGvpWvd
+// CHECK: _T012rdar153043293BarC3fooAA3FooVySiGvWvd
 // CHECK-NOT: @_TWvi{{.*}}
 
 import Foundation

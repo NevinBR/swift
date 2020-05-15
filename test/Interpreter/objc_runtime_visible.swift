@@ -1,10 +1,9 @@
 // RUN: %empty-directory(%t)
 
-// RUN: %target-clang %target-cc-options -isysroot %sdk -fobjc-arc %S/Inputs/objc_runtime_visible.m -fmodules -nodefaultlibs -lc -dynamiclib -o %t/libobjc_runtime_visible.dylib -install_name @executable_path/libobjc_runtime_visible.dylib
-// RUN: %target-codesign %t/libobjc_runtime_visible.dylib
+// RUN: %clang %target-cc-options -isysroot %sdk -fobjc-arc %S/Inputs/objc_runtime_visible.m -fmodules -nodefaultlibs -lc -dynamiclib -o %t/libobjc_runtime_visible.dylib -install_name @executable_path/libobjc_runtime_visible.dylib
+// RUN: codesign -f -s - %t/libobjc_runtime_visible.dylib
 // RUN: nm -g %t/libobjc_runtime_visible.dylib | %FileCheck %s
 // RUN: %target-build-swift -import-objc-header %S/Inputs/objc_runtime_visible.h %t/libobjc_runtime_visible.dylib %s -o %t/main
-// RUN: %target-codesign %t/main
 // RUN: %target-run %t/main %t/libobjc_runtime_visible.dylib
 
 // REQUIRES: executable_test
@@ -63,6 +62,7 @@ ObjCRuntimeVisibleTestSuite.test("protocols") {
 }
 
 ObjCRuntimeVisibleTestSuite.test("protocols/downcast")
+    .xfail(.always("unimplemented"))
     .code {
   let obj = HiddenClass.create()
   let opaque: AnyObject = obj

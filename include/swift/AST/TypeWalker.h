@@ -17,7 +17,7 @@
 
 namespace swift {
 
-/// An abstract class used to traverse a Type.
+/// \brief An abstract class used to traverse a Type.
 class TypeWalker {
 public:
   enum class Action {

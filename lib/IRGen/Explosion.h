@@ -73,11 +73,11 @@ public:
     return Values.size() - NextValue;
   }
 
-  using iterator = SmallVector<llvm::Value *, 8>::iterator;
+  typedef SmallVector<llvm::Value*, 8>::iterator iterator;
   iterator begin() { return Values.begin() + NextValue; }
   iterator end() { return Values.end(); }
 
-  using const_iterator = SmallVector<llvm::Value *, 8>::const_iterator;
+  typedef SmallVector<llvm::Value*, 8>::const_iterator const_iterator;
   const_iterator begin() const { return Values.begin() + NextValue; }
   const_iterator end() const { return Values.end(); }
 
@@ -233,9 +233,9 @@ public:
     return Elements[index];
   }
 
-  using iterator = SmallVectorImpl<Element>::iterator;
-  using const_iterator = SmallVectorImpl<Element>::const_iterator;
-
+  typedef SmallVectorImpl<Element>::iterator iterator;
+  typedef SmallVectorImpl<Element>::const_iterator const_iterator;
+  
   iterator begin() { return Elements.begin(); }
   iterator end() { return Elements.end(); }
   const_iterator begin() const { return Elements.begin(); }

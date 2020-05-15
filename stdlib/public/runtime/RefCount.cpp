@@ -17,10 +17,7 @@ namespace swift {
 template <typename RefCountBits>
 void RefCounts<RefCountBits>::incrementSlow(RefCountBits oldbits,
                                             uint32_t n) {
-  if (oldbits.isImmortal(false)) {
-    return;
-  }
-  else if (oldbits.hasSideTable()) {
+  if (oldbits.hasSideTable()) {
     // Out-of-line slow path.
     auto side = oldbits.getSideTable();
     side->incrementStrong(n);
@@ -36,10 +33,7 @@ template void RefCounts<SideTableRefCountBits>::incrementSlow(SideTableRefCountB
 template <typename RefCountBits>
 void RefCounts<RefCountBits>::incrementNonAtomicSlow(RefCountBits oldbits,
                                                      uint32_t n) {
-  if (oldbits.isImmortal(false)) {
-    return;
-  }
-  else if (oldbits.hasSideTable()) {
+  if (oldbits.hasSideTable()) {
     // Out-of-line slow path.
     auto side = oldbits.getSideTable();
     side->incrementStrong(n);  // FIXME: can there be a nonatomic impl?
@@ -52,10 +46,7 @@ template void RefCounts<SideTableRefCountBits>::incrementNonAtomicSlow(SideTable
 
 template <typename RefCountBits>
 bool RefCounts<RefCountBits>::tryIncrementSlow(RefCountBits oldbits) {
-  if (oldbits.isImmortal(false)) {
-    return true;
-  }
-  else if (oldbits.hasSideTable())
+  if (oldbits.hasSideTable())
     return oldbits.getSideTable()->tryIncrement();
   else
     swift::swift_abortRetainOverflow();
@@ -65,10 +56,7 @@ template bool RefCounts<SideTableRefCountBits>::tryIncrementSlow(SideTableRefCou
 
 template <typename RefCountBits>
 bool RefCounts<RefCountBits>::tryIncrementNonAtomicSlow(RefCountBits oldbits) {
-  if (oldbits.isImmortal(false)) {
-    return true;
-  }
-  else if (oldbits.hasSideTable())
+  if (oldbits.hasSideTable())
     return oldbits.getSideTable()->tryIncrementNonAtomic();
   else
     swift::swift_abortRetainOverflow();
@@ -76,11 +64,32 @@ bool RefCounts<RefCountBits>::tryIncrementNonAtomicSlow(RefCountBits oldbits) {
 template bool RefCounts<InlineRefCountBits>::tryIncrementNonAtomicSlow(InlineRefCountBits oldbits);
 template bool RefCounts<SideTableRefCountBits>::tryIncrementNonAtomicSlow(SideTableRefCountBits oldbits);
 
+template <typename RefCountBits>
+bool RefCounts<RefCountBits>::tryIncrementAndPinSlow(RefCountBits oldbits) {
+  if (oldbits.hasSideTable())
+    return oldbits.getSideTable()->tryIncrementAndPin();
+  else
+    swift::swift_abortRetainOverflow();
+}
+template bool RefCounts<InlineRefCountBits>::tryIncrementAndPinSlow(InlineRefCountBits oldbits);
+template bool RefCounts<SideTableRefCountBits>::tryIncrementAndPinSlow(SideTableRefCountBits oldbits);
+
+template <typename RefCountBits>
+bool RefCounts<RefCountBits>::tryIncrementAndPinNonAtomicSlow(RefCountBits oldbits) {
+  if (oldbits.hasSideTable())
+    return oldbits.getSideTable()->tryIncrementAndPinNonAtomic();
+  else
+    swift::swift_abortRetainOverflow();
+}
+template bool RefCounts<InlineRefCountBits>::tryIncrementAndPinNonAtomicSlow(InlineRefCountBits oldbits);
+template bool RefCounts<SideTableRefCountBits>::tryIncrementAndPinNonAtomicSlow(SideTableRefCountBits oldbits);
+
+
 // Return an object's side table, allocating it if necessary.
 // Returns null if the object is deiniting.
 // SideTableRefCountBits specialization intentionally does not exist.
 template <>
-HeapObjectSideTableEntry* RefCounts<InlineRefCountBits>::allocateSideTable(bool failIfDeiniting)
+HeapObjectSideTableEntry* RefCounts<InlineRefCountBits>::allocateSideTable()
 {
   auto oldbits = refCounts.load(SWIFT_MEMORY_ORDER_CONSUME);
   
@@ -89,7 +98,7 @@ HeapObjectSideTableEntry* RefCounts<InlineRefCountBits>::allocateSideTable(bool 
     // Already have a side table. Return it.
     return oldbits.getSideTable();
   } 
-  else if (failIfDeiniting && oldbits.getIsDeiniting()) {
+  else if (oldbits.getIsDeiniting()) {
     // Already past the start of deinit. Do nothing.
     return nullptr;
   }
@@ -109,7 +118,7 @@ HeapObjectSideTableEntry* RefCounts<InlineRefCountBits>::allocateSideTable(bool 
       delete side;
       return result;
     }
-    else if (failIfDeiniting && oldbits.getIsDeiniting()) {
+    else if (oldbits.getIsDeiniting()) {
       // Already past the start of deinit. Do nothing.
       return nullptr;
     }
@@ -127,7 +136,7 @@ HeapObjectSideTableEntry* RefCounts<InlineRefCountBits>::allocateSideTable(bool 
 template <>
 HeapObjectSideTableEntry* RefCounts<InlineRefCountBits>::formWeakReference()
 {
-  auto side = allocateSideTable(true);
+  auto side = allocateSideTable();
   if (side)
     return side->incrementWeak();
   else
@@ -136,7 +145,7 @@ HeapObjectSideTableEntry* RefCounts<InlineRefCountBits>::formWeakReference()
 
 template <typename RefCountBits>
 void RefCounts<RefCountBits>::incrementUnownedSlow(uint32_t n) {
-  auto side = allocateSideTable(false);
+  auto side = allocateSideTable();
   if (side)
     return side->incrementUnowned(n);
   // Overflow but side table allocation failed.
@@ -148,12 +157,6 @@ template <>
 void RefCounts<SideTableRefCountBits>::incrementUnownedSlow(uint32_t n) {
   // Overflow from side table to a new side table?!
   swift_abortUnownedRetainOverflow();
-}
-  
-SWIFT_CC(swift) SWIFT_RUNTIME_STDLIB_API
-void _swift_stdlib_immortalize(void *obj) {
-  auto heapObj = reinterpret_cast<HeapObject *>(obj);
-  heapObj->refCounts.setIsImmortal(true);
 }
 
 // namespace swift

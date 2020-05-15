@@ -21,14 +21,12 @@
 #include "clang/AST/Expr.h"
 #include "clang/Lex/MacroInfo.h"
 #include "clang/Lex/Preprocessor.h"
-#include "clang/Sema/DelayedDiagnostic.h"
 #include "clang/Sema/Sema.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/APSIntType.h"
 #include "swift/AST/ASTContext.h"
 #include "swift/AST/Expr.h"
 #include "swift/AST/Stmt.h"
 #include "swift/AST/Types.h"
-#include "swift/Basic/PrettyStackTrace.h"
 #include "swift/ClangImporter/ClangModule.h"
 
 using namespace swift;
@@ -91,9 +89,9 @@ static ValueDecl *importNumericLiteral(ClangImporter::Implementation &Impl,
 
   if (const clang::Expr *parsed = parseNumericLiteral<>(Impl, tok)) {
     auto clangTy = parsed->getType();
-    auto literalType = Impl.importTypeIgnoreIUO(
-        clangTy, ImportTypeKind::Value, isInSystemModule(DC),
-        Bridgeability::None);
+    auto literalType = Impl.importType(clangTy, ImportTypeKind::Value,
+                                       isInSystemModule(DC),
+                                       Bridgeability::None);
     if (!literalType)
       return nullptr;
 
@@ -101,9 +99,9 @@ static ValueDecl *importNumericLiteral(ClangImporter::Implementation &Impl,
     if (castType.isNull()) {
       constantType = literalType;
     } else {
-      constantType = Impl.importTypeIgnoreIUO(
-          castType, ImportTypeKind::Value, isInSystemModule(DC),
-          Bridgeability::None);
+      constantType = Impl.importType(castType, ImportTypeKind::Value,
+                                     isInSystemModule(DC),
+                                     Bridgeability::None);
       if (!constantType)
         return nullptr;
     }
@@ -125,7 +123,7 @@ static ValueDecl *importNumericLiteral(ClangImporter::Implementation &Impl,
 
       return createMacroConstant(Impl, MI, name, DC, constantType,
                                  clang::APValue(value),
-                                 ConstantConvertKind::None,
+                                 ConstantConvertKind::Coerce,
                                  /*static*/ false, ClangN);
     }
 
@@ -143,7 +141,7 @@ static ValueDecl *importNumericLiteral(ClangImporter::Implementation &Impl,
 
       return createMacroConstant(Impl, MI, name, DC, constantType,
                                  clang::APValue(value),
-                                 ConstantConvertKind::None,
+                                 ConstantConvertKind::Coerce,
                                  /*static*/ false, ClangN);
     }
     // TODO: Other numeric literals (complex, imaginary, etc.)
@@ -186,7 +184,7 @@ static ValueDecl *importStringLiteral(ClangImporter::Implementation &Impl,
     return nullptr;
 
   return Impl.createConstant(name, DC, importTy, parsed->getString(),
-                             ConstantConvertKind::None, /*static*/ false,
+                             ConstantConvertKind::Coerce, /*static*/ false,
                              ClangN);
 }
 
@@ -277,9 +275,10 @@ static Optional<std::pair<llvm::APSInt, Type>>
     if (auto literal = parseNumericLiteral<clang::IntegerLiteral>(impl,token)) {
       auto value = llvm::APSInt { literal->getValue(),
                                   literal->getType()->isUnsignedIntegerType() };
-      auto type = impl.importTypeIgnoreIUO(
-          literal->getType(), ImportTypeKind::Value, isInSystemModule(DC),
-          Bridgeability::None);
+      auto type  = impl.importType(literal->getType(),
+                                   ImportTypeKind::Value,
+                                   isInSystemModule(DC),
+                                   Bridgeability::None);
       return {{ value, type }};
     }
 
@@ -362,16 +361,10 @@ static ValueDecl *importMacro(ClangImporter::Implementation &impl,
       }
       auto identifierName = identifierInfo->getName();
       auto &identifier = impl.getClangASTContext().Idents.get(identifierName);
-
-      clang::sema::DelayedDiagnosticPool diagPool{
-          impl.getClangSema().DelayedDiagnostics.getCurrentPool()};
-      auto diagState = impl.getClangSema().DelayedDiagnostics.push(diagPool);
       auto parsedType = impl.getClangSema().getTypeName(identifier,
                                                         clang::SourceLocation(),
                                                         /*scope*/nullptr);
-      impl.getClangSema().DelayedDiagnostics.popWithoutEmitting(diagState);
-
-      if (parsedType && diagPool.empty()) {
+      if (parsedType) {
         castType = parsedType.get();
       } else {
         return nullptr;
@@ -598,7 +591,7 @@ static ValueDecl *importMacro(ClangImporter::Implementation &impl,
 
     return createMacroConstant(impl, macro, name, DC, resultSwiftType,
                                clang::APValue(resultValue),
-                               ConstantConvertKind::None,
+                               ConstantConvertKind::Coerce,
                                /*isStatic=*/false, ClangN);
   }
   case 4: {
@@ -642,14 +635,9 @@ ValueDecl *ClangImporter::Implementation::importMacro(Identifier name,
   if (!macro)
     return nullptr;
 
-  PrettyStackTraceStringAction stackRAII{"importing macro", name.str()};
-
   // Look for macros imported with the same name.
   auto known = ImportedMacros.find(name);
-  if (known == ImportedMacros.end()) {
-    // Push in a placeholder to break circularity.
-    ImportedMacros[name].push_back({macro, nullptr});
-  } else {
+  if (known != ImportedMacros.end()) {
     // Check whether this macro has already been imported.
     for (const auto &entry : known->second) {
       if (entry.first == macro) return entry.second;
@@ -662,18 +650,13 @@ ValueDecl *ClangImporter::Implementation::importMacro(Identifier name,
       // If the macro is equal to an existing macro, map down to the same
       // declaration.
       if (macro->isIdenticalTo(*entry.first, clangPP, true)) {
-        ValueDecl *result = entry.second;
-        known->second.push_back({macro, result});
-        return result;
+        known->second.push_back({macro, entry.second});
+        return entry.second;
       }
     }
-
-    // If not, push in a placeholder to break circularity.
-    known->second.push_back({macro, nullptr});
   }
 
-  startedImportingEntity();
-
+  ImportingEntityRAII ImportingEntity(*this);
   // We haven't tried to import this macro yet. Do so now, and cache the
   // result.
 
@@ -688,20 +671,6 @@ ValueDecl *ClangImporter::Implementation::importMacro(Identifier name,
 
   auto valueDecl = ::importMacro(*this, DC, name, macro, macroNode,
                                  /*castType*/{});
-
-  // Update the entry for the value we just imported.
-  // It's /probably/ the last entry in ImportedMacros[name], but there's an
-  // outside chance more macros with the same name have been imported
-  // re-entrantly since this method started.
-  if (valueDecl) {
-    auto entryIter = llvm::find_if(llvm::reverse(ImportedMacros[name]),
-        [macro](std::pair<const clang::MacroInfo *, ValueDecl *> entry) {
-      return entry.first == macro;
-    });
-    assert(entryIter != llvm::reverse(ImportedMacros[name]).end() &&
-           "placeholder not found");
-    entryIter->second = valueDecl;
-  }
-
+  ImportedMacros[name].push_back({macro, valueDecl});
   return valueDecl;
 }

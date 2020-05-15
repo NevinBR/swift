@@ -1,5 +1,4 @@
-
-// RUN: %target-swift-frontend(mock-sdk: %clang-importer-sdk) -module-name cast_folding_objc_no_foundation -O -emit-sil %s | %FileCheck %s
+// RUN: %target-swift-frontend(mock-sdk: %clang-importer-sdk) -O -emit-sil %s | %FileCheck %s
 // REQUIRES: objc_interop
 
 // TODO: Update optimizer for id-as-Any changes.
@@ -8,7 +7,7 @@
 
 struct PlainStruct {}
 
-// CHECK-LABEL: sil hidden [noinline] @$s31cast_folding_objc_no_foundation23testAnyObjectToArrayIntySbyXlF : $@convention(thin) (@guaranteed AnyObject) -> Bool {
+// CHECK-LABEL: sil shared [noinline] @_T031cast_folding_objc_no_foundation23testAnyObjectToArrayIntSbyXlFTf4g_n
 // CHECK: bb0(%0 : $AnyObject):
 // CHECK: [[SOURCE:%.*]] = alloc_stack $AnyObject
 // CHECK: [[TARGET:%.*]] = alloc_stack $Array<Int>
@@ -18,7 +17,7 @@ func testAnyObjectToArrayInt(_ a: AnyObject) -> Bool {
   return a is [Int]
 }
 
-// CHECK-LABEL: sil hidden [noinline] @$s31cast_folding_objc_no_foundation26testAnyObjectToArrayStringySbyXlF : $@convention(thin) (@guaranteed AnyObject) -> Bool {
+// CHECK-LABEL: sil shared [noinline] @_T031cast_folding_objc_no_foundation26testAnyObjectToArrayStringSbyXlFTf4g_n
 // CHECK: bb0(%0 : $AnyObject):
 // CHECK: [[SOURCE:%.*]] = alloc_stack $AnyObject
 // CHECK: [[TARGET:%.*]] = alloc_stack $Array<String>
@@ -28,7 +27,7 @@ func testAnyObjectToArrayString(_ a: AnyObject) -> Bool {
   return a is [String]
 }
 
-// CHECK-LABEL: sil hidden [noinline] @$s31cast_folding_objc_no_foundation30testAnyObjectToArrayNotBridgedySbyXlF : $@convention(thin) (@guaranteed AnyObject) -> Bool {
+// CHECK-LABEL: sil shared [noinline] @_T031cast_folding_objc_no_foundation30testAnyObjectToArrayNotBridged{{.*}}
 // CHECK: bb0(%0 : $AnyObject):
 // CHECK: [[SOURCE:%.*]] = alloc_stack $AnyObject
 // CHECK: [[TARGET:%.*]] = alloc_stack $Array<PlainStruct>
@@ -38,7 +37,7 @@ func testAnyObjectToArrayNotBridged(_ a: AnyObject) -> Bool {
   return a is [PlainStruct]
 }
 
-// CHECK-LABEL: sil hidden [noinline] @$s31cast_folding_objc_no_foundation25testAnyObjectToDictionaryySbyXlF : $@convention(thin) (@guaranteed AnyObject) -> Bool {
+// CHECK-LABEL: sil shared [noinline] @_T031cast_folding_objc_no_foundation25testAnyObjectToDictionarySbyXlFTf4g_n
 // CHECK: bb0(%0 : $AnyObject):
 // CHECK: [[SOURCE:%.*]] = alloc_stack $AnyObject
 // CHECK: [[TARGET:%.*]] = alloc_stack $Dictionary<Int, String>
@@ -48,7 +47,7 @@ func testAnyObjectToDictionary(_ a: AnyObject) -> Bool {
   return a is [Int: String]
 }
 
-// CHECK-LABEL: sil hidden [noinline] @$s31cast_folding_objc_no_foundation21testAnyObjectToStringySbyXlF : $@convention(thin) (@guaranteed AnyObject) -> Bool {
+// CHECK-LABEL: sil shared [noinline] @_T031cast_folding_objc_no_foundation21testAnyObjectToStringSbyXlFTf4g_n
 // CHECK: bb0(%0 : $AnyObject):
 // CHECK: [[SOURCE:%.*]] = alloc_stack $AnyObject
 // CHECK: [[TARGET:%.*]] = alloc_stack $String

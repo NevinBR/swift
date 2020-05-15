@@ -32,8 +32,9 @@ public:
   virtual void failed(StringRef error) = 0;
   virtual void warning(StringRef warning) {}
 
+  virtual bool recordHash(StringRef hash, bool isKnown) = 0;
   virtual bool startDependency(StringRef name, StringRef path, bool isClangModule,
-                               bool isSystem) = 0;
+                               bool isSystem, StringRef hash) = 0;
   virtual bool finishDependency(bool isClangModule) = 0;
   virtual Action startSourceEntity(const IndexSymbol &symbol) = 0;
   virtual bool finishSourceEntity(SymbolInfo symInfo, SymbolRoleSet roles) = 0;

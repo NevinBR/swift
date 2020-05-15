@@ -25,7 +25,7 @@ namespace ide {
 struct CodeCompletionCacheImpl;
 class OnDiskCodeCompletionCache;
 
-/// In-memory per-module code completion result cache.
+/// \brief In-memory per-module code completion result cache.
 ///
 /// These results persist between multiple code completion requests and can be
 /// used with different ASTContexts.
@@ -34,16 +34,14 @@ class CodeCompletionCache {
   OnDiskCodeCompletionCache *nextCache;
 
 public:
-  /// Cache key.
+  /// \brief Cache key.
   struct Key {
     std::string ModuleFilename;
     std::string ModuleName;
     std::vector<std::string> AccessPath;
     bool ResultsHaveLeadingDot;
     bool ForTestableLookup;
-    bool ForPrivateImportLookup;
     bool CodeCompleteInitsInPostfixExpr;
-    bool Annotated;
 
     friend bool operator==(const Key &LHS, const Key &RHS) {
       return LHS.ModuleFilename == RHS.ModuleFilename &&
@@ -51,7 +49,6 @@ public:
         LHS.AccessPath == RHS.AccessPath &&
         LHS.ResultsHaveLeadingDot == RHS.ResultsHaveLeadingDot &&
         LHS.ForTestableLookup == RHS.ForTestableLookup &&
-        LHS.ForPrivateImportLookup == RHS.ForPrivateImportLookup &&
         LHS.CodeCompleteInitsInPostfixExpr == RHS.CodeCompleteInitsInPostfixExpr;
     }
   };
@@ -73,7 +70,7 @@ private:
   void setImpl(const Key &K, ValueRefCntPtr V, bool setChain);
 };
 
-/// On-disk per-module code completion result cache.
+/// \brief On-disk per-module code completion result cache.
 ///
 /// These results persist between multiple code completion requests and can be
 /// used with different ASTContexts.
@@ -98,7 +95,6 @@ struct RequestedCachedModule {
   CodeCompletionCache::Key Key;
   const ModuleDecl *TheModule;
   bool OnlyTypes;
-  bool OnlyPrecedenceGroups;
 };
 
 } // end namespace ide
@@ -109,10 +105,10 @@ template<>
 struct DenseMapInfo<swift::ide::CodeCompletionCache::Key> {
   using KeyTy = swift::ide::CodeCompletionCache::Key;
   static inline KeyTy getEmptyKey() {
-    return KeyTy{"", "", {}, false, false, false, false, false};
+    return KeyTy{"", "", {}, false, false, false};
   }
   static inline KeyTy getTombstoneKey() {
-    return KeyTy{"", "", {}, true, false, false, false, false};
+    return KeyTy{"", "", {}, true, false, false};
   }
   static unsigned getHashValue(const KeyTy &Val) {
     size_t H = 0;
@@ -122,8 +118,6 @@ struct DenseMapInfo<swift::ide::CodeCompletionCache::Key> {
       H ^= std::hash<std::string>()(Piece);
     H ^= std::hash<bool>()(Val.ResultsHaveLeadingDot);
     H ^= std::hash<bool>()(Val.ForTestableLookup);
-    H ^= std::hash<bool>()(Val.ForPrivateImportLookup);
-    H ^= std::hash<bool>()(Val.Annotated);
     return static_cast<unsigned>(H);
   }
   static bool isEqual(const KeyTy &LHS, const KeyTy &RHS) {

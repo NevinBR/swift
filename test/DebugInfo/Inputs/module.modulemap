@@ -15,8 +15,3 @@ module OtherClangModule {
     export *
   }
 }
-
-module Macro {
-  header "Macro.h"
-}
-

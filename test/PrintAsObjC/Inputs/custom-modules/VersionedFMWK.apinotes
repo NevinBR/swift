@@ -1,6 +1,6 @@
 Name: VersionedFMWK
 SwiftVersions:
-  - Version: 4
+  - Version: 3.0
     Classes:
       - Name: InnerClass
         SwiftName: InnerClass

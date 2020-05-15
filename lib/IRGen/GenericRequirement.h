@@ -30,7 +30,6 @@ class Value;
 
 namespace swift {
 class CanGenericSignature;
-enum class MetadataState : size_t;
 class ModuleDecl;
 class NominalTypeDecl;
 class ProtocolDecl;
@@ -62,7 +61,7 @@ emitGenericRequirementFromSubstitutions(IRGenFunction &IGF,
                                         CanGenericSignature signature,
                                         ModuleDecl &module,
                                         GenericRequirement requirement,
-                                        SubstitutionMap subs);
+                                        const SubstitutionMap &subs);
 
 using EmitGenericRequirementFn =
   llvm::function_ref<llvm::Value*(GenericRequirement reqt)>;
@@ -79,13 +78,11 @@ using GetTypeParameterInContextFn =
 void bindGenericRequirement(IRGenFunction &IGF,
                             GenericRequirement requirement,
                             llvm::Value *requiredValue,
-                            MetadataState metadataState,
                             GetTypeParameterInContextFn getInContext);
 
 void bindFromGenericRequirementsBuffer(IRGenFunction &IGF,
                                        ArrayRef<GenericRequirement> reqts,
                                        Address buffer,
-                                       MetadataState metadataState,
                                        GetTypeParameterInContextFn getInContext);
 
 
@@ -100,6 +97,7 @@ void bindFromGenericRequirementsBuffer(IRGenFunction &IGF,
 /// anything fulfillable from its parent type metadata).
 class GenericTypeRequirements {
   NominalTypeDecl *TheDecl;
+  CanType ParentType;
   llvm::SmallVector<GenericRequirement, 4> Requirements;
 
 public:
@@ -108,6 +106,15 @@ public:
   /// Return the layout chunks.
   ArrayRef<GenericRequirement> getRequirements() const {
     return Requirements;
+  }
+
+  /// Does this generic type have 
+  bool hasParentType() const {
+    return bool(ParentType);
+  }
+
+  CanType getParentType() const {
+    return ParentType;
   }
 
   /// Return the number of entries required in order to store this data.
@@ -137,15 +144,17 @@ public:
 
   bool empty() const { return Requirements.empty(); }
 
-  using FulfillmentCallback = llvm::function_ref<void(
-      unsigned requirementIndex, CanType type, ProtocolConformanceRef conf)>;
-  void enumerateFulfillments(IRGenModule &IGM, SubstitutionMap subs,
+  using FulfillmentCallback =
+    llvm::function_ref<void(unsigned requirementIndex,
+                            CanType type,
+                            Optional<ProtocolConformanceRef> conf)>;
+  void enumerateFulfillments(IRGenModule &IGM, const SubstitutionMap &subs,
                              FulfillmentCallback callback);
 
-  void emitInitOfBuffer(IRGenFunction &IGF, SubstitutionMap subs,
+  void emitInitOfBuffer(IRGenFunction &IGF, const SubstitutionMap &subs,
                         Address buffer);
 
-  void bindFromBuffer(IRGenFunction &IGF, Address buffer, MetadataState state,
+  void bindFromBuffer(IRGenFunction &IGF, Address buffer,
                       GetTypeParameterInContextFn getInContext);
 };
 

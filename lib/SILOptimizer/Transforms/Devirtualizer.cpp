@@ -17,7 +17,6 @@
 
 #define DEBUG_TYPE "sil-devirtualizer"
 
-#include "swift/SIL/OptimizationRemark.h"
 #include "swift/SIL/SILFunction.h"
 #include "swift/SIL/SILInstruction.h"
 #include "swift/SILOptimizer/Analysis/ClassHierarchyAnalysis.h"
@@ -30,25 +29,18 @@ using namespace swift;
 namespace {
 
 class Devirtualizer : public SILFunctionTransform {
-  bool Changed = false;
-  bool ChangedCFG = false;
 
-  void devirtualizeAppliesInFunction(SILFunction &F,
+  bool devirtualizeAppliesInFunction(SILFunction &F,
                                      ClassHierarchyAnalysis *CHA);
 
   /// The entry point to the transformation.
   void run() override {
     SILFunction &F = *getFunction();
     ClassHierarchyAnalysis *CHA = PM->getAnalysis<ClassHierarchyAnalysis>();
-    LLVM_DEBUG(llvm::dbgs() << "***** Devirtualizer on function:" << F.getName()
-                            << " *****\n");
+    DEBUG(llvm::dbgs() << "***** Devirtualizer on function:" << F.getName()
+                       << " *****\n");
 
-    Changed = false;
-    ChangedCFG = false;
-    devirtualizeAppliesInFunction(F, CHA);
-    if (ChangedCFG)
-      invalidateAnalysis(SILAnalysis::InvalidationKind::Everything);
-    else if (Changed)
+    if (devirtualizeAppliesInFunction(F, CHA))
       invalidateAnalysis(SILAnalysis::InvalidationKind::CallsAndInstructions);
   }
 
@@ -56,11 +48,11 @@ class Devirtualizer : public SILFunctionTransform {
 
 } // end anonymous namespace
 
-// Return true if any calls changed, and true if the CFG also changed.
-void Devirtualizer::devirtualizeAppliesInFunction(SILFunction &F,
+bool Devirtualizer::devirtualizeAppliesInFunction(SILFunction &F,
                                                   ClassHierarchyAnalysis *CHA) {
+  bool Changed = false;
+  llvm::SmallVector<SILInstruction *, 8> DeadApplies;
   llvm::SmallVector<ApplySite, 8> NewApplies;
-  OptRemark::Emitter ORE(DEBUG_TYPE, F.getModule());
 
   SmallVector<ApplySite, 16> Applies;
   for (auto &BB : F) {
@@ -76,17 +68,24 @@ void Devirtualizer::devirtualizeAppliesInFunction(SILFunction &F,
    }
   }
   for (auto Apply : Applies) {
-    ApplySite NewInst;
-    bool modifiedCFG;
-    std::tie(NewInst, modifiedCFG) = tryDevirtualizeApply(Apply, CHA, &ORE);
-    if (!NewInst)
+    auto NewInstPair = tryDevirtualizeApply(Apply, CHA);
+    if (!NewInstPair.second)
       continue;
 
     Changed = true;
-    ChangedCFG |= modifiedCFG;
 
-    deleteDevirtualizedApply(Apply);
-    NewApplies.push_back(NewInst);
+    auto *AI = Apply.getInstruction();
+    if (!isa<TryApplyInst>(AI))
+      AI->replaceAllUsesWith(NewInstPair.first);
+
+    DeadApplies.push_back(AI);
+    NewApplies.push_back(NewInstPair.second);
+  }
+
+  // Remove all the now-dead applies.
+  while (!DeadApplies.empty()) {
+    auto *AI = DeadApplies.pop_back_val();
+    recursivelyDeleteTriviallyDeadInstructions(AI, true);
   }
 
   // For each new apply, attempt to link in function bodies if we do
@@ -99,13 +98,15 @@ void Devirtualizer::devirtualizeAppliesInFunction(SILFunction &F,
   while (!NewApplies.empty()) {
     auto Apply = NewApplies.pop_back_val();
 
-    auto *CalleeFn = Apply.getInitiallyReferencedFunction();
+    auto *CalleeFn = Apply.getReferencedFunction();
     assert(CalleeFn && "Expected devirtualized callee!");
 
     // We need to ensure that we link after devirtualizing in order to pull in
-    // everything we reference from another module, which may expose optimization
-    // opportunities and is also needed for correctness if we reference functions
-    // with non-public linkage. See lib/SIL/Linker.cpp for details.
+    // everything we reference from another module. This is especially important
+    // for transparent functions, because if transparent functions are not
+    // inlined for some reason, we need to generate code for them.
+    // Note that functions, which are only referenced from witness/vtables, are
+    // not linked upfront by the SILLinker.
     if (!CalleeFn->isDefinition())
       F.getModule().linkFunction(CalleeFn, SILModule::LinkingMode::LinkAll);
 
@@ -113,8 +114,10 @@ void Devirtualizer::devirtualizeAppliesInFunction(SILFunction &F,
     // be beneficial to rerun some earlier passes on the current
     // function now that we've made these direct references visible.
     if (CalleeFn->isDefinition() && CalleeFn->shouldOptimize())
-      addFunctionToPassManagerWorklist(CalleeFn, nullptr);
+      notifyAddFunction(CalleeFn, nullptr);
   }
+
+  return Changed;
 }
 
 SILTransform *swift::createDevirtualizer() { return new Devirtualizer(); }

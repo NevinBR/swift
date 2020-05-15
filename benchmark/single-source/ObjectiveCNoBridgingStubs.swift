@@ -21,32 +21,6 @@ import Foundation
 import ObjectiveCTests
 #endif
 
-let t: [BenchmarkCategory] = [.validation, .bridging]
-
-public let ObjectiveCNoBridgingStubs = [
-  BenchmarkInfo(name: "ObjectiveCBridgeStubToNSStringRef",
-    runFunction: run_ObjectiveCBridgeStubToNSStringRef, tags: t),
-  BenchmarkInfo(name: "ObjectiveCBridgeStubToNSDateRef",
-    runFunction: run_ObjectiveCBridgeStubToNSDateRef, tags: t,
-    legacyFactor: 20),
-  BenchmarkInfo(name: "ObjectiveCBridgeStubNSDateRefAccess",
-    runFunction: run_ObjectiveCBridgeStubNSDateRefAccess, tags: t),
-  BenchmarkInfo(name: "ObjectiveCBridgeStubNSDateMutationRef",
-    runFunction: run_ObjectiveCBridgeStubNSDateMutationRef, tags: t,
-    legacyFactor: 4),
-  BenchmarkInfo(name: "ObjectiveCBridgeStubNSDataAppend",
-    runFunction: run_ObjectiveCBridgeStubNSDataAppend, tags: t,
-    legacyFactor: 10),
-  BenchmarkInfo(name: "ObjectiveCBridgeStubFromNSStringRef",
-    runFunction: run_ObjectiveCBridgeStubFromNSStringRef, tags: t),
-  BenchmarkInfo(name: "ObjectiveCBridgeStubFromNSDateRef",
-    runFunction: run_ObjectiveCBridgeStubFromNSDateRef, tags: t,
-    legacyFactor: 10),
-  BenchmarkInfo(name: "ObjectiveCBridgeStubURLAppendPathRef2",
-    runFunction: run_ObjectiveCBridgeStubURLAppendPathRef, tags: t,
-    legacyFactor: 10),
-]
-
 #if _runtime(_ObjC)
 @inline(never)
 func testObjectiveCBridgeStubFromNSStringRef() {
@@ -95,7 +69,7 @@ public func run_ObjectiveCBridgeStubToNSStringRef(N: Int) {
 @inline(never)
 func testObjectiveCBridgeStubFromNSDateRef() {
   let b = BridgeTester()
-  for _ in 0 ..< 10_000 {
+  for _ in 0 ..< 100_000 {
     let bridgedBegin = b.beginDate()
     let bridgedEnd = b.endDate()
     let _ = bridgedEnd.timeIntervalSince(bridgedBegin)
@@ -119,7 +93,7 @@ public func run_ObjectiveCBridgeStubFromNSDateRef(N: Int) {
 public func testObjectiveCBridgeStubToNSDateRef() {
   let b = BridgeTester()
   let d = NSDate()
-  for _ in 0 ..< 1_000 {
+  for _ in 0 ..< 100_000 {
     b.use(d)
   }
 }
@@ -128,7 +102,7 @@ public func testObjectiveCBridgeStubToNSDateRef() {
 @inline(never)
 public func run_ObjectiveCBridgeStubToNSDateRef(N: Int) {
 #if _runtime(_ObjC)
-  for _ in 0 ..< 5 * N {
+  for _ in 0 ..< N {
     autoreleasepool {
       testObjectiveCBridgeStubToNSDateRef()
     }
@@ -163,7 +137,7 @@ public func run_ObjectiveCBridgeStubNSDateRefAccess(N: Int) {
 @inline(never)
 func testObjectiveCBridgeStubNSDateMutationRef() {
   var d = NSDate()
-  for _ in 0 ..< 25 {
+  for _ in 0 ..< 100_000 {
       d = d.addingTimeInterval(1)
   }
 }
@@ -172,7 +146,7 @@ func testObjectiveCBridgeStubNSDateMutationRef() {
 @inline(never)
 public func run_ObjectiveCBridgeStubNSDateMutationRef(N: Int) {
 #if _runtime(_ObjC)
-  for _ in 0 ..< 100 * N {
+  for _ in 0 ..< N {
     autoreleasepool {
       testObjectiveCBridgeStubNSDateMutationRef()
     }
@@ -184,7 +158,7 @@ public func run_ObjectiveCBridgeStubNSDateMutationRef(N: Int) {
 @inline(never)
 func testObjectiveCBridgeStubURLAppendPathRef() {
   let startUrl = URL(string: "/")!
-  for _ in 0 ..< 10 {
+  for _ in 0 ..< 10_000 {
     var url = startUrl
     for _ in 0 ..< 10 {
       url = url.appendingPathComponent("foo")
@@ -209,7 +183,7 @@ public func run_ObjectiveCBridgeStubURLAppendPathRef(N: Int) {
 func testObjectiveCBridgeStubNSDataAppend() {
   let proto = NSMutableData()
   var value: UInt8 = 1
-  for _ in 0 ..< 100 {
+  for _ in 0 ..< 1_000 {
     let d = proto.mutableCopy() as! NSMutableData
     for _ in 0 ..< 100 {
        d.append(&value, length: 1)

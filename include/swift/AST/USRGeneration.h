@@ -9,12 +9,6 @@
 // See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
-//
-// Unique Symbol References (USRs) provide a textual encoding for
-// declarations. These are used for indexing, analogous to how mangled names
-// are used in object files.
-//
-//===----------------------------------------------------------------------===//
 
 #ifndef SWIFT_AST_USRGENERATION_H
 #define SWIFT_AST_USRGENERATION_H
@@ -22,11 +16,9 @@
 #include "swift/Basic/LLVM.h"
 
 namespace swift {
-class Decl;
 class AbstractStorageDecl;
 class ValueDecl;
 class ExtensionDecl;
-class ModuleEntity;
 enum class AccessorKind;
 class Type;
 
@@ -40,13 +32,9 @@ bool printTypeUSR(Type Ty, raw_ostream &OS);
 /// \returns true if it failed, false on success.
 bool printDeclTypeUSR(const ValueDecl *D, raw_ostream &OS);
 
-/// Prints out the USR for the given ValueDecl.
+/// Prints out the USR for the given Decl.
 /// \returns true if it failed, false on success.
-bool printValueDeclUSR(const ValueDecl *D, raw_ostream &OS);
-
-/// Prints out the USR for the given ModuleEntity.
-/// \returns true if it failed, false on success.
-bool printModuleUSR(ModuleEntity Mod, raw_ostream &OS);
+bool printDeclUSR(const ValueDecl *D, raw_ostream &OS);
 
 /// Prints out the accessor USR for the given storage Decl.
 /// \returns true if it failed, false on success.
@@ -56,10 +44,6 @@ bool printAccessorUSR(const AbstractStorageDecl *D, AccessorKind AccKind,
 /// Prints out the extension USR for the given extension Decl.
 /// \returns true if it failed, false on success.
 bool printExtensionUSR(const ExtensionDecl *ED, raw_ostream &OS);
-
-/// Prints out the USR for the given Decl.
-/// \returns true if it failed, false on success.
-bool printDeclUSR(const Decl *D, raw_ostream &OS);
 
 } // namespace ide
 } // namespace swift

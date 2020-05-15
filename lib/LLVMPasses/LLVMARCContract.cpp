@@ -28,9 +28,9 @@ STATISTIC(NumNoopDeleted,
 STATISTIC(NumRetainReleasesEliminatedByMergingIntoRetainReleaseN,
           "Number of retain/release eliminated by merging into "
           "retain_n/release_n");
-STATISTIC(NumUnknownObjectRetainReleasesEliminatedByMergingIntoRetainReleaseN,
+STATISTIC(NumUnknownRetainReleasesEliminatedByMergingIntoRetainReleaseN,
           "Number of retain/release eliminated by merging into "
-          "unknownObjectRetain_n/unknownObjectRelease_n");
+          "unknownRetain_n/unknownRelease_n");
 STATISTIC(NumBridgeRetainReleasesEliminatedByMergingIntoRetainReleaseN,
           "Number of bridge retain/release eliminated by merging into "
           "bridgeRetain_n/bridgeRelease_n");
@@ -41,8 +41,8 @@ namespace {
 struct LocalState {
   TinyPtrVector<CallInst *> RetainList;
   TinyPtrVector<CallInst *> ReleaseList;
-  TinyPtrVector<CallInst *> UnknownObjectRetainList;
-  TinyPtrVector<CallInst *> UnknownObjectReleaseList;
+  TinyPtrVector<CallInst *> UnknownRetainList;
+  TinyPtrVector<CallInst *> UnknownReleaseList;
   TinyPtrVector<CallInst *> BridgeRetainList;
   TinyPtrVector<CallInst *> BridgeReleaseList;
 };
@@ -88,9 +88,6 @@ private:
 
 } // end anonymous namespace
 
-// FIXME: This method is pretty long since it is actually several smaller
-// optimizations that have been copied/pasted over time. This should be split
-// into those smaller (currently inline) functions.
 void SwiftARCContractImpl::
 performRRNOptimization(DenseMap<Value *, LocalState> &PtrToLocalStateMap) {
   // Go through all of our pointers and merge all of the retains with the
@@ -147,58 +144,57 @@ performRRNOptimization(DenseMap<Value *, LocalState> &PtrToLocalStateMap) {
     }
     ReleaseList.clear();
 
-    auto &UnknownObjectRetainList = P.second.UnknownObjectRetainList;
-    if (UnknownObjectRetainList.size() > 1) {
+    auto &UnknownRetainList = P.second.UnknownRetainList;
+    if (UnknownRetainList.size() > 1) {
       // Create the retainN call right by the first retain.
-      B.setInsertPoint(UnknownObjectRetainList[0]);
-      O = UnknownObjectRetainList[0]->getArgOperand(0);
-      auto *RI = UnknownObjectRetainList[0];
-      for (auto R : UnknownObjectRetainList) {
+      B.setInsertPoint(UnknownRetainList[0]);
+      O = UnknownRetainList[0]->getArgOperand(0);
+      auto *RI = UnknownRetainList[0];
+      for (auto R : UnknownRetainList) {
         if (B.isAtomic(R)) {
           RI = R;
           break;
         }
       }
-      B.createUnknownObjectRetainN(RC->getSwiftRCIdentityRoot(O),
-                                   UnknownObjectRetainList.size(), RI);
+      B.createUnknownRetainN(RC->getSwiftRCIdentityRoot(O),
+                             UnknownRetainList.size(), RI);
 
       // Replace all uses of the retain instructions with our new retainN and
       // then delete them.
-      for (auto *Inst : UnknownObjectRetainList) {
+      for (auto *Inst : UnknownRetainList) {
         Inst->eraseFromParent();
-        NumUnknownObjectRetainReleasesEliminatedByMergingIntoRetainReleaseN++;
+        NumUnknownRetainReleasesEliminatedByMergingIntoRetainReleaseN++;
       }
 
-      NumUnknownObjectRetainReleasesEliminatedByMergingIntoRetainReleaseN--;
+      NumUnknownRetainReleasesEliminatedByMergingIntoRetainReleaseN--;
     }
-    UnknownObjectRetainList.clear();
+    UnknownRetainList.clear();
 
-    auto &UnknownObjectReleaseList = P.second.UnknownObjectReleaseList;
-    if (UnknownObjectReleaseList.size() > 1) {
+    auto &UnknownReleaseList = P.second.UnknownReleaseList;
+    if (UnknownReleaseList.size() > 1) {
       // Create the releaseN call right by the last release.
-      auto *OldCI =
-          UnknownObjectReleaseList[UnknownObjectReleaseList.size() - 1];
+      auto *OldCI = UnknownReleaseList[UnknownReleaseList.size() - 1];
       B.setInsertPoint(OldCI);
       O = OldCI->getArgOperand(0);
       auto *RI = OldCI;
-      for (auto R : UnknownObjectReleaseList) {
+      for (auto R : UnknownReleaseList) {
         if (B.isAtomic(R)) {
           RI = R;
           break;
         }
       }
-      B.createUnknownObjectReleaseN(RC->getSwiftRCIdentityRoot(O),
-                                    UnknownObjectReleaseList.size(), RI);
+      B.createUnknownReleaseN(RC->getSwiftRCIdentityRoot(O),
+                              UnknownReleaseList.size(), RI);
 
       // Remove all old release instructions.
-      for (auto *Inst : UnknownObjectReleaseList) {
+      for (auto *Inst : UnknownReleaseList) {
         Inst->eraseFromParent();
-        NumUnknownObjectRetainReleasesEliminatedByMergingIntoRetainReleaseN++;
+        NumUnknownRetainReleasesEliminatedByMergingIntoRetainReleaseN++;
       }
 
-      NumUnknownObjectRetainReleasesEliminatedByMergingIntoRetainReleaseN--;
+      NumUnknownRetainReleasesEliminatedByMergingIntoRetainReleaseN--;
     }
-    UnknownObjectReleaseList.clear();
+    UnknownReleaseList.clear();
 
     auto &BridgeRetainList = P.second.BridgeRetainList;
     if (BridgeRetainList.size() > 1) {
@@ -219,12 +215,7 @@ performRRNOptimization(DenseMap<Value *, LocalState> &PtrToLocalStateMap) {
 
       // Remove all old retain instructions.
       for (auto *Inst : BridgeRetainList) {
-        // We may need to perform a pointer cast here to ensure that the output
-        // type of the retainN matches the output type. This can come up in
-        // cases where types have been obfuscated in some way. In such a case,
-        // we need the inert point to be at the retain location.
-        B.setInsertPoint(Inst);
-        Inst->replaceAllUsesWith(B.maybeCast(I, Inst->getType()));
+        Inst->replaceAllUsesWith(I);
         Inst->eraseFromParent();
         NumBridgeRetainReleasesEliminatedByMergingIntoRetainReleaseN++;
       }
@@ -275,10 +266,10 @@ bool SwiftARCContractImpl::run() {
       // These instructions should not reach here based on the pass ordering.
       // i.e. LLVMARCOpt -> LLVMContractOpt.
       case RT_RetainN:
-      case RT_UnknownObjectRetainN:
+      case RT_UnknownRetainN:
       case RT_BridgeRetainN:
       case RT_ReleaseN:
-      case RT_UnknownObjectReleaseN:
+      case RT_UnknownReleaseN:
       case RT_BridgeReleaseN:
         llvm_unreachable("These are only created by LLVMARCContract !");
       // Delete all fix lifetime and end borrow instructions. After llvm-ir they
@@ -296,12 +287,12 @@ bool SwiftARCContractImpl::run() {
         LocalEntry.RetainList.push_back(CI);
         continue;
       }
-      case RT_UnknownObjectRetain: {
+      case RT_UnknownRetain: {
         auto *CI = cast<CallInst>(&Inst);
         auto *ArgVal = RC->getSwiftRCIdentityRoot(CI->getArgOperand(0));
 
         LocalState &LocalEntry = PtrToLocalStateMap[ArgVal];
-        LocalEntry.UnknownObjectRetainList.push_back(CI);
+        LocalEntry.UnknownRetainList.push_back(CI);
         continue;
       }
       case RT_Release: {
@@ -313,13 +304,13 @@ bool SwiftARCContractImpl::run() {
         LocalEntry.ReleaseList.push_back(CI);
         continue;
       }
-      case RT_UnknownObjectRelease: {
+      case RT_UnknownRelease: {
         // Stash any releases that we see.
         auto *CI = cast<CallInst>(&Inst);
         auto *ArgVal = RC->getSwiftRCIdentityRoot(CI->getArgOperand(0));
 
         LocalState &LocalEntry = PtrToLocalStateMap[ArgVal];
-        LocalEntry.UnknownObjectReleaseList.push_back(CI);
+        LocalEntry.UnknownReleaseList.push_back(CI);
         continue;
       }
       case RT_BridgeRetain: {

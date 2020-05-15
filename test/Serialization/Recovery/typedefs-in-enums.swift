@@ -14,11 +14,11 @@ import Lib
 
 func use(_: OkayEnum) {}
 // FIXME: Better to import the enum and make it unavailable.
-func use(_: BadEnum) {} // expected-error {{cannot find type 'BadEnum' in scope}}
+func use(_: BadEnum) {} // expected-error {{use of undeclared type 'BadEnum'}}
 
 func test() {
   _ = producesOkayEnum()
-  _ = producesBadEnum() // expected-error {{cannot find 'producesBadEnum' in scope}}
+  _ = producesBadEnum() // expected-error {{use of unresolved identifier 'producesBadEnum'}}
 
   // Force a lookup of the ==
   _ = Optional(OkayEnum.noPayload).map { $0 == .noPayload }
@@ -34,30 +34,19 @@ public enum BadEnum {
   case problematic(Any, WrappedInt)
   case alsoOkay(Any, Any, Any)
 
-  public static func ==(a: BadEnum, b: BadEnum) -> Bool {
+  static public func ==(a: BadEnum, b: BadEnum) -> Bool {
     return false
   }
 }
 // CHECK-LABEL: enum BadEnum {
 // CHECK-RECOVERY-NOT: enum BadEnum
 
-public enum GenericBadEnum<T: HasAssoc> where T.Assoc == WrappedInt {
-  case noPayload
-  case perfectlyOkayPayload(Int)
-
-  public static func ==(a: GenericBadEnum<T>, b: GenericBadEnum<T>) -> Bool {
-    return false
-  }
-}
-// CHECK-LABEL: enum GenericBadEnum<T> where T : HasAssoc, T.Assoc == WrappedInt {
-// CHECK-RECOVERY-NOT: enum GenericBadEnum
-
 public enum OkayEnum {
   case noPayload
   case plainOldAlias(Any, UnwrappedInt)
   case other(Int)
 
-  public static func ==(a: OkayEnum, b: OkayEnum) -> Bool {
+  static public func ==(a: OkayEnum, b: OkayEnum) -> Bool {
     return false
   }
 }
@@ -65,13 +54,13 @@ public enum OkayEnum {
 // CHECK-NEXT:   case noPayload
 // CHECK-NEXT:   case plainOldAlias(Any, UnwrappedInt)
 // CHECK-NEXT:   case other(Int)
-// CHECK-NEXT:   static func == (a: OkayEnum, b: OkayEnum) -> Bool
+// CHECK-NEXT:   static func ==(a: OkayEnum, b: OkayEnum) -> Bool
 // CHECK-NEXT: }
 // CHECK-RECOVERY-LABEL: enum OkayEnum {
 // CHECK-RECOVERY-NEXT:   case noPayload
 // CHECK-RECOVERY-NEXT:   case plainOldAlias(Any, Int32)
 // CHECK-RECOVERY-NEXT:   case other(Int)
-// CHECK-RECOVERY-NEXT:   static func == (a: OkayEnum, b: OkayEnum) -> Bool
+// CHECK-RECOVERY-NEXT:   static func ==(a: OkayEnum, b: OkayEnum) -> Bool
 // CHECK-RECOVERY-NEXT: }
 
 public enum OkayEnumWithSelfRefs {
@@ -94,47 +83,12 @@ public enum OkayEnumWithSelfRefs {
 // CHECK-RECOVERY-NEXT:   case nested(OkayEnumWithSelfRefs.Nested)
 // CHECK-RECOVERY-NEXT: }
 
-public protocol HasAssoc {
-  associatedtype Assoc
-}
-
 public func producesBadEnum() -> BadEnum { return .noPayload }
 // CHECK-LABEL: func producesBadEnum() -> BadEnum
 // CHECK-RECOVERY-NOT: func producesBadEnum() -> BadEnum
 
-public func producesGenericBadEnum<T>() -> GenericBadEnum<T> { return .noPayload }
-// CHECK-LABEL: func producesGenericBadEnum<T>() -> GenericBadEnum<T>
-// CHECK-RECOVERY-NOT: func producesGenericBadEnum
-
 public func producesOkayEnum() -> OkayEnum { return .noPayload }
 // CHECK-LABEL: func producesOkayEnum() -> OkayEnum
 // CHECK-RECOVERY-LABEL: func producesOkayEnum() -> OkayEnum
-
-
-extension Int /* or any imported type, really */ {
-  public enum OkayEnumWithSelfRefs {
-    public struct Nested {}
-    indirect case selfRef(OkayEnumWithSelfRefs)
-    case nested(Nested)
-  }
-}
-// CHECK-LABEL: extension Int {
-//  CHECK-NEXT:   enum OkayEnumWithSelfRefs {
-//  CHECK-NEXT:     struct Nested {
-//  CHECK-NEXT:       init()
-//  CHECK-NEXT:     }
-//  CHECK-NEXT:     indirect case selfRef(Int.OkayEnumWithSelfRefs)
-//  CHECK-NEXT:     case nested(Int.OkayEnumWithSelfRefs.Nested)
-//  CHECK-NEXT:   }
-//  CHECK-NEXT: }
-// CHECK-RECOVERY-LABEL: extension Int {
-//  CHECK-RECOVERY-NEXT:   enum OkayEnumWithSelfRefs {
-//  CHECK-RECOVERY-NEXT:     struct Nested {
-//  CHECK-RECOVERY-NEXT:       init()
-//  CHECK-RECOVERY-NEXT:     }
-//  CHECK-RECOVERY-NEXT:     indirect case selfRef(Int.OkayEnumWithSelfRefs)
-//  CHECK-RECOVERY-NEXT:     case nested(Int.OkayEnumWithSelfRefs.Nested)
-//  CHECK-RECOVERY-NEXT:   }
-//  CHECK-RECOVERY-NEXT: }
 
 #endif // TEST

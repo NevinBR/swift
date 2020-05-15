@@ -2,14 +2,10 @@
 // REQUIRES: executable_test
 
 import StdlibUnittest
-#if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
-  import Darwin
-#elseif os(Linux) || os(FreeBSD) || os(PS4) || os(Android) || os(Cygwin) || os(Haiku)
-  import Glibc
-#elseif os(Windows)
-  import MSVCRT
+#if os(Linux) || os(FreeBSD) || os(PS4) || os(Android) || os(Windows)
+import Glibc
 #else
-#error("Unsupported platform")
+import Darwin
 #endif
 
 //

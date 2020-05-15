@@ -1,9 +1,7 @@
 // RUN: %empty-directory(%t)
-// RUN: %target-build-swift %s -o %t/a.out_Debug -Onone
+// RUN: %target-build-swift %s -o %t/a.out_Debug
 // RUN: %target-build-swift %s -o %t/a.out_Release -O
 //
-// RUN: %target-codesign %t/a.out_Debug
-// RUN: %target-codesign %t/a.out_Release
 // RUN: %target-run %t/a.out_Debug
 // RUN: %target-run %t/a.out_Release
 // REQUIRES: executable_test
@@ -53,7 +51,7 @@ SetTraps.test("RemoveInvalidIndex4")
     reason: "this trap is not guaranteed to happen in -Ounchecked"))
   .code {
   var s: Set<Int> = [ 10 ]
-  let index = s.firstIndex(of: 10)!
+  let index = s.index(of: 10)!
   s.remove(at: index)
   expectFalse(s.contains(10))
   expectCrashLater()
@@ -65,7 +63,7 @@ SetTraps.test("RemoveFirstFromEmpty")
     { _isFastAssertConfiguration() },
     reason: "this trap is not guaranteed to happen in -Ounchecked"))
   .crashOutputMatches(_isDebugAssertConfiguration() ?
-    "Can't removeFirst from an empty Set" : "")
+    "can't removeFirst from an empty Set" : "")
   .code {
   var s = Set<Int>()
   expectCrashLater()

@@ -1,15 +1,13 @@
 // RUN: %empty-directory(%t)
 
-// RUN: %target-build-swift-dylib(%t/%target-library-name(first)) %S/Inputs/dsohandle-first.swift -emit-module -module-name first
-// RUN: %target-build-swift-dylib(%t/%target-library-name(second)) %S/Inputs/dsohandle-second.swift -emit-module -module-name second
+// RUN: (cd %t && %target-build-swift %S/Inputs/dsohandle-first.swift -emit-library -emit-module -module-name first)
+// RUN: (cd %t && %target-build-swift %S/Inputs/dsohandle-second.swift -emit-library -emit-module -module-name second)
 // RUN: %target-build-swift -I %t -L %t -lfirst -lsecond %s -o %t/main
-// RUN: %target-codesign %t/main %t/%target-library-name(first) %t/%target-library-name(second)
-// RUN: %target-run %t/main %t/%target-library-name(first) %t/%target-library-name(second)
-
+// RUN: env LD_LIBRARY_PATH=%t DYLD_LIBRARY_PATH=%t %target-run %t/main
 // REQUIRES: executable_test
 
-// UNSUPPORTED: linux
-// XFAIL: windows
+// rdar://problem/27620565
+// REQUIRES: OS=macosx
 
 import first
 import second

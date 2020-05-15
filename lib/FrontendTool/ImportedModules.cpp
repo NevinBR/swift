@@ -37,7 +37,8 @@ static void findAllClangImports(const clang::Module *module,
     modules.insert(getTopLevelName(imported));
   }
 
-  for (auto sub : module->submodules()) {
+  for (auto sub :
+       makeIteratorRange(module->submodule_begin(), module->submodule_end())) {
     findAllClangImports(sub, modules);
   }
 }
@@ -45,7 +46,7 @@ static void findAllClangImports(const clang::Module *module,
 bool swift::emitImportedModules(ASTContext &Context, ModuleDecl *mainModule,
                                 const FrontendOptions &opts) {
 
-  std::string path = opts.InputsAndOutputs.getSingleOutputFilename();
+  auto path = opts.getSingleOutputFilename();
   std::error_code EC;
   llvm::raw_fd_ostream out(path, EC, llvm::sys::fs::F_None);
 
@@ -68,7 +69,7 @@ bool swift::emitImportedModules(ASTContext &Context, ModuleDecl *mainModule,
 
     auto accessPath = ID->getModulePath();
     // only the top-level name is needed (i.e. A in A.B.C)
-    Modules.insert(accessPath[0].Item.str());
+    Modules.insert(accessPath[0].first.str());
   }
 
   // And now look in the C code we're possibly using.
@@ -78,29 +79,23 @@ bool swift::emitImportedModules(ASTContext &Context, ModuleDecl *mainModule,
   StringRef implicitHeaderPath = opts.ImplicitObjCHeaderPath;
   if (!implicitHeaderPath.empty()) {
     if (!clangImporter->importBridgingHeader(implicitHeaderPath, mainModule)) {
-      ModuleDecl::ImportFilter importFilter;
-      importFilter |= ModuleDecl::ImportFilterKind::Public;
-      importFilter |= ModuleDecl::ImportFilterKind::Private;
-      importFilter |= ModuleDecl::ImportFilterKind::ImplementationOnly;
-      importFilter |= ModuleDecl::ImportFilterKind::SPIAccessControl;
-
       SmallVector<ModuleDecl::ImportedModule, 16> imported;
       clangImporter->getImportedHeaderModule()->getImportedModules(
-          imported, importFilter);
+          imported, ModuleDecl::ImportFilter::All);
 
       for (auto IM : imported) {
-        if (auto clangModule = IM.importedModule->findUnderlyingClangModule())
+        if (auto clangModule = IM.second->findUnderlyingClangModule())
           Modules.insert(getTopLevelName(clangModule));
         else
-          assert(IM.importedModule->isStdlibModule() &&
+          assert(IM.second->isStdlibModule() &&
                  "unexpected non-stdlib swift module");
       }
     }
   }
 
   if (opts.ImportUnderlyingModule) {
-    auto underlyingModule = clangImporter->loadModule(SourceLoc(),
-      { Located<Identifier>(mainModule->getName(), SourceLoc()) });
+    auto underlyingModule = clangImporter->loadModule(
+        SourceLoc(), std::make_pair(mainModule->getName(), SourceLoc()));
     if (!underlyingModule) {
       Context.Diags.diagnose(SourceLoc(),
                              diag::error_underlying_module_not_found,

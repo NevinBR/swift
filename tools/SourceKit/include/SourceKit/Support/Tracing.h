@@ -13,38 +13,53 @@
 #ifndef LLVM_SOURCEKIT_SUPPORT_TRACING_H
 #define LLVM_SOURCEKIT_SUPPORT_TRACING_H
 
-#include "SourceKit/Core/LLVM.h"
-#include "SourceKit/Core/LangSupport.h"
 #include "SourceKit/Support/UIdent.h"
-#include "swift/Basic/OptionSet.h"
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
 
 #include <vector>
 
 namespace SourceKit {
-  struct DiagnosticEntryInfo;
-
 namespace trace {
 
 struct SwiftArguments {
   std::string PrimaryFile;
-  std::string Arguments;
+  std::vector<std::string> Args;
 };
 
 enum class OperationKind : uint64_t {
-  PerformSema = 1 << 0,
-  IndexSource = 1 << 1,
-  CodeCompletion = 1 << 2,
+  SimpleParse,
+  PerformSema,
+  AnnotAndDiag,
 
-  Last = CodeCompletion,
-  All = (Last << 1) - 1
+  ReadSyntaxInfo,
+  ReadDiagnostics,
+  ReadSemanticInfo,
+
+  IndexModule,
+  IndexSource,
+
+  CursorInfoForIFaceGen,
+  CursorInfoForSource,
+
+  ExpandPlaceholder,
+  FormatText,
+  RelatedIdents,
+  CodeCompletion,
+  OpenInterface,
+  OpenHeaderInterface,
+
+  CodeCompletionInit,
 };
-
+  
 typedef std::vector<std::pair<std::string, std::string>> StringPairs;
 
 struct SwiftInvocation {
   SwiftArguments Args;
+  StringPairs Files;
+
+  void addFile(std::string FileName, std::string Text) {
+    Files.push_back(std::make_pair(std::move(FileName), std::move(Text)));
+  }
 };
   
 class TraceConsumer {
@@ -53,56 +68,39 @@ public:
 
   // Trace start of SourceKit operation
   virtual void operationStarted(uint64_t OpId, OperationKind OpKind,
-                                const SwiftInvocation &Inv,
-                                const StringPairs &OpArgs) = 0;
-
+                                 const SwiftInvocation &Inv,
+                                 const StringPairs &OpArgs) = 0;
+  
   // Operation previously started with startXXX has finished
-  virtual void operationFinished(uint64_t OpId, OperationKind OpKind,
-                                 ArrayRef<DiagnosticEntryInfo> Diagnostics) = 0;
-
-  /// Returns the set of operations this consumer is interested in.
-  ///
-  /// Note: this is only a hint. Implementations should check the operation kind
-  /// if they need to.
-  virtual swift::OptionSet<OperationKind> desiredOperations() {
-    return OperationKind::All;
-  }
+  virtual void operationFinished(uint64_t OpId) = 0;
 };
 
 // Is tracing enabled
-bool anyEnabled();
+bool enabled();
 
-// Is tracing enabled for \p op.
-bool enabled(OperationKind op);
+// Enable tracing
+void enable();
 
+// Disable tracing
+void disable();
+  
 // Trace start of SourceKit operation, returns OpId
 uint64_t startOperation(OperationKind OpKind,
                         const SwiftInvocation &Inv,
                         const StringPairs &OpArgs = StringPairs());
 
 // Operation previously started with startXXX has finished
-void operationFinished(uint64_t OpId, OperationKind OpKind,
-                       ArrayRef<DiagnosticEntryInfo> Diagnostics);
+void operationFinished(uint64_t OpId);
 
 // Register trace consumer.
 void registerConsumer(TraceConsumer *Consumer);
 
-// Register trace consumer.
-void unregisterConsumer(TraceConsumer *Consumer);
-
 // Class that utilizes the RAII idiom for the operations being traced
 class TracedOperation final {
-  using DiagnosticProvider = std::function<void(SmallVectorImpl<DiagnosticEntryInfo> &)>;
-
-  OperationKind OpKind;
   llvm::Optional<uint64_t> OpId;
-  llvm::Optional<DiagnosticProvider> DiagProvider;
-  bool Enabled;
 
 public:
-  TracedOperation(OperationKind OpKind) : OpKind(OpKind) {
-    Enabled = trace::enabled(OpKind);
-  }
+  TracedOperation() {}
   ~TracedOperation() {
     finish();
   }
@@ -112,28 +110,20 @@ public:
   TracedOperation(const TracedOperation &) = delete;
   TracedOperation &operator=(const TracedOperation &) = delete;
 
-  bool enabled() const { return Enabled; }
-
-  void start(const SwiftInvocation &Inv,
+  void start(OperationKind OpKind,
+             const SwiftInvocation &Inv,
              const StringPairs &OpArgs = StringPairs()) {
-    assert(!OpId.hasValue());
+    finish();
     OpId = startOperation(OpKind, Inv, OpArgs);
   }
 
   void finish() {
     if (OpId.hasValue()) {
-      SmallVector<DiagnosticEntryInfo, 8> Diagnostics;
-      if (DiagProvider.hasValue())
-        (*DiagProvider)(Diagnostics);
-      operationFinished(OpId.getValue(), OpKind, Diagnostics);
+      operationFinished(OpId.getValue());
       OpId.reset();
     }
   }
 
-  void setDiagnosticProvider(DiagnosticProvider &&DiagProvider) {
-    assert(!this->DiagProvider.hasValue());
-    this->DiagProvider = std::move(DiagProvider);
-  }
 };
 
 } // namespace sourcekitd

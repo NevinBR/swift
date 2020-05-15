@@ -18,8 +18,6 @@
 #include "swift/AST/Decl.h"
 #include "swift/AST/Expr.h"
 #include "swift/AST/Stmt.h"
-#include "swift/AST/Pattern.h"
-#include "swift/AST/TypeLoc.h"
 #include "swift/Basic/SourceLoc.h"
 
 using namespace swift;
@@ -31,19 +29,15 @@ SourceRange ASTNode::getSourceRange() const {
     return S->getSourceRange();
   if (const auto *D = this->dyn_cast<Decl*>())
     return D->getSourceRange();
-  if (const auto *P = this->dyn_cast<Pattern*>())
-    return P->getSourceRange();
-  if (const auto *L = this->dyn_cast<TypeLoc *>())
-    return L->getSourceRange();
   llvm_unreachable("unsupported AST node");
 }
 
-/// Return the location of the start of the statement.
+/// \brief Return the location of the start of the statement.
 SourceLoc ASTNode::getStartLoc() const {
   return getSourceRange().Start;
 }
 
-/// Return the location of the end of the statement.
+/// \brief Return the location of the end of the statement.
 SourceLoc ASTNode::getEndLoc() const {
   return getSourceRange().End;
 }
@@ -69,10 +63,6 @@ bool ASTNode::isImplicit() const {
     return S->isImplicit();
   if (const auto *D = this->dyn_cast<Decl*>())
     return D->isImplicit();
-  if (const auto *P = this->dyn_cast<Pattern*>())
-    return P->isImplicit();
-  if (const auto *L = this->dyn_cast<TypeLoc*>())
-    return false;
   llvm_unreachable("unsupported AST node");
 }
 
@@ -83,27 +73,18 @@ void ASTNode::walk(ASTWalker &Walker) {
     S->walk(Walker);
   else if (auto *D = this->dyn_cast<Decl*>())
     D->walk(Walker);
-  else if (auto *P = this->dyn_cast<Pattern*>())
-    P->walk(Walker);
   else
     llvm_unreachable("unsupported AST node");
 }
-
-void ASTNode::dump(raw_ostream &OS, unsigned Indent) const {
-  if (auto S = dyn_cast<Stmt*>())
-    S->dump(OS, /*context=*/nullptr, Indent);
-  else if (auto E = dyn_cast<Expr*>())
-    E->dump(OS, Indent);
-  else if (auto D = dyn_cast<Decl*>())
-    D->dump(OS, Indent);
-  else if (auto P = dyn_cast<Pattern*>())
-    P->dump(OS, Indent);
+void ASTNode::walk(SourceEntityWalker &Walker) {
+  if (auto *E = this->dyn_cast<Expr*>())
+    Walker.walk(E);
+  else if (auto *S = this->dyn_cast<Stmt*>())
+    Walker.walk(S);
+  else if (auto *D = this->dyn_cast<Decl*>())
+    Walker.walk(D);
   else
-    OS << "<null>";
-}
-
-void ASTNode::dump() const {
-  dump(llvm::errs());
+    llvm_unreachable("unsupported AST node");
 }
 
 #define FUNC(T)                                                               \
@@ -115,5 +96,4 @@ bool ASTNode::is##T(T##Kind Kind) const {                                     \
 FUNC(Stmt)
 FUNC(Expr)
 FUNC(Decl)
-FUNC(Pattern)
 #undef FUNC

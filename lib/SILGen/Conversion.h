@@ -33,8 +33,6 @@ public:
     BridgeToObjC,
 
     /// A bridging conversion to a foreign type following a force.
-    /// Although it's not reflected in the name, this is always an
-    /// implicit force cast.
     ForceAndBridgeToObjC,
 
     /// A bridging conversion from a foreign type.
@@ -73,7 +71,6 @@ private:
   struct ReabstractionTypes {
     AbstractionPattern OrigType;
     CanType SubstType;
-    SILType LoweredResultType;
   };
 
   using Members = ExternalUnionMembers<BridgingTypes, ReabstractionTypes>;
@@ -105,24 +102,20 @@ private:
                                           loweredResultTy, isExplicit);
   }
 
-  Conversion(KindTy kind, AbstractionPattern origType, CanType substType,
-             SILType loweredResultTy)
+  Conversion(KindTy kind, AbstractionPattern origType, CanType substType)
       : Kind(kind) {
-    Types.emplaceAggregate<ReabstractionTypes>(kind, origType, substType,
-                                               loweredResultTy);
+    Types.emplaceAggregate<ReabstractionTypes>(kind, origType, substType);
   }
 
 public:
   static Conversion getOrigToSubst(AbstractionPattern origType,
-                                   CanType substType,
-                                   SILType loweredResultTy) {
-    return Conversion(OrigToSubst, origType, substType, loweredResultTy);
+                                   CanType substType) {
+    return Conversion(OrigToSubst, origType, substType);
   }
 
   static Conversion getSubstToOrig(AbstractionPattern origType,
-                                   CanType substType,
-                                   SILType loweredResultTy) {
-    return Conversion(SubstToOrig, origType, substType, loweredResultTy);
+                                   CanType substType) {
+    return Conversion(SubstToOrig, origType, substType);
   }
 
   static Conversion getBridging(KindTy kind, CanType origType,
@@ -146,10 +139,6 @@ public:
 
   CanType getReabstractionSubstType() const {
     return Types.get<ReabstractionTypes>(Kind).SubstType;
-  }
-
-  SILType getReabstractionLoweredResultType() const {
-    return Types.get<ReabstractionTypes>(Kind).LoweredResultType;
   }
 
   bool isBridgingExplicit() const {

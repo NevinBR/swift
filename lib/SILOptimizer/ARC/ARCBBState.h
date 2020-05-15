@@ -17,7 +17,7 @@
 
 namespace swift {
 
-/// Per-BasicBlock state.
+/// \brief Per-BasicBlock state.
 class ARCSequenceDataflowEvaluator::ARCBBState {
 public:
   using TopDownMapTy = SmallBlotMapVector<SILValue, TopDownRefCountState, 4>;
@@ -103,11 +103,11 @@ public:
 
   /// Blot \p Ptr.
   void clearBottomUpRefCountState(SILValue Ptr) {
-    PtrToBottomUpState.erase(Ptr);
+    PtrToBottomUpState.blot(Ptr);
   }
 
   /// Blot \p Ptr.
-  void clearTopDownRefCountState(SILValue Ptr) { PtrToTopDownState.erase(Ptr); }
+  void clearTopDownRefCountState(SILValue Ptr) { PtrToTopDownState.blot(Ptr); }
 
   void clearTopDownState() { PtrToTopDownState.clear(); }
   void clearBottomUpState() { PtrToBottomUpState.clear(); }

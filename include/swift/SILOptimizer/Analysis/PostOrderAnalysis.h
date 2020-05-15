@@ -34,9 +34,8 @@ class SILFunction;
 /// reform the post order over and over again (it can be expensive).
 class PostOrderAnalysis : public FunctionAnalysisBase<PostOrderFunctionInfo> {
 protected:
-  virtual std::unique_ptr<PostOrderFunctionInfo>
-  newFunctionAnalysis(SILFunction *F) override {
-    return std::make_unique<PostOrderFunctionInfo>(F);
+  virtual PostOrderFunctionInfo *newFunctionAnalysis(SILFunction *F) override {
+    return new PostOrderFunctionInfo(F);
   }
 
   virtual bool shouldInvalidate(SILAnalysis::InvalidationKind K) override {
@@ -45,15 +44,14 @@ protected:
 
 public:
   PostOrderAnalysis()
-      : FunctionAnalysisBase<PostOrderFunctionInfo>(
-            SILAnalysisKind::PostOrder) {}
+      : FunctionAnalysisBase<PostOrderFunctionInfo>(AnalysisKind::PostOrder) {}
 
   // This is a cache and shouldn't be copied around.
   PostOrderAnalysis(const PostOrderAnalysis &) = delete;
   PostOrderAnalysis &operator=(const PostOrderAnalysis &) = delete;
 
   static bool classof(const SILAnalysis *S) {
-    return S->getKind() == SILAnalysisKind::PostOrder;
+    return S->getKind() == AnalysisKind::PostOrder;
   }
 };
 

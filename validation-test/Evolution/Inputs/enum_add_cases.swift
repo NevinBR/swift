@@ -8,7 +8,7 @@ public func getVersion() -> Int {
 
 public var starfishCount: Int = 0
 
-public class Starfish : Hashable {
+public class Starfish {
   public init() {
     starfishCount += 1
   }
@@ -16,12 +16,6 @@ public class Starfish : Hashable {
   deinit {
     starfishCount -= 1
   }
-
-  public static func ==(lhs: Starfish, rhs: Starfish) -> Bool {
-    return true
-  }
-
-  public func hash(into: inout Hasher) {}
 }
 
 ///////////////////////////////////////////////////////////////////////
@@ -44,7 +38,7 @@ public func addNoPayloadToSingletonCases() -> [AddNoPayloadToSingleton] {
 
 ///////////////////////////////////////////////////////////////////////
 
-public enum AddPayloadToSingleton : Hashable {
+public enum AddPayloadToSingleton {
   case Cats
 #if AFTER
   case Horses(Starfish)
@@ -62,7 +56,7 @@ public func addPayloadToSingletonCases(_ s: Starfish)
 
 ///////////////////////////////////////////////////////////////////////
 
-public enum AddPayloadsToSingleton : Hashable {
+public enum AddPayloadsToSingleton {
   case Cats
 #if AFTER
   case Horses(Starfish)

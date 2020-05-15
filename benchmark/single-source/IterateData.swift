@@ -13,26 +13,22 @@
 import TestsUtils
 import Foundation
 
-public let IterateData = BenchmarkInfo(
-  name: "IterateData",
-  runFunction: run_IterateData,
-  tags: [.validation, .api, .Data],
-  setUpFunction: { blackHole(data) })
-
-let data: Data = {
+@inline(never)
+func generateData() -> Data {
   var data = Data(count: 16 * 1024)
-  let n = data.count
   data.withUnsafeMutableBytes { (ptr: UnsafeMutablePointer<UInt8>) -> () in
-    for i in 0..<n {
+    for i in 0..<data.count {
       ptr[i] = UInt8(i % 23)
     }
   }
   return data
-}()
+}
 
 @inline(never)
 public func run_IterateData(_ N: Int) {
-  for _ in 1...10*N {
+  let data = generateData()
+
+  for _ in 0...10*N {
     _ = data.reduce(0, &+)
   }
 }

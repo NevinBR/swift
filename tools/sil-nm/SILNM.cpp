@@ -80,6 +80,11 @@ static llvm::cl::opt<std::string>
 static llvm::cl::opt<std::string> Triple("target",
                                          llvm::cl::desc("target triple"));
 
+static llvm::cl::opt<bool> AssumeUnqualifiedOwnershipWhenParsing(
+    "assume-parsing-unqualified-ownership-sil", llvm::cl::Hidden,
+    llvm::cl::init(false),
+    llvm::cl::desc("Assume all parsed functions have unqualified ownership"));
+
 // This function isn't referenced outside its translation unit, but it
 // can't use the "static" keyword because its address is used for
 // getMainExecutable (since some platforms don't support taking the
@@ -134,8 +139,7 @@ static void nmModule(SILModule *M) {
 }
 
 int main(int argc, char **argv) {
-  PROGRAM_START(argc, argv);
-  INITIALIZE_LLVM();
+  INITIALIZE_LLVM(argc, argv);
 
   llvm::cl::ParseCommandLineOptions(argc, argv, "SIL NM\n");
 
@@ -164,15 +168,37 @@ int main(int argc, char **argv) {
   Invocation.getLangOptions().EnableAccessControl = false;
   Invocation.getLangOptions().EnableObjCAttrRequiresFoundation = false;
 
-  serialization::ExtendedValidationInfo extendedInfo;
+  // Load the input file.
   llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> FileBufOrErr =
-      Invocation.setUpInputForSILTool(InputFilename, ModuleName,
-                                      /*alwaysSetModuleToMain*/ true,
-                                      /*bePrimary*/ false, extendedInfo);
+      llvm::MemoryBuffer::getFileOrSTDIN(InputFilename);
   if (!FileBufOrErr) {
     fprintf(stderr, "Error! Failed to open file: %s\n", InputFilename.c_str());
     exit(-1);
   }
+
+  // If it looks like we have an AST, set the source file kind to SIL and the
+  // name of the module to the file's name.
+  Invocation.addInputBuffer(FileBufOrErr.get().get());
+
+  serialization::ExtendedValidationInfo extendedInfo;
+  auto result = serialization::validateSerializedAST(
+      FileBufOrErr.get()->getBuffer(), &extendedInfo);
+  bool HasSerializedAST = result.status == serialization::Status::Valid;
+
+  if (HasSerializedAST) {
+    const StringRef Stem = ModuleName.size()
+                               ? StringRef(ModuleName)
+                               : llvm::sys::path::stem(InputFilename);
+    Invocation.setModuleName(Stem);
+    Invocation.setInputKind(InputFileKind::IFK_Swift_Library);
+  } else {
+    Invocation.setModuleName("main");
+    Invocation.setInputKind(InputFileKind::IFK_SIL);
+  }
+
+  SILOptions &SILOpts = Invocation.getSILOptions();
+  SILOpts.AssumeUnqualifiedOwnershipWhenParsing =
+      AssumeUnqualifiedOwnershipWhenParsing;
 
   CompilerInstance CI;
   PrintingDiagnosticConsumer PrintDiags;
@@ -186,18 +212,23 @@ int main(int argc, char **argv) {
   if (CI.getASTContext().hadError())
     return 1;
 
-  auto SILMod = performSILGeneration(CI.getMainModule(), CI.getSILTypes(),
-                                     CI.getSILOptions());
+  // Load the SIL if we have a module. We have to do this after SILParse
+  // creating the unfortunate double if statement.
+  if (HasSerializedAST) {
+    assert(!CI.hasSILModule() &&
+           "performSema() should not create a SILModule.");
+    CI.setSILModule(
+        SILModule::createEmptyModule(CI.getMainModule(), CI.getSILOptions()));
+    std::unique_ptr<SerializedSILLoader> SL = SerializedSILLoader::create(
+        CI.getASTContext(), CI.getSILModule(), nullptr);
 
-  // Load the SIL if we have a non-SIB serialized module. SILGen handles SIB for
-  // us.
-  if (Invocation.hasSerializedAST() && !extendedInfo.isSIB()) {
-    auto SL = SerializedSILLoader::create(
-        CI.getASTContext(), SILMod.get(), nullptr);
-    SL->getAll();
+    if (extendedInfo.isSIB())
+      SL->getAllForModule(CI.getMainModule()->getName(), nullptr);
+    else
+      SL->getAll();
   }
 
-  nmModule(SILMod.get());
+  nmModule(CI.getSILModule());
 
   return CI.getASTContext().hadError();
 }

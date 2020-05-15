@@ -12,24 +12,15 @@
 
 import TestsUtils
 
-public let PopFront = [
-  BenchmarkInfo(name: "PopFrontArray",
-    runFunction: run_PopFrontArray,
-    tags: [.validation, .api, .Array],
-    legacyFactor: 20),
-  BenchmarkInfo(name: "PopFrontUnsafePointer",
-    runFunction: run_PopFrontUnsafePointer,
-    tags: [.validation, .api],
-    legacyFactor: 100),
-]
-
+let reps = 1
 let arrayCount = 1024
 
 @inline(never)
 public func run_PopFrontArray(_ N: Int) {
   let orig = Array(repeating: 1, count: arrayCount)
   var a = [Int]()
-  for _ in 1...N {
+  for _ in 1...20*N {
+    for _ in 1...reps {
       var result = 0
       a.append(contentsOf: orig)
       while a.count != 0 {
@@ -37,14 +28,16 @@ public func run_PopFrontArray(_ N: Int) {
         a.remove(at: 0)
       }
       CheckResults(result == arrayCount)
+    }
   }
 }
 
 @inline(never)
 public func run_PopFrontUnsafePointer(_ N: Int) {
-  let orig = Array(repeating: 1, count: arrayCount)
+  var orig = Array(repeating: 1, count: arrayCount)
   let a = UnsafeMutablePointer<Int>.allocate(capacity: arrayCount)
-  for _ in 1...N {
+  for _ in 1...100*N {
+    for _ in 1...reps {
       for i in 0..<arrayCount {
         a[i] = orig[i]
       }
@@ -56,6 +49,8 @@ public func run_PopFrontUnsafePointer(_ N: Int) {
         count -= 1
       }
       CheckResults(result == arrayCount)
+    }
   }
-  a.deallocate()
+  a.deallocate(capacity: arrayCount)
 }
+

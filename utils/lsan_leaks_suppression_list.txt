@@ -1,3 +1,2 @@
 leak:*buildCompilation*
 leak:*llvm::TableGenMain*
-leak:llvm-tblgen

@@ -1,7 +1,6 @@
 // RUN: %target-resilience-test
 // REQUIRES: executable_test
 
-
 import StdlibUnittest
 import struct_remove_property
 

@@ -78,7 +78,3 @@ swift::parseEditorPlaceholder(StringRef PlaceholderText) {
 
   return PHDataTyped;
 }
-
-bool swift::isEditorPlaceholder(StringRef IdentifierText) {
-  return IdentifierText.startswith("<#");
-}

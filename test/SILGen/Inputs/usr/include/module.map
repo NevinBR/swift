@@ -26,10 +26,6 @@ module AppKit {
   header "AppKit.h"
   export *
 }
-module CoreData {
-  header "CoreData.h"
-  export *
-}
 module Dispatch {
   header "dispatch.h"
   export *
@@ -37,6 +33,11 @@ module Dispatch {
 
 module objc_extensions_helper {
   header "objc_extensions_helper.h"
+}
+
+module Newtype {
+  header "newtype.h"
+  export *
 }
 
 module NonNilTest {

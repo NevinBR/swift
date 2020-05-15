@@ -25,7 +25,7 @@ namespace swift {
 
 class IVInfo : public SCCVisitor<IVInfo> {
 public:
-  typedef llvm::SmallVectorImpl<SILNode *> SCCType;
+  typedef llvm::SmallVectorImpl<ValueBase *> SCCType;
   friend SCCVisitor;
 
 public:
@@ -82,16 +82,16 @@ private:
 class IVAnalysis final : public FunctionAnalysisBase<IVInfo> {
 public:
   IVAnalysis(SILModule *)
-      : FunctionAnalysisBase<IVInfo>(SILAnalysisKind::InductionVariable) {}
+      : FunctionAnalysisBase<IVInfo>(AnalysisKind::InductionVariable) {}
   IVAnalysis(const IVAnalysis &) = delete;
   IVAnalysis &operator=(const IVAnalysis &) = delete;
 
   static bool classof(const SILAnalysis *S) {
-    return S->getKind() == SILAnalysisKind::InductionVariable;
+    return S->getKind() == AnalysisKind::InductionVariable;
   }
 
-  std::unique_ptr<IVInfo> newFunctionAnalysis(SILFunction *F) override {
-    return std::make_unique<IVInfo>(*F);
+  IVInfo *newFunctionAnalysis(SILFunction *F) override {
+    return new IVInfo(*F);
   }
 
   /// For now we always invalidate.

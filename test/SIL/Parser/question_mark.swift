@@ -1,6 +1,9 @@
 // RUN: %target-swift-frontend %s -emit-silgen | %target-sil-opt
 
-infix operator ??
+infix operator ?? {
+  associativity right
+  precedence 110
+}
 
 struct A<V, E> {
 }

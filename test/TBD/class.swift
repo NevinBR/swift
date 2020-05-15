@@ -1,35 +1,21 @@
-// REQUIRES: VENDOR=apple 
-// RUN: %target-swift-frontend -emit-ir -o/dev/null -parse-as-library -module-name test -validate-tbd-against-ir=missing %s
-// RUN: %target-swift-frontend -enable-library-evolution -emit-ir -o/dev/null -parse-as-library -module-name test -validate-tbd-against-ir=missing %s
-// RUN: %target-swift-frontend -emit-ir -o/dev/null -parse-as-library -module-name test -validate-tbd-against-ir=missing %s -enable-testing
-// RUN: %target-swift-frontend -enable-library-evolution -emit-ir -o/dev/null -parse-as-library -module-name test -validate-tbd-against-ir=missing %s -enable-testing
-
-// RUN: %target-swift-frontend -emit-ir -o/dev/null -parse-as-library -module-name test -validate-tbd-against-ir=missing -O %s
-// RUN: %target-swift-frontend -enable-library-evolution -emit-ir -o/dev/null -parse-as-library -module-name test -validate-tbd-against-ir=missing -O %s
-// RUN: %target-swift-frontend -emit-ir -o/dev/null -parse-as-library -module-name test -validate-tbd-against-ir=missing %s -enable-testing -O
-// RUN: %target-swift-frontend -enable-library-evolution -emit-ir -o/dev/null -parse-as-library -module-name test -validate-tbd-against-ir=missing %s -enable-testing -O
-
-// RUN: %empty-directory(%t)
-// RUN: %target-swift-frontend -typecheck -parse-as-library -module-name test %s -emit-tbd -emit-tbd-path %t/typecheck.tbd
-// RUN: %target-swift-frontend -emit-ir -parse-as-library -module-name test %s -emit-tbd -emit-tbd-path %t/emit-ir.tbd
-// RUN: diff -u %t/typecheck.tbd %t/emit-ir.tbd
+// RUN: %target-swift-frontend -emit-ir -o- -parse-as-library -module-name test -validate-tbd-against-ir=missing %s
 
 open class OpenNothing {}
 
 open class OpenInit {
     public init() {}
-    public init(public_: Int, default_: Int = 0) {}
+    public init(public_: Int) {}
 
-    internal init(internal_: Int, default_: Int = 0) {}
+    internal init(internal_: Int) {}
 
     deinit {}
 }
 
 open class OpenMethods {
     public init() {}
-    public func publicMethod(default_: Int = 0) {}
-    internal func internalMethod(default_: Int = 0) {}
-    private func privateMethod(default_: Int = 0) {}
+    public func publicMethod() {}
+    internal func internalMethod() {}
+    private func privateMethod() {}
 }
 
 open class OpenProperties {
@@ -60,9 +46,9 @@ open class OpenProperties {
 }
 
 open class OpenStatics {
-    public static func publicStaticFunc(default_: Int = 0) {}
-    internal static func internalStaticFunc(default_: Int = 0) {}
-    private static func privateStaticFunc(default_: Int = 0) {}
+    public static func publicStaticFunc() {}
+    internal static func internalStaticFunc() {}
+    private static func privateStaticFunc() {}
 
     public static let publicLet: Int = 0
     internal static let internalLet: Int = 0
@@ -118,18 +104,18 @@ public class PublicNothing {}
 
 public class PublicInit {
     public init() {}
-    public init(public_: Int, default_: Int = 0) {}
+    public init(public_: Int) {}
     
-    internal init(internal_: Int, default_: Int = 0) {}
+    internal init(internal_: Int) {}
 
     deinit {}
 }
 
 public class PublicMethods {
     public init() {}
-    public func publicMethod(default_: Int = 0) {}
-    internal func internalMethod(default_: Int = 0) {}
-    private func privateMethod(default_: Int = 0) {}
+    public func publicMethod() {}
+    internal func internalMethod() {}
+    private func privateMethod() {}
 }
 
 public class PublicProperties {
@@ -160,9 +146,9 @@ public class PublicProperties {
 }
 
 public class PublicStatics {
-    public static func publicStaticFunc(default_: Int = 0) {}
-    internal static func internalStaticFunc(default_: Int = 0) {}
-    private static func privateStaticFunc(default_: Int = 0) {}
+    public static func publicStaticFunc() {}
+    internal static func internalStaticFunc() {}
+    private static func privateStaticFunc() {}
 
     public static let publicLet: Int = 0
     internal static let internalLet: Int = 0
@@ -199,19 +185,19 @@ public class PublicGeneric<T, U, V> {
   internal var internalVarConcrete: Int = 0
   private var privateVarConcrete: Int = 0
 
-  public init<S>(t: T, u: U, v: V, _: S, default_: Int = 0) {
+  public init<S>(t: T, u: U, v: V, _: S) {
     publicVar = t
     internalVar = u
     privateVar = v
   }
 
-  public func publicGeneric<A>(_: A, default_: Int = 0) {}
-  internal func internalGeneric<A>(_: A, default_: Int = 0) {}
-  private func privateGeneric<A>(_: A, default_: Int = 0) {}
+  public func publicGeneric<A>(_: A) {}
+  internal func internalGeneric<A>(_: A) {}
+  private func privateGeneric<A>(_: A) {}
 
-  public static func publicStaticGeneric<A>(_: A, default_: Int = 0) {}
-  internal static func internalStaticGeneric<A>(_: A, default_: Int = 0) {}
-  private static func privateStaticGeneric<A>(_: A, default_: Int = 0) {}
+  public static func publicStaticGeneric<A>(_: A) {}
+  internal static func internalStaticGeneric<A>(_: A) {}
+  private static func privateStaticGeneric<A>(_: A) {}
 }
 
 
@@ -219,14 +205,14 @@ internal class InternalNothing {}
 
 internal class InternalInit {
     internal init() {}
-    internal init(internal_: Int, default_: Int = 0) {}
-    private init(private_: Int, default_: Int = 0) {}
+    internal init(internal_: Int) {}
+    private init(private_: Int) {}
 }
 
 internal class InternalMethods {
     internal init() {}
-    internal func internalMethod(default_: Int = 0) {}
-    private func privateMethod(default_: Int = 0) {}
+    internal func internalMethod() {}
+    private func privateMethod() {}
 }
 
 internal class InternalProperties {
@@ -250,8 +236,8 @@ internal class InternalProperties {
 }
 
 internal class InternalStatics {
-    internal static func internalStaticFunc(default_: Int = 0) {}
-    private static func privateStaticFunc(default_: Int = 0) {}
+    internal static func internalStaticFunc() {}
+    private static func privateStaticFunc() {}
 
     internal static let internalLet: Int = 0
     private static let privateLet: Int = 0
@@ -279,16 +265,16 @@ internal class InternalGeneric<T, U, V> {
   internal var internalVarConcrete: Int = 0
   private var privateVarConcrete: Int = 0
 
-  internal init<S>(t: T, u: U, v: V, _: S, default_: Int = 0) {
+  internal init<S>(t: T, u: U, v: V, _: S) {
     internalVar = u
     privateVar = v
   }
 
-  internal func internalGeneric<A>(_: A, default_: Int = 0) {}
-  private func privateGeneric<A>(_: A, default_: Int = 0) {}
+  internal func internalGeneric<A>(_: A) {}
+  private func privateGeneric<A>(_: A) {}
 
-  internal static func internalStaticGeneric<A>(_: A, default_: Int = 0) {}
-  private static func privateStaticGeneric<A>(_: A, default_: Int = 0) {}
+  internal static func internalStaticGeneric<A>(_: A) {}
+  private static func privateStaticGeneric<A>(_: A) {}
 }
 
 
@@ -296,12 +282,12 @@ private class PrivateNothing {}
 
 private class PrivateInit {
     private init() {}
-    private init(private_: Int, default_: Int = 0) {}
+    private init(private_: Int) {}
 }
 
 private class PrivateMethods {
     private init() {}
-    private func privateMethod(default_: Int = 0) {}
+    private func privateMethod() {}
 }
 
 private class PrivateProperties {
@@ -318,7 +304,7 @@ private class PrivateProperties {
 }
 
 private class PrivateStatics {
-    private static func privateStaticFunc(default_: Int = 0) {}
+    private static func privateStaticFunc() {}
 
     private static let privateLet: Int = 0
 
@@ -337,11 +323,11 @@ private class PrivateGeneric<T, U, V> {
 
   private var privateVarConcrete: Int = 0
 
-  private init<S>(t: T, u: U, v: V, _: S, default_: Int = 0) {
+  private init<S>(t: T, u: U, v: V, _: S) {
     privateVar = v
   }
 
-  private func privateGeneric<A>(_: A, default_: Int = 0) {}
+  private func privateGeneric<A>(_: A) {}
 
-  private static func privateStaticGeneric<A>(_: A, default_: Int = 0) {}
+  private static func privateStaticGeneric<A>(_: A) {}
 }

@@ -1,4 +1,4 @@
-// RUN: %target-swift-emit-silgen -sdk %S/Inputs %s -I %S/Inputs -enable-source-import | %FileCheck %s
+// RUN: %target-swift-frontend -sdk %S/Inputs %s -I %S/Inputs -enable-source-import -emit-silgen | %FileCheck %s
 
 // REQUIRES: objc_interop
 
@@ -44,7 +44,7 @@ class DynamicSubObject: DynamicObject, AnotherNativeReadWrite {
 // CHECK-NOT: hidden_external {{.*}}main{{.*}}DynamicSubObject{{.*}}name
 
 class DynamicObject: NativeReadWrite {
-  @objc dynamic var name: String = ""
+  dynamic var name: String = ""
 }
 
 // CHECK-NOT: hidden_external {{.*}}main{{.*}}DynamicObject{{.*}}name
@@ -58,8 +58,8 @@ extension Foo: NativeIntProperty {}
 
 // CHECK-NOT: hidden_external {{.*}}Foo{{.*}}intProperty
 
-// TODO: We can't emit a vtable entry for modify for ObjC types.
-// CHECK-NOT: class_method {{.*}}Foo{{.*}}intProperty{{.*}}modify
+// TODO: We can't emit a vtable entry for materializeForSet for ObjC types.
+// CHECK-NOT: class_method {{.*}}Foo{{.*}}intProperty{{.*}}materializeForSet
 
-// CHECK-LABEL: sil shared [serializable] [ossa] @$sSo3FooC11intPropertys5Int32VvM
+// CHECK-LABEL: sil shared [serializable] @_T0So3FooC11intPropertys5Int32Vfm
 

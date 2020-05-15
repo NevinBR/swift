@@ -48,8 +48,6 @@ enum class SyntaxNodeKind : uint8_t {
   BuildConfigKeyword,
   /// An identifier in a #if condition.
   BuildConfigId,
-  /// #-keywords like #warning, #sourceLocation
-  PoundDirectiveKeyword,
   /// Any occurrence of '@<attribute-name>' anywhere.
   AttributeId,
   /// A "resolved/active" attribute. Mis-applied attributes will be AttributeId.
@@ -97,8 +95,6 @@ enum class SyntaxStructureKind : uint8_t {
   EnumElement,
   TypeAlias,
   Subscript,
-  AssociatedType,
-  GenericTypeParam,
 
   ForEachStatement,
   WhileStatement,
@@ -114,8 +110,6 @@ enum class SyntaxStructureKind : uint8_t {
   ArrayExpression,
   DictionaryExpression,
   ObjectLiteralExpression,
-  TupleExpression,
-  ClosureExpression
 };
 
 enum class SyntaxStructureElementKind : uint8_t {
@@ -169,21 +163,21 @@ class SyntaxModelWalker {
 public:
   virtual ~SyntaxModelWalker() {}
 
-  /// Called when first visiting a syntax node, before walking into its
+  /// \brief Called when first visiting a syntax node, before walking into its
   /// children.  If it returns false, the subtree is skipped.
   ///
   virtual bool walkToNodePre(SyntaxNode Node) { return true; }
 
-  /// Called after visiting the children of a syntax node. If it returns
+  /// \brief Called after visiting the children of a syntax node. If it returns
   /// false, the remaining traversal is terminated and returns failure.
   virtual bool walkToNodePost(SyntaxNode Node) { return true; }
 
-  /// Called when first visiting a sub-structure node, before walking
+  /// \brief Called when first visiting a sub-structure node, before walking
   /// into its children. If it returns false, the subtree is skipped.
   ///
   virtual bool walkToSubStructurePre(SyntaxStructureNode Node) { return true; }
 
-  /// Called after visiting the children of a sub-structure node. If it
+  /// \brief Called after visiting the children of a sub-structure node. If it
   /// returns false, the remaining traversal is terminated and returns failure.
   ///
   virtual bool walkToSubStructurePost(SyntaxStructureNode Node) { return true; }

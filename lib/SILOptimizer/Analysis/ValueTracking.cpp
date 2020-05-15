@@ -12,24 +12,25 @@
 
 #define DEBUG_TYPE "sil-value-tracking"
 #include "swift/SILOptimizer/Analysis/ValueTracking.h"
-#include "swift/SIL/InstructionUtils.h"
-#include "swift/SIL/PatternMatch.h"
+#include "swift/SILOptimizer/Analysis/SimplifyInstruction.h"
 #include "swift/SIL/SILArgument.h"
 #include "swift/SIL/SILInstruction.h"
 #include "swift/SIL/SILValue.h"
-#include "swift/SILOptimizer/Analysis/SimplifyInstruction.h"
-#include "swift/SILOptimizer/Utils/InstOptUtils.h"
+#include "swift/SIL/InstructionUtils.h"
+#include "swift/SILOptimizer/Utils/Local.h"
+#include "swift/SIL/PatternMatch.h"
 #include "llvm/Support/Debug.h"
 using namespace swift;
 using namespace swift::PatternMatch;
 
-bool swift::isExclusiveArgument(SILValue V) {
+bool swift::isNotAliasingArgument(SILValue V,
+                                  InoutAliasingAssumption isInoutAliasing) {
   auto *Arg = dyn_cast<SILFunctionArgument>(V);
   if (!Arg)
     return false;
 
   SILArgumentConvention Conv = Arg->getArgumentConvention();
-  return Conv.isExclusiveIndirectParameter();
+  return Conv.isNotAliasedIndirectParameter(isInoutAliasing);
 }
 
 /// Check if the parameter \V is based on a local object, e.g. it is an
@@ -52,21 +53,27 @@ static bool isLocalObject(SILValue Obj) {
     Processed.insert(V);
     // It should be a local object.
     V = getUnderlyingObject(V);
-    if (isa<AllocationInst>(V))
-      continue;
-    if (isa<StructInst>(V) || isa<TupleInst>(V) || isa<EnumInst>(V)) {
-      // A compound value is local, if all of its components are local.
-      for (auto &Op : cast<SingleValueInstruction>(V)->getAllOperands()) {
-        WorkList.push_back(Op.get());
+    if (auto I = dyn_cast<SILInstruction>(V)) {
+      if (isa<AllocationInst>(V))
+        continue;
+      if (isa<StrongPinInst>(I)) {
+        WorkList.push_back(I->getOperand(0));
+        continue;
       }
-      continue;
+      if (isa<StructInst>(I) || isa<TupleInst>(I) || isa<EnumInst>(I)) {
+        // A compound value is local, if all of its components are local.
+        for (auto &Op : I->getAllOperands()) {
+          WorkList.push_back(Op.get());
+        }
+        continue;
+      }
     }
 
-    if (auto *Arg = dyn_cast<SILPhiArgument>(V)) {
+    if (auto *Arg = dyn_cast<SILPHIArgument>(V)) {
       // A BB argument is local if all of its
       // incoming values are local.
       SmallVector<SILValue, 4> IncomingValues;
-      if (Arg->getSingleTerminatorOperands(IncomingValues)) {
+      if (Arg->getIncomingValues(IncomingValues)) {
         for (auto InValue : IncomingValues) {
           WorkList.push_back(InValue);
         }
@@ -80,8 +87,10 @@ static bool isLocalObject(SILValue Obj) {
   return true;
 }
 
-bool swift::pointsToLocalObject(SILValue V) {
-  return isLocalObject(getUnderlyingObject(V));
+bool swift::pointsToLocalObject(SILValue V,
+                                InoutAliasingAssumption isInoutAliasing) {
+  V = getUnderlyingObject(V);
+  return isLocalObject(V) || isNotAliasingArgument(V, isInoutAliasing);
 }
 
 /// Check if the value \p Value is known to be zero, non-zero or unknown.
@@ -99,7 +108,7 @@ IsZeroKind swift::isZeroValue(SILValue Value) {
     case ValueKind::UncheckedTrivialBitCastInst:
     // Extracting from a zero class returns a zero.
     case ValueKind::StructExtractInst:
-      return isZeroValue(cast<SingleValueInstruction>(Value)->getOperand(0));
+      return isZeroValue(cast<SILInstruction>(Value)->getOperand(0));
     default:
       break;
   }
@@ -171,7 +180,7 @@ Optional<bool> swift::computeSignBit(SILValue V) {
     switch (Def->getKind()) {
     // Bitcast of non-negative is non-negative
     case ValueKind::UncheckedTrivialBitCastInst:
-      Value = cast<UncheckedTrivialBitCastInst>(Def)->getOperand();
+      Value = cast<SILInstruction>(Def)->getOperand(0);
       continue;
     default:
       break;
@@ -292,6 +301,25 @@ Optional<bool> swift::computeSignBit(SILValue V) {
         Value = BI->getArguments()[0];
         continue;
       }
+
+      // Source and target type sizes are the same.
+      // S->U conversion can only succeed if
+      // the sign bit of its operand is 0, i.e. it is >= 0.
+      // The sign bit of a result is 0 only if the sign
+      // bit of a source operand is 0.
+      case BuiltinValueKind::SUCheckedConversion:
+        Value = BI->getArguments()[0];
+        continue;
+
+      // Source and target type sizes are the same.
+      // U->S conversion can only succeed if
+      // the top bit of its operand is 0, i.e.
+      // it is representable as a signed integer >=0.
+      // The sign bit of a result is 0 only if the sign
+      // bit of a source operand is 0.
+      case BuiltinValueKind::USCheckedConversion:
+        Value = BI->getArguments()[0];
+        continue;
 
       // Sign bit of the operand is promoted.
       case BuiltinValueKind::SExt:

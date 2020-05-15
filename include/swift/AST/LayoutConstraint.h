@@ -18,11 +18,9 @@
 #define SWIFT_LAYOUT_CONSTRAINT_H
 
 #include "swift/AST/TypeAlignments.h"
-#include "swift/Basic/Debug.h"
 #include "swift/Basic/SourceLoc.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/FoldingSet.h"
-#include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/StringRef.h"
 #include "swift/AST/PrintOptions.h"
 
@@ -33,13 +31,12 @@ class ASTContext;
 class ASTPrinter;
 
 /// Describes a layout constraint information.
-enum class LayoutConstraintKind : uint8_t {
+enum class LayoutConstraintKind : unsigned char {
   // It is not a known layout constraint.
   UnknownLayout,
-  // It is a layout constraint representing a trivial type of a known size.
+  // It is a layout constraint representing a trivial type of an unknown size.
   TrivialOfExactSize,
-  // It is a layout constraint representing a trivial type of a size known to
-  // be no larger than a given size.
+  // It is a layout constraint representing a trivial type of an unknown size.
   TrivialOfAtMostSize,
   // It is a layout constraint representing a trivial type of an unknown size.
   Trivial,
@@ -153,25 +150,9 @@ class LayoutConstraintInfo : public llvm::FoldingSetNode {
     return SizeInBits;
   }
 
-  unsigned getAlignmentInBits() const {
-    return Alignment;
-  }
-
-  unsigned getAlignmentInBytes() const {
+  unsigned getAlignment() const {
     assert(isKnownSizeTrivial());
-    if (Alignment)
-      return Alignment;
-
-    // There is no explicitly defined alignment. Try to come up with a
-    // reasonable one.
-
-    // If the size is a power of 2, use it also for the default alignment.
-    auto SizeInBytes = getTrivialSizeInBytes();
-    if (llvm::isPowerOf2_32(SizeInBytes))
-      return SizeInBytes * 8;
-
-    // Otherwise assume the alignment of 8 bytes.
-    return 8*8;
+    return Alignment;
   }
 
   operator bool() const {
@@ -284,7 +265,7 @@ class LayoutConstraint {
 
   explicit operator bool() const { return Ptr != 0; }
 
-  SWIFT_DEBUG_DUMP;
+  void dump() const;
   void dump(raw_ostream &os, unsigned indent = 0) const;
 
   void print(raw_ostream &OS, const PrintOptions &PO = PrintOptions()) const;
@@ -292,10 +273,6 @@ class LayoutConstraint {
 
   /// Return the layout constraint as a string, for use in diagnostics only.
   std::string getString(const PrintOptions &PO = PrintOptions()) const;
-
-  friend llvm::hash_code hash_value(const LayoutConstraint &layout) {
-    return hash_value(layout.getPointer());
-  }
 
   bool operator==(LayoutConstraint rhs) const {
     if (isNull() && rhs.isNull())
@@ -350,10 +327,6 @@ public:
   bool hasLocation() const { return Loc.isValid(); }
   LayoutConstraint getLayoutConstraint() const { return Layout; }
 
-  void setLayoutConstraint(LayoutConstraint value) {
-    Layout = value;
-  }
-
   bool isNull() const { return Layout.isNull(); }
 
   LayoutConstraintLoc clone(ASTContext &ctx) const { return *this; }
@@ -406,7 +379,7 @@ template <> struct DenseMapInfo<swift::LayoutConstraint> {
 };
 
 // A LayoutConstraint is "pointer like".
-template <> struct PointerLikeTypeTraits<swift::LayoutConstraint> {
+template <> class PointerLikeTypeTraits<swift::LayoutConstraint> {
 public:
   static inline void *getAsVoidPointer(swift::LayoutConstraint I) {
     return (void *)I.getPointer();

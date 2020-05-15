@@ -3,11 +3,11 @@
 #if false || true && false
 undefinedIf()
 #else
-undefinedElse() // expected-error {{cannot find 'undefinedElse' in scope}}
+undefinedElse() // expected-error {{use of unresolved identifier 'undefinedElse'}}
 #endif
 
 #if false && true || true
-undefinedIf() // expected-error {{cannot find 'undefinedIf' in scope}}
+undefinedIf() // expected-error {{use of unresolved identifier 'undefinedIf'}}
 #else
 undefinedElse()
 #endif
@@ -15,7 +15,7 @@ undefinedElse()
 #if false || true && false || false
 undefinedIf()
 #else
-undefinedElse() // expected-error {{cannot find 'undefinedElse' in scope}}
+undefinedElse() // expected-error {{use of unresolved identifier 'undefinedElse'}}
 #endif
 
 // expected-error @+1 {{invalid conditional compilation expression}}

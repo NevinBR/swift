@@ -1,6 +1,5 @@
 // RUN: %empty-directory(%t)
-// RUN: %target-build-swift %s -o %t/a.out
-// RUN: %target-codesign %t/a.out
+// RUN: %target-build-swift %s -Xfrontend -enable-experimental-keypath-components -o %t/a.out
 // RUN: %target-run %t/a.out
 // REQUIRES: executable_test
 // REQUIRES: objc_interop
@@ -22,7 +21,7 @@ class Foo: NSObject {
   @objc subscript(x: Int) -> Foo { return self }
   @objc subscript(x: Bar) -> Foo { return self }
 
-  @objc dynamic var dynamic: Bar { fatalError() }
+  dynamic var dynamic: Bar { fatalError() }
 
   let storedLet = LifetimeTracked(0)
 }

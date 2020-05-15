@@ -1,3 +1,3 @@
-public struct CoolStruct {
-  public let coolFactor: Double
+struct CoolStruct {
+  let coolFactor: Double
 }

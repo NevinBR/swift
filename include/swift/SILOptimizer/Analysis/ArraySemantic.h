@@ -29,6 +29,7 @@ enum class ArrayCallKind {
   kGetCount,
   kGetCapacity,
   kGetElement,
+  kGetArrayOwner,
   kGetElementAddress,
   kMakeMutable,
   kMutateUnknown,
@@ -41,42 +42,24 @@ enum class ArrayCallKind {
   // a function, and it has a self parameter, make sure that it is defined
   // before this comment.
   kArrayInit,
-  kArrayUninitialized,
-  kArrayUninitializedIntrinsic
+  kArrayUninitialized
 };
-
-/// Return true is the given function is an array semantics call.
-ArrayCallKind getArraySemanticsKind(SILFunction *f);
 
 /// Wrapper around array semantic calls.
 class ArraySemanticsCall {
   ApplyInst *SemanticsCall;
 
-  void initialize(ApplyInst *apply, StringRef semanticString,
-                  bool matchPartialName);
-
 public:
-  /// Match calls with any array semantic.
-  template <class NodeTy>
-  ArraySemanticsCall(NodeTy node)
-    : ArraySemanticsCall(node, "array.", /*allow partial*/ true) {}
-
-  /// Match calls with a specific array semantic.
-  template <class NodeTy>
-  ArraySemanticsCall(NodeTy node, StringRef semanticName)
-    : ArraySemanticsCall(node, semanticName, /*allow partial*/ false) {}
-
   /// Match array semantic calls.
-  ArraySemanticsCall(ApplyInst *apply, StringRef SemanticStr,
+  ArraySemanticsCall(ValueBase *V, StringRef SemanticStr,
                      bool MatchPartialName);
 
-  /// Match array semantic calls.
-  ArraySemanticsCall(SILInstruction *I, StringRef semanticName,
-                     bool matchPartialName);
+  /// Match any array semantics call.
+  ArraySemanticsCall(ValueBase *V) : ArraySemanticsCall(V, "array.", true) {}
 
-  /// Match array semantic calls.
-  ArraySemanticsCall(SILValue V, StringRef semanticName,
-                     bool matchPartialName);
+  /// Match a specific array semantic call.
+  ArraySemanticsCall(ValueBase *V, StringRef SemanticStr)
+      : ArraySemanticsCall(V, SemanticStr, false) {}
 
   /// Can we hoist this call.
   bool canHoist(SILInstruction *To, DominanceInfo *DT) const;
@@ -155,10 +138,10 @@ public:
 
   /// Replace a call to append(contentsOf: ) with a series of
   /// append(element: ) calls.
-  bool replaceByAppendingValues(SILFunction *AppendFn,
+  bool replaceByAppendingValues(SILModule &M, SILFunction *AppendFn,
                                 SILFunction *ReserveFn,
                                 const llvm::SmallVectorImpl<SILValue> &Vals,
-                                SubstitutionMap Subs);
+                                ArrayRef<Substitution> Subs);
 
   /// Hoist the call to the insert point.
   void hoist(SILInstruction *InsertBefore, DominanceInfo *DT) {
@@ -173,8 +156,6 @@ public:
   /// Get the semantics call as an ApplyInst.
   operator ApplyInst *() const { return SemanticsCall; }
 
-  SILValue getCallResult() const { return SemanticsCall; }
-
   /// Is this a semantics call.
   operator bool() const { return SemanticsCall != nullptr; }
 
@@ -186,21 +167,6 @@ public:
   
   /// Can this function be inlined by the early inliner.
   bool canInlineEarly() const;
-
-  /// If this is a call to  ArrayUninitialized (or
-  /// ArrayUninitializedInstrinsic), identify the instructions that store
-  /// elements into the array indices. For every index, add the store
-  /// instruction that stores to that index to \p ElementStoreMap.
-  ///
-  /// \returns true iff this is an "array.uninitialized" semantic call, and the
-  /// stores into the array indices are identified and the \p ElementStoreMap is
-  /// populated.
-  ///
-  /// Note that this function does not support array initializations that use
-  /// copy_addr, which implies that arrays with address-only types would not
-  /// be recognized by this function as yet.
-  bool mapInitializationStores(
-      llvm::DenseMap<uint64_t, StoreInst *> &ElementStoreMap);
 
 protected:
   /// Validate the signature of this call.

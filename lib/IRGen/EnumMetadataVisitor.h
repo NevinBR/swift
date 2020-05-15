@@ -49,27 +49,21 @@ public:
 
     // EnumMetadata header.
     asImpl().addNominalTypeDescriptor();
+    asImpl().addParentMetadataRef();
 
-    // Everything after this is type-specific.
-    asImpl().noteStartOfTypeSpecificMembers();
+    // If changing this layout, you must update the magic number in
+    // emitParentMetadataRef.
 
-    // Generic arguments.
-    // This must always be the first piece of trailing data.
-    asImpl().addGenericFields(Target);
+    // Instantiation-specific.
+
+    // Add fields for generic cases.
+    asImpl().addGenericFields(Target, Target->getDeclaredTypeInContext());
 
     // Reserve a word to cache the payload size if the type has dynamic layout.
     auto &strategy = getEnumImplStrategy(IGM,
-           Target->getDeclaredTypeInContext()->getCanonicalType());
+           Target->DeclContext::getDeclaredTypeInContext()->getCanonicalType());
     if (strategy.needsPayloadSizeInMetadata())
       asImpl().addPayloadSize();
-
-    if (asImpl().hasTrailingFlags())
-      asImpl().addTrailingFlags();
-  }
-
-  bool hasTrailingFlags() {
-    return Target->isGenericContext() &&
-           IGM.shouldPrespecializeGenericMetadata();
   }
 };
 
@@ -78,8 +72,7 @@ public:
 /// pointer-sized chunks) into the metadata for the next field.
 template <class Impl>
 class EnumMetadataScanner : public EnumMetadataVisitor<Impl> {
-  using super = EnumMetadataVisitor<Impl>;
-
+  typedef EnumMetadataVisitor<Impl> super;
 protected:
   Size NextOffset = Size(0);
 
@@ -90,17 +83,17 @@ public:
   void addMetadataFlags() { addPointer(); }
   void addValueWitnessTable() { addPointer(); }
   void addNominalTypeDescriptor() { addPointer(); }
-  void addGenericArgument(GenericRequirement requirement) { addPointer(); }
-  void addGenericWitnessTable(GenericRequirement requirement) { addPointer(); }
+  void addParentMetadataRef() { addPointer(); }
+  void addGenericArgument(CanType argument) { addPointer(); }
+  void addGenericWitnessTable(CanType argument, ProtocolConformanceRef conf) {
+    addPointer();
+  }
   void addPayloadSize() { addPointer(); }
-  void noteStartOfTypeSpecificMembers() {}
-  void addTrailingFlags() { addInt64(); }
 
 private:
   void addPointer() {
     NextOffset += super::IGM.getPointerSize();
   }
-  void addInt64() { NextOffset += Size(8); }
 };
 
 } // end namespace irgen

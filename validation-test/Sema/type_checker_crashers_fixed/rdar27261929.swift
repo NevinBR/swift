@@ -1,9 +1,4 @@
-// RUN: %target-swift-frontend %s -typecheck -verify
-
-// Note: this used to type check successfully in Swift 3. In Swift 4, it produces
-// an error, so probably this test isn't testing anything useful anymore, since
-// we already exercise many such cases in test/Constraints/tuple_arguments.swift.
-// However, there's no harm in keeping it around in case it exposes other bugs later.
+// RUN: %target-swift-frontend %s -typecheck
 
 public enum R<V> {
   case value(V)
@@ -19,7 +14,7 @@ public struct P<I, O> {
   public func test() -> P<I, [O]> {
     return P<I, [O]> { input in
       var output: [O] = []
-      _ = R<([O], I)>.value(output, input) // expected-error {{enum case 'value' expects a single parameter of type '([O], I)'}}
+      _ = R<([O], I)>.value(output, input)
       return R<([O], I)>.value((output, input))
     }
   }

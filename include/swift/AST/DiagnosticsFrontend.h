@@ -11,7 +11,7 @@
 //===----------------------------------------------------------------------===//
 //
 /// \file
-/// This file defines diagnostics for the frontend.
+/// \brief This file defines diagnostics for the frontend.
 //
 //===----------------------------------------------------------------------===//
 

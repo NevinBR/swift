@@ -12,8 +12,6 @@ Functions:
 Typedefs:
 - Name: IAMStruct1APINoteType
   SwiftName: Struct1.NewApiNoteType
-- Name: IAMBadInnerIntAPINotes
-  SwiftName: IAMNonexistent.Inner2
 SwiftVersions:
 - Version: 3
   Globals:

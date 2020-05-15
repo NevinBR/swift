@@ -61,12 +61,6 @@ void swift::Demangle::Node::dump() {
 }
 
 void Demangler::dump() {
-  for (unsigned Idx = 0; Idx < Substitutions.size(); ++Idx) {
-    fprintf(stderr, "Substitution[%c]:\n", Idx + 'A');
-    Substitutions[Idx]->dump();
-    fprintf(stderr, "\n");
-  }
-
   for (unsigned Idx = 0; Idx < NodeStack.size(); ++Idx) {
     fprintf(stderr, "NodeStack[%u]:\n", Idx);
     NodeStack[Idx]->dump();

@@ -31,18 +31,22 @@ void FixitApplyDiagnosticConsumer::printResult(llvm::raw_ostream &OS) const {
   RewriteBuf.write(OS);
 }
 
-void FixitApplyDiagnosticConsumer::handleDiagnostic(
-    SourceManager &SM, const DiagnosticInfo &Info) {
-  if (Info.Loc.isInvalid()) {
+void FixitApplyDiagnosticConsumer::
+handleDiagnostic(SourceManager &SM, SourceLoc Loc,
+                 DiagnosticKind Kind,
+                 StringRef FormatString,
+                 ArrayRef<DiagnosticArgument> FormatArgs,
+                 const DiagnosticInfo &Info) {
+  if (Loc.isInvalid()) {
     return;
   }
-  auto ThisBufferID = SM.findBufferContainingLoc(Info.Loc);
+  auto ThisBufferID = SM.findBufferContainingLoc(Loc);
   auto ThisBufferName = SM.getIdentifierForBuffer(ThisBufferID);
   if (ThisBufferName != BufferName) {
     return;
   }
 
-  if (!shouldTakeFixit(Info)) {
+  if (!shouldTakeFixit(Kind, Info)) {
     return;
   }
 
@@ -51,27 +55,15 @@ void FixitApplyDiagnosticConsumer::handleDiagnostic(
     auto Offset = SM.getLocOffsetInBuffer(Fixit.getRange().getStart(),
                                           ThisBufferID);
     auto Length = Fixit.getRange().getByteLength();
-    auto Text = Fixit.getText();
 
-    // Ignore meaningless Fix-its.
-    if (Length == 0 && Text.size() == 0)
-      continue;
-
-    // Ignore pre-applied equivalents.
-    Replacement R{Offset, Length, Text.str()};
+    Replacement R { Offset, Length, Fixit.getText() };
     if (Replacements.count(R)) {
-      continue;
+      return;
     } else {
       Replacements.insert(R);
     }
 
-    if (Length == 0) {
-      RewriteBuf.InsertText(Offset, Text);
-    } else if (Text.size() == 0) {
-      RewriteBuf.RemoveText(Offset, Length);
-    } else {
-      RewriteBuf.ReplaceText(Offset, Length, Text);
-    }
+    RewriteBuf.ReplaceText(Offset, Length, Fixit.getText());
     ++NumFixitsApplied;
   }
 }

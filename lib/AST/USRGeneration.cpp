@@ -11,13 +11,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "swift/AST/ASTContext.h"
-#include "swift/AST/ClangModuleLoader.h"
 #include "swift/AST/Module.h"
 #include "swift/AST/USRGeneration.h"
 #include "swift/AST/ASTMangler.h"
 #include "swift/AST/SwiftNameTranslation.h"
-#include "swift/AST/TypeCheckRequests.h"
-#include "swift/AST/USRGeneration.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
@@ -37,7 +34,7 @@ static inline StringRef getUSRSpacePrefix() {
 bool ide::printTypeUSR(Type Ty, raw_ostream &OS) {
   assert(!Ty->hasArchetype() && "cannot have contextless archetypes mangled.");
   Mangle::ASTMangler Mangler;
-  OS << Mangler.mangleTypeAsUSR(Ty->getRValueType());
+  OS << Mangler.mangleTypeForDebugger(Ty->getRValueType(), nullptr, nullptr);
   return false;
 }
 
@@ -91,7 +88,7 @@ static bool printObjCUSRFragment(const ValueDecl *D, StringRef ObjCName,
 static bool printObjCUSRContext(const Decl *D, raw_ostream &OS) {
   OS << clang::index::getUSRSpacePrefix();
   auto *DC = D->getDeclContext();
-  if (auto *Parent = DC->getSelfNominalTypeDecl()) {
+  if (auto *Parent = DC->getAsNominalTypeOrNominalTypeExtensionContext()) {
     auto *extContextD = dyn_cast<ExtensionDecl>(DC);
     auto ObjCName = objc_translation::getObjCNameForSwiftDecl(Parent);
     if (printObjCUSRFragment(Parent, ObjCName.first.str(), extContextD, OS))
@@ -108,10 +105,10 @@ static bool printObjCUSRForAccessor(const AbstractStorageDecl *ASD,
 
   ObjCSelector Selector;
   switch (Kind) {
-    case swift::AccessorKind::Get:
+    case swift::AccessorKind::IsGetter:
       Selector = ASD->getObjCGetterSelector();
       break;
-    case swift::AccessorKind::Set:
+    case swift::AccessorKind::IsSetter:
       Selector = ASD->getObjCSetterSelector();
       break;
     default:
@@ -155,29 +152,27 @@ static bool shouldUseObjCUSR(const Decl *D) {
   if (const auto *VD = dyn_cast<ValueDecl>(D)) {
     if (isa<EnumElementDecl>(VD))
       return true;
-    return objc_translation::isVisibleToObjC(VD, AccessLevel::Internal);
+    return objc_translation::isVisibleToObjC(VD, Accessibility::Internal);
   }
 
   if (const auto *ED = dyn_cast<ExtensionDecl>(D)) {
-    if (auto baseClass = ED->getSelfClassDecl()) {
-      return shouldUseObjCUSR(baseClass) && !baseClass->isForeign();
+    if (auto ExtendedType = ED->getExtendedType()) {
+      auto baseClass = ExtendedType->getClassOrBoundGenericClass();
+      return baseClass && shouldUseObjCUSR(baseClass) && !baseClass->isForeign();
     }
   }
   return false;
 }
 
-std::string
-swift::USRGenerationRequest::evaluate(Evaluator &evaluator,
-                                      const ValueDecl *D) const {
-  if (auto *VD = dyn_cast<VarDecl>(D))
-    D = VD->getCanonicalVarDecl();
-
-  if (!D->hasName() && !isa<ParamDecl>(D) && !isa<AccessorDecl>(D))
-    return std::string(); // Ignore.
+bool ide::printDeclUSR(const ValueDecl *D, raw_ostream &OS) {
+  if (!D->hasName() && !isa<ParamDecl>(D) &&
+      (!isa<FuncDecl>(D) ||
+       cast<FuncDecl>(D)->getAccessorKind() == AccessorKind::NotAccessor))
+    return true; // Ignore.
   if (D->getModuleContext()->isBuiltinModule())
-    return std::string(); // Ignore.
+    return true; // Ignore.
   if (isa<ModuleDecl>(D))
-    return std::string(); // Ignore.
+    return true; // Ignore.
 
   auto interpretAsClangNode = [](const ValueDecl *D)->ClangNode {
     ClangNode ClangN = D->getClangNode();
@@ -208,80 +203,45 @@ swift::USRGenerationRequest::evaluate(Evaluator &evaluator,
     return ClangN;
   };
 
-  llvm::SmallString<128> Buffer;
-  llvm::raw_svector_ostream OS(Buffer);
-
   if (ClangNode ClangN = interpretAsClangNode(D)) {
+    llvm::SmallString<128> Buf;
     if (auto ClangD = ClangN.getAsDecl()) {
-      bool Ignore = clang::index::generateUSRForDecl(ClangD, Buffer);
-      if (!Ignore) {
-        return std::string(Buffer.str());
-      } else {
-        return std::string();
-      }
+      bool Ignore = clang::index::generateUSRForDecl(ClangD, Buf);
+      if (!Ignore)
+        OS << Buf.str();
+      return Ignore;
     }
 
     auto &Importer = *D->getASTContext().getClangModuleLoader();
 
     auto ClangMacroInfo = ClangN.getAsMacro();
     bool Ignore = clang::index::generateUSRForMacro(
-        D->getBaseIdentifier().str(),
+        D->getBaseName().getIdentifier().str(),
         ClangMacroInfo->getDefinitionLoc(),
-        Importer.getClangASTContext().getSourceManager(), Buffer);
+        Importer.getClangASTContext().getSourceManager(), Buf);
     if (!Ignore)
-      return std::string(Buffer.str());
-    else
-      return std::string();
+      OS << Buf.str();
+    return Ignore;
   }
 
   if (shouldUseObjCUSR(D)) {
-    if (printObjCUSR(D, OS)) {
-      return std::string();
-    } else {
-      return std::string(OS.str());
-    }
+    return printObjCUSR(D, OS);
   }
 
-  auto declIFaceTy = D->getInterfaceType();
+  if (!D->hasInterfaceType())
+    return true;
 
   // Invalid code.
-  if (declIFaceTy.findIf([](Type t) -> bool {
+  if (D->getInterfaceType().findIf([](Type t) -> bool {
         return t->is<ModuleType>();
       }))
-    return std::string();
+    return true;
 
   Mangle::ASTMangler NewMangler;
-  return NewMangler.mangleDeclAsUSR(D, getUSRSpacePrefix());
-}
+  std::string Mangled = NewMangler.mangleDeclAsUSR(D, getUSRSpacePrefix());
 
-std::string
-swift::MangleLocalTypeDeclRequest::evaluate(Evaluator &evaluator,
-                                            const TypeDecl *D) const {
-  if (isa<ModuleDecl>(D))
-    return std::string(); // Ignore.
+  OS << Mangled;
 
-  Mangle::ASTMangler NewMangler;
-  return NewMangler.mangleLocalTypeDecl(D);
-}
-
-bool ide::printModuleUSR(ModuleEntity Mod, raw_ostream &OS) {
-  if (auto *D = Mod.getAsSwiftModule()) {
-    StringRef moduleName = D->getName().str();
-    return clang::index::generateFullUSRForTopLevelModuleName(moduleName, OS);
-  } else if (auto ClangM = Mod.getAsClangModule()) {
-    return clang::index::generateFullUSRForModule(ClangM, OS);
-  } else {
-    return true;
-  }
-}
-
-bool ide::printValueDeclUSR(const ValueDecl *D, raw_ostream &OS) {
-  auto result = evaluateOrDefault(D->getASTContext().evaluator,
-                                  USRGenerationRequest { D },
-                                  std::string());
-  if (result.empty())
-    return true;
-  OS << result;
   return false;
 }
 
@@ -306,7 +266,7 @@ bool ide::printAccessorUSR(const AbstractStorageDecl *D, AccessorKind AccKind,
 
   Mangle::ASTMangler NewMangler;
   std::string Mangled = NewMangler.mangleAccessorEntityAsUSR(AccKind,
-                          SD, getUSRSpacePrefix(), SD->isStatic());
+                          AddressorKind::NotAddressor, SD, getUSRSpacePrefix());
 
   OS << Mangled;
 
@@ -314,8 +274,7 @@ bool ide::printAccessorUSR(const AbstractStorageDecl *D, AccessorKind AccKind,
 }
 
 bool ide::printExtensionUSR(const ExtensionDecl *ED, raw_ostream &OS) {
-  auto nominal = ED->getExtendedNominal();
-  if (!nominal)
+  if (ED->getExtendedType().isNull())
     return true;
 
   // We make up a unique usr for each extension by combining a prefix
@@ -323,31 +282,21 @@ bool ide::printExtensionUSR(const ExtensionDecl *ED, raw_ostream &OS) {
   for (auto D : ED->getMembers()) {
     if (auto VD = dyn_cast<ValueDecl>(D)) {
       OS << getUSRSpacePrefix() << "e:";
-      return printValueDeclUSR(VD, OS);
+      return printDeclUSR(VD, OS);
     }
   }
-  OS << getUSRSpacePrefix() << "e:";
-  printValueDeclUSR(nominal, OS);
+  if (ED->getExtendedType() && ED->getExtendedType()->getAnyNominal()) {
+    OS << getUSRSpacePrefix() << "e:";
+    printDeclUSR(ED->getExtendedType()->getAnyNominal(), OS);
+  } else {
+    return true;
+  }
   for (auto Inherit : ED->getInherited()) {
     if (auto T = Inherit.getType()) {
       if (T->getAnyNominal())
-        return printValueDeclUSR(T->getAnyNominal(), OS);
+        return printDeclUSR(T->getAnyNominal(), OS);
     }
   }
   return true;
 }
 
-bool ide::printDeclUSR(const Decl *D, raw_ostream &OS) {
-  if (auto *VD = dyn_cast<ValueDecl>(D)) {
-    if (ide::printValueDeclUSR(VD, OS)) {
-      return true;
-    }
-  } else if (auto *ED = dyn_cast<ExtensionDecl>(D)) {
-    if (ide::printExtensionUSR(ED, OS)) {
-      return true;
-    }
-  } else {
-    return true;
-  }
-  return false;
-}

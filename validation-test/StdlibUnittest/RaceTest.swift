@@ -1,18 +1,12 @@
 // RUN: %target-build-swift -Xfrontend -disable-access-control -module-name a %s -o %t.out
 // RUN: %target-run %t.out | %FileCheck %s
-// REQUIRES: stress_test
 // UNSUPPORTED: nonatomic_rc
 
-import SwiftPrivate
 import StdlibUnittest
-#if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
-  import Darwin
-#elseif os(Linux) || os(FreeBSD) || os(PS4) || os(Android) || os(Cygwin) || os(Haiku)
-  import Glibc
-#elseif os(Windows)
-  import MSVCRT
-#else
-#error("Unsupported platform")
+#if os(OSX) || os(iOS) || os(watchOS) || os(tvOS)
+import Darwin
+#elseif os(Linux) || os(FreeBSD) || os(PS4) || os(Android)
+import Glibc
 #endif
 
 

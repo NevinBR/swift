@@ -18,7 +18,7 @@ public struct ChangeSize {
   private var _version: T
 }
 
-@frozen public struct ChangeFieldOffsetsOfFixedLayout {
+@_fixed_layout public struct ChangeFieldOffsetsOfFixedLayout {
   public init(major: Int32, minor: Int32, patch: Int32) {
     self.major = ChangeSize(version: major)
     self.minor = ChangeSize(version: minor)

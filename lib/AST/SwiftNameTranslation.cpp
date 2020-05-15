@@ -16,7 +16,6 @@
 
 #include "swift/AST/SwiftNameTranslation.h"
 #include "swift/AST/ASTContext.h"
-#include "swift/AST/Module.h"
 #include "swift/AST/Decl.h"
 #include "swift/AST/LazyResolver.h"
 #include "swift/Basic/StringExtras.h"
@@ -49,35 +48,7 @@ getNameForObjC(const ValueDecl *VD, CustomNamesOnly_t customNamesOnly) {
         return anonTypedef->getIdentifier()->getName();
   }
 
-  return VD->getBaseIdentifier().str();
-}
-
-std::string swift::objc_translation::
-getErrorDomainStringForObjC(const EnumDecl *ED) {
-  // Should have already been diagnosed as diag::objc_enum_generic.
-  assert(!ED->isGenericContext() && "Trying to bridge generic enum error to Obj-C");
-
-  // Clang decls have custom domains, but we shouldn't see them here anyway.
-  assert(!ED->getClangDecl() && "clang decls shouldn't be re-exported");
-
-  SmallVector<const NominalTypeDecl *, 4> outerTypes;
-  for (const NominalTypeDecl * D = ED;
-       D != nullptr;
-       D = D->getDeclContext()->getSelfNominalTypeDecl()) {
-    // We don't currently PrintAsObjC any types whose parents are private or
-    // fileprivate.
-    assert(D->getFormalAccess() >= AccessLevel::Internal &&
-            "We don't currently append private discriminators");
-    outerTypes.push_back(D);
-  }
-
-  std::string buffer = ED->getParentModule()->getNameStr().str();
-  for (auto D : llvm::reverse(outerTypes)) {
-    buffer += ".";
-    buffer += D->getNameStr();
-  }
-
-  return buffer;
+  return VD->getBaseName().getIdentifier().str();
 }
 
 bool swift::objc_translation::
@@ -88,9 +59,9 @@ printSwiftEnumElemNameInObjC(const EnumElementDecl *EL, llvm::raw_ostream &OS,
     OS << ElemName;
     return true;
   }
-  OS << getNameForObjC(EL->getDeclContext()->getSelfEnumDecl());
+  OS << getNameForObjC(EL->getDeclContext()->getAsEnumOrEnumExtensionContext());
   if (PreferredName.empty())
-    ElemName = EL->getBaseIdentifier().str();
+    ElemName = EL->getName().str();
   else
     ElemName = PreferredName.str();
 
@@ -102,25 +73,20 @@ printSwiftEnumElemNameInObjC(const EnumElementDecl *EL, llvm::raw_ostream &OS,
 std::pair<Identifier, ObjCSelector> swift::objc_translation::
 getObjCNameForSwiftDecl(const ValueDecl *VD, DeclName PreferredName){
   ASTContext &Ctx = VD->getASTContext();
-  Identifier BaseName;
-  if (PreferredName) {
-    auto BaseNameStr = PreferredName.getBaseName().userFacingName();
-    BaseName = Ctx.getIdentifier(BaseNameStr);
-  }
+  LazyResolver *Resolver = Ctx.getLazyResolver();
   if (auto *FD = dyn_cast<AbstractFunctionDecl>(VD)) {
-    return {Identifier(), FD->getObjCSelector(PreferredName)};
+    return {Identifier(), FD->getObjCSelector(Resolver, PreferredName)};
   } else if (auto *VAD = dyn_cast<VarDecl>(VD)) {
     if (PreferredName)
-      return {BaseName, ObjCSelector()};
+      return {PreferredName.getBaseIdentifier(), ObjCSelector()};
     return {VAD->getObjCPropertyName(), ObjCSelector()};
   } else if (auto *SD = dyn_cast<SubscriptDecl>(VD)) {
-    return getObjCNameForSwiftDecl(SD->getParsedAccessor(AccessorKind::Get),
-                                   PreferredName);
+    return getObjCNameForSwiftDecl(SD->getGetter(), PreferredName);
   } else if (auto *EL = dyn_cast<EnumElementDecl>(VD)) {
     SmallString<64> Buffer;
     {
       llvm::raw_svector_ostream OS(Buffer);
-      printSwiftEnumElemNameInObjC(EL, OS, BaseName);
+      printSwiftEnumElemNameInObjC(EL, OS, PreferredName.getBaseIdentifier());
     }
     return {Ctx.getIdentifier(Buffer.str()), ObjCSelector()};
   } else {
@@ -128,18 +94,18 @@ getObjCNameForSwiftDecl(const ValueDecl *VD, DeclName PreferredName){
     StringRef Name = getNameForObjC(VD, CustomNamesOnly);
     if (!Name.empty())
       return {Ctx.getIdentifier(Name), ObjCSelector()};
-    if (PreferredName)
-      return {BaseName, ObjCSelector()};
+    if (!PreferredName.getBaseName().empty())
+      return {PreferredName.getBaseIdentifier(), ObjCSelector()};
     return {Ctx.getIdentifier(getNameForObjC(VD)), ObjCSelector()};
   }
 }
 
 bool swift::objc_translation::
-isVisibleToObjC(const ValueDecl *VD, AccessLevel minRequiredAccess,
+isVisibleToObjC(const ValueDecl *VD, Accessibility minRequiredAccess,
                 bool checkParent) {
   if (!(VD->isObjC() || VD->getAttrs().hasAttribute<CDeclAttr>()))
     return false;
-  if (VD->getFormalAccess() >= minRequiredAccess) {
+  if (VD->hasAccessibility() && VD->getFormalAccess() >= minRequiredAccess) {
     return true;
   } else if (checkParent) {
     if (auto ctor = dyn_cast<ConstructorDecl>(VD)) {

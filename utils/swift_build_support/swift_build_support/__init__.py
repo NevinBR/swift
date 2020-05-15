@@ -14,3 +14,17 @@
 # utils/swift_build_support/ directory as a module.
 #
 # ----------------------------------------------------------------------------
+
+from .which import which
+
+__all__ = [
+    "cmake",
+    "debug",
+    "diagnostics",
+    "migration",
+    "tar",
+    "targets",
+    "toolchain",
+    "which",
+    "xcrun",
+]

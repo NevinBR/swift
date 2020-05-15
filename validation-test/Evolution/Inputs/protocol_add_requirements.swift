@@ -19,7 +19,7 @@ public protocol AddMethodsProtocol {
   func unimportantOperation() -> Element
 
 #if AFTER
-  @_weakLinked func uselessOperation() -> Element
+  func uselessOperation() -> Element
 #endif
 }
 
@@ -29,7 +29,7 @@ extension AddMethodsProtocol {
   }
 
 #if AFTER
-  @_weakLinked public func uselessOperation() -> Element {
+  public func uselessOperation() -> Element {
     return unimportantOperation().increment()
   }
 #endif
@@ -56,12 +56,12 @@ public protocol AddConstructorsProtocol {
   init(name: String)
 
 #if AFTER
-  @_weakLinked init?(nickname: String)
+  init?(nickname: String)
 #endif
 }
 
 extension AddConstructorsProtocol {
-  @_weakLinked public init?(nickname: String) {
+  public init?(nickname: String) {
     if nickname == "" {
       return nil
     }
@@ -85,15 +85,15 @@ public protocol AddPropertiesProtocol {
   var maxRPM: Int { get set }
 
 #if AFTER
-  @_weakLinked var maxSafeSpeed: Int { get set }
-  @_weakLinked var minSafeSpeed: Int { get nonmutating set }
-  @_weakLinked var redLine: Int { mutating get set }
+  var maxSafeSpeed: Int { get set }
+  var minSafeSpeed: Int { get nonmutating set }
+  var redLine: Int { mutating get set }
 #endif
 }
 
 extension AddPropertiesProtocol {
 #if AFTER
-  @_weakLinked public var maxSafeSpeed: Int {
+  public var maxSafeSpeed: Int {
     get {
       return topSpeed / 2
     }
@@ -102,7 +102,7 @@ extension AddPropertiesProtocol {
     }
   }
 
-  @_weakLinked public var minSafeSpeed: Int {
+  public var minSafeSpeed: Int {
     get {
       return topSpeed / 4
     }
@@ -111,7 +111,7 @@ extension AddPropertiesProtocol {
     }
   }
 
-  @_weakLinked public var redLine: Int {
+  public var redLine: Int {
     get {
       return maxRPM - 2000
     }
@@ -149,16 +149,16 @@ public protocol AddSubscriptProtocol {
   associatedtype Key
   associatedtype Value
 
-  func get(key: Key) -> Value
-  mutating func set(key: Key, value: Value)
+  func get(key key: Key) -> Value
+  mutating func set(key key: Key, value: Value)
 
 #if AFTER
-  @_weakLinked subscript(key: Key) -> Value { get set }
+  subscript(key: Key) -> Value { get set }
 #endif
 }
 
 extension AddSubscriptProtocol {
-  @_weakLinked public subscript(key: Key) -> Value {
+  public subscript(key: Key) -> Value {
     get {
       return get(key: key)
     }
@@ -173,45 +173,5 @@ public func doSomething<T : AddSubscriptProtocol>(_ t: inout T, k1: T.Key, k2: T
   t.set(key: k1, value: t.get(key: k2))
 #else
   t[k1] = t[k2]
-#endif
-}
-
-public protocol SimpleProtocol {
-  static func getString() -> String
-}
-
-public struct Wrapper<T>: SimpleProtocol {
-  public static func getString() -> String {
-    return "I am a wrapper for \(T.self)"
-  }
-}
-
-public protocol AddAssocTypesProtocol {
-#if AFTER
-  @_weakLinked associatedtype AssocType = Self
-  @_weakLinked associatedtype AssocType2: SimpleProtocol = Wrapper<AssocType>
-#endif
-}
-
-public func doSomethingWithAssocTypes<T: AddAssocTypesProtocol>(_ value: T)
-    -> String {
-#if AFTER
-  return String(describing: T.AssocType2.self)
-#else
-  return "there are no associated types yet"
-#endif
-}
-
-public func doSomethingWithAssocConformances<T: AddAssocTypesProtocol>(_ value: T)
-    -> String {
-#if AFTER
-  let at2: Any.Type = T.AssocType2.self
-  if let simpleType = at2 as? SimpleProtocol.Type {
-    return simpleType.getString()
-  }
-  
-  return "missing associated conformance"
-#else
-  return "there are no associated conformances yet"
 #endif
 }

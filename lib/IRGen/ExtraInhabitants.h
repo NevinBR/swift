@@ -37,14 +37,14 @@ class IRGenModule;
 /// Return the number of extra inhabitant representations for heap objects,
 /// that is, the number of invalid heap object pointer values that can be used
 /// to represent enum tags for enums involving a reference type as a payload.
-unsigned getHeapObjectExtraInhabitantCount(const IRGenModule &IGM);
+unsigned getHeapObjectExtraInhabitantCount(IRGenModule &IGM);
   
 /// Return an indexed extra inhabitant constant for a heap object pointer.
 ///
 /// If the pointer appears within a larger aggregate, the 'bits' and 'offset'
 /// arguments can be used to position the inhabitant within the larger integer
 /// constant.
-llvm::APInt getHeapObjectFixedExtraInhabitantValue(const IRGenModule &IGM,
+llvm::APInt getHeapObjectFixedExtraInhabitantValue(IRGenModule &IGM,
                                                    unsigned bits,
                                                    unsigned index,
                                                    unsigned offset);

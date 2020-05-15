@@ -7,7 +7,6 @@ if(TARGET swiftDemangle)
   )
   
   target_link_libraries(SwiftDemangleTests
-    PRIVATE
     swiftDemangle
   )
 endif()

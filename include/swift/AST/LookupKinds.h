@@ -26,8 +26,6 @@ enum class NLKind {
   QualifiedLookup
 };
 
-void simple_display(llvm::raw_ostream &out, NLKind kind);
-
 /// Constants used to customize name lookup.
 enum NLOptions : unsigned {
   /// Consider declarations within protocols to which the context type conforms.
@@ -39,28 +37,29 @@ enum NLOptions : unsigned {
   /// Remove overridden declarations from the set of results.
   NL_RemoveOverridden = 0x08,
 
-  /// Don't check access when doing lookup into a type.
+  /// For existentials involving the special \c AnyObject protocol,
+  /// allow lookups to find members of all classes.
+  NL_DynamicLookup = 0x10,
+
+  /// Don't check accessibility when doing lookup into a type.
   ///
   /// This option is not valid when performing lookup into a module.
-  NL_IgnoreAccessControl = 0x10,
+  NL_IgnoreAccessibility = 0x20,
 
   /// This lookup is known to be a non-cascading dependency, i.e. one that does
   /// not affect downstream files.
   ///
   /// \see NL_KnownDependencyMask
-  NL_KnownNonCascadingDependency = 0x20,
+  NL_KnownNonCascadingDependency = 0x40,
 
   /// This lookup is known to be a cascading dependency, i.e. one that can
   /// affect downstream files.
   ///
   /// \see NL_KnownDependencyMask
-  NL_KnownCascadingDependency = 0x40,
+  NL_KnownCascadingDependency = 0x80,
 
   /// This lookup should only return type declarations.
-  NL_OnlyTypes = 0x80,
-
-  /// Include synonyms declared with @_implements()
-  NL_IncludeAttributeImplements = 0x100,
+  NL_OnlyTypes = 0x100,
 
   /// This lookup is known to not add any additional dependencies to the
   /// primary source file.
@@ -104,8 +103,6 @@ static inline NLOptions &operator&=(NLOptions &lhs, NLOptions rhs) {
 static inline NLOptions operator~(NLOptions value) {
   return NLOptions(~(unsigned)value);
 }
-
-void simple_display(llvm::raw_ostream &out, NLOptions options);
 
 } // end namespace swift
 

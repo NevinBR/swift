@@ -19,20 +19,17 @@
 #include "swift/AST/ASTContext.h"
 #include "swift/AST/ASTPrinter.h"
 #include "swift/AST/Decl.h"
-#include "swift/AST/DiagnosticSuppression.h"
 #include "swift/AST/Module.h"
 #include "swift/AST/Pattern.h"
 #include "swift/AST/PrintOptions.h"
-#include "swift/AST/SourceFile.h"
 #include "swift/AST/TypeRepr.h"
 #include "swift/Basic/SourceManager.h"
-#include "swift/Config.h"
 #include "swift/Parse/Lexer.h" // bad dependency
+#include "swift/Config.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/Twine.h"
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/Format.h"
 
 using namespace swift;
 
@@ -57,10 +54,9 @@ struct StoredDiagnosticInfo {
   bool pointsToFirstBadToken : 1;
   bool isFatal : 1;
 
-  constexpr StoredDiagnosticInfo(DiagnosticKind k, bool firstBadToken,
-                                 bool fatal)
+  StoredDiagnosticInfo(DiagnosticKind k, bool firstBadToken, bool fatal)
       : kind(k), pointsToFirstBadToken(firstBadToken), isFatal(fatal) {}
-  constexpr StoredDiagnosticInfo(DiagnosticKind k, DiagnosticOptions opts)
+  StoredDiagnosticInfo(DiagnosticKind k, DiagnosticOptions opts)
       : StoredDiagnosticInfo(k,
                              opts == DiagnosticOptions::PointsToFirstBadToken,
                              opts == DiagnosticOptions::Fatal) {}
@@ -76,69 +72,26 @@ enum LocalDiagID : uint32_t {
 } // end anonymous namespace
 
 // TODO: categorization
-static const constexpr StoredDiagnosticInfo storedDiagnosticInfos[] = {
+static StoredDiagnosticInfo storedDiagnosticInfos[] = {
 #define ERROR(ID, Options, Text, Signature)                                    \
   StoredDiagnosticInfo(DiagnosticKind::Error, DiagnosticOptions::Options),
 #define WARNING(ID, Options, Text, Signature)                                  \
   StoredDiagnosticInfo(DiagnosticKind::Warning, DiagnosticOptions::Options),
 #define NOTE(ID, Options, Text, Signature)                                     \
   StoredDiagnosticInfo(DiagnosticKind::Note, DiagnosticOptions::Options),
-#define REMARK(ID, Options, Text, Signature)                                   \
-  StoredDiagnosticInfo(DiagnosticKind::Remark, DiagnosticOptions::Options),
 #include "swift/AST/DiagnosticsAll.def"
 };
 static_assert(sizeof(storedDiagnosticInfos) / sizeof(StoredDiagnosticInfo) ==
                   LocalDiagID::NumDiags,
               "array size mismatch");
 
-static constexpr const char * const diagnosticStrings[] = {
+static const char *diagnosticStrings[] = {
 #define ERROR(ID, Options, Text, Signature) Text,
 #define WARNING(ID, Options, Text, Signature) Text,
 #define NOTE(ID, Options, Text, Signature) Text,
-#define REMARK(ID, Options, Text, Signature) Text,
 #include "swift/AST/DiagnosticsAll.def"
     "<not a diagnostic>",
 };
-
-static constexpr const char *const debugDiagnosticStrings[] = {
-#define ERROR(ID, Options, Text, Signature) Text " [" #ID "]",
-#define WARNING(ID, Options, Text, Signature) Text " [" #ID "]",
-#define NOTE(ID, Options, Text, Signature) Text " [" #ID "]",
-#define REMARK(ID, Options, Text, Signature) Text " [" #ID "]",
-#include "swift/AST/DiagnosticsAll.def"
-    "<not a diagnostic>",
-};
-
-static constexpr const char *const fixItStrings[] = {
-#define DIAG(KIND, ID, Options, Text, Signature)
-#define FIXIT(ID, Text, Signature) Text,
-#include "swift/AST/DiagnosticsAll.def"
-    "<not a fix-it>",
-};
-
-#define EDUCATIONAL_NOTES(DIAG, ...)                                           \
-  static constexpr const char *const DIAG##_educationalNotes[] = {__VA_ARGS__, \
-                                                                  nullptr};
-#include "swift/AST/EducationalNotes.def"
-
-// NOTE: sadly, while GCC and Clang support array designators in C++, they are
-// not part of the standard at the moment, so Visual C++ doesn't support them.
-// This construct allows us to provide a constexpr array initialized to empty
-// values except in the cases that EducationalNotes.def are provided, similar to
-// what the C array would have looked like.
-template<int N>
-struct EducationalNotes {
-  constexpr EducationalNotes() : value() {
-    for (auto i = 0; i < N; ++i) value[i] = {};
-#define EDUCATIONAL_NOTES(DIAG, ...)                                           \
-  value[LocalDiagID::DIAG] = DIAG##_educationalNotes;
-#include "swift/AST/EducationalNotes.def"
-  }
-  const char *const *value[N];
-};
-
-static constexpr EducationalNotes<LocalDiagID::NumDiags> _EducationalNotes = EducationalNotes<LocalDiagID::NumDiags>();
-static constexpr auto educationalNotes = _EducationalNotes.value;
 
 DiagnosticState::DiagnosticState() {
   // Initialize our per-diagnostic state to default
@@ -154,14 +107,14 @@ static CharSourceRange toCharSourceRange(SourceManager &SM, SourceLoc Start,
   return CharSourceRange(SM, Start, End);
 }
 
-/// Extract a character at \p Loc. If \p Loc is the end of the buffer,
+/// \brief Extract a character at \p Loc. If \p Loc is the end of the buffer,
 /// return '\f'.
 static char extractCharAfter(SourceManager &SM, SourceLoc Loc) {
   auto chars = SM.extractText({Loc, 1});
   return chars.empty() ? '\f' : chars[0];
 }
 
-/// Extract a character immediately before \p Loc. If \p Loc is the
+/// \brief Extract a character immediately before \p Loc. If \p Loc is the
 /// start of the buffer, return '\f'.
 static char extractCharBefore(SourceManager &SM, SourceLoc Loc) {
   // We have to be careful not to go off the front of the buffer.
@@ -191,17 +144,16 @@ InFlightDiagnostic &InFlightDiagnostic::highlightChars(SourceLoc Start,
   return *this;
 }
 
-/// Add an insertion fix-it to the currently-active diagnostic.  The
+/// \brief Add an insertion fix-it to the currently-active diagnostic.  The
 /// text is inserted immediately *after* the token specified.
 ///
-InFlightDiagnostic &
-InFlightDiagnostic::fixItInsertAfter(SourceLoc L, StringRef FormatString,
-                                     ArrayRef<DiagnosticArgument> Args) {
+InFlightDiagnostic &InFlightDiagnostic::fixItInsertAfter(SourceLoc L,
+                                                         StringRef Str) {
   L = Lexer::getLocForEndOfToken(Engine->SourceMgr, L);
-  return fixItInsert(L, FormatString, Args);
+  return fixItInsert(L, Str);
 }
 
-/// Add a token-based removal fix-it to the currently-active
+/// \brief Add a token-based removal fix-it to the currently-active
 /// diagnostic.
 InFlightDiagnostic &InFlightDiagnostic::fixItRemove(SourceRange R) {
   assert(IsActive && "Cannot modify an inactive diagnostic");
@@ -222,20 +174,10 @@ InFlightDiagnostic &InFlightDiagnostic::fixItRemove(SourceRange R) {
     charRange = CharSourceRange(charRange.getStart(),
                                 charRange.getByteLength()+1);
   }
-  Engine->getActiveDiagnostic().addFixIt(Diagnostic::FixIt(charRange, {}, {}));
+  Engine->getActiveDiagnostic().addFixIt(Diagnostic::FixIt(charRange, {}));
   return *this;
 }
 
-InFlightDiagnostic &
-InFlightDiagnostic::fixItReplace(SourceRange R, StringRef FormatString,
-                                 ArrayRef<DiagnosticArgument> Args) {
-  auto &SM = Engine->SourceMgr;
-  auto charRange = toCharSourceRange(SM, R);
-
-  Engine->getActiveDiagnostic().addFixIt(
-      Diagnostic::FixIt(charRange, FormatString, Args));
-  return *this;
-}
 
 InFlightDiagnostic &InFlightDiagnostic::fixItReplace(SourceRange R,
                                                      StringRef Str) {
@@ -250,7 +192,6 @@ InFlightDiagnostic &InFlightDiagnostic::fixItReplace(SourceRange R,
 
   // If we're replacing with something that wants spaces around it, do a bit of
   // extra work so that we don't suggest extra spaces.
-  // FIXME: This could probably be applied to structured fix-its as well.
   if (Str.back() == ' ') {
     if (isspace(extractCharAfter(SM, charRange.getEnd())))
       Str = Str.drop_back();
@@ -259,19 +200,18 @@ InFlightDiagnostic &InFlightDiagnostic::fixItReplace(SourceRange R,
     if (isspace(extractCharBefore(SM, charRange.getStart())))
       Str = Str.drop_front();
   }
-  
-  return fixItReplace(R, "%0", {Str});
+
+  Engine->getActiveDiagnostic().addFixIt(Diagnostic::FixIt(charRange, Str));
+  return *this;
 }
 
-InFlightDiagnostic &
-InFlightDiagnostic::fixItReplaceChars(SourceLoc Start, SourceLoc End,
-                                      StringRef FormatString,
-                                      ArrayRef<DiagnosticArgument> Args) {
+InFlightDiagnostic &InFlightDiagnostic::fixItReplaceChars(SourceLoc Start,
+                                                          SourceLoc End,
+                                                          StringRef Str) {
   assert(IsActive && "Cannot modify an inactive diagnostic");
   if (Engine && Start.isValid())
-    Engine->getActiveDiagnostic().addFixIt(
-        Diagnostic::FixIt(toCharSourceRange(Engine->SourceMgr, Start, End),
-                          FormatString, Args));
+    Engine->getActiveDiagnostic().addFixIt(Diagnostic::FixIt(
+        toCharSourceRange(Engine->SourceMgr, Start, End), Str));
   return *this;
 }
 
@@ -287,10 +227,10 @@ InFlightDiagnostic &InFlightDiagnostic::fixItExchange(SourceRange R1,
   auto text1 = SM.extractText(charRange1);
   auto text2 = SM.extractText(charRange2);
 
-  Engine->getActiveDiagnostic().addFixIt(
-      Diagnostic::FixIt(charRange1, "%0", {text2}));
-  Engine->getActiveDiagnostic().addFixIt(
-      Diagnostic::FixIt(charRange2, "%0", {text1}));
+  Engine->getActiveDiagnostic()
+    .addFixIt(Diagnostic::FixIt(charRange1, text2));
+  Engine->getActiveDiagnostic()
+    .addFixIt(Diagnostic::FixIt(charRange2, text1));
   return *this;
 }
 
@@ -301,14 +241,6 @@ void InFlightDiagnostic::flush() {
   IsActive = false;
   if (Engine)
     Engine->flushActiveDiagnostic();
-}
-
-void Diagnostic::addChildNote(Diagnostic &&D) {
-  assert(storedDiagnosticInfos[(unsigned)D.ID].kind == DiagnosticKind::Note &&
-         "Only notes can have a parent.");
-  assert(storedDiagnosticInfos[(unsigned)ID].kind != DiagnosticKind::Note &&
-         "Notes can't have children.");
-  ChildNotes.push_back(std::move(D));
 }
 
 bool DiagnosticEngine::isDiagnosticPointsToFirstBadToken(DiagID ID) const {
@@ -323,7 +255,7 @@ bool DiagnosticEngine::finishProcessing() {
   return hadError;
 }
 
-/// Skip forward to one of the given delimiters.
+/// \brief Skip forward to one of the given delimiters.
 ///
 /// \param Text The text to search through, which will be updated to point
 /// just after the delimiter.
@@ -391,33 +323,27 @@ static void formatSelectionArgument(StringRef ModifierArguments,
 }
 
 static bool isInterestingTypealias(Type type) {
-  // Dig out the typealias declaration, if there is one.
-  TypeAliasDecl *aliasDecl = nullptr;
-  if (auto aliasTy = dyn_cast<TypeAliasType>(type.getPointer()))
-    aliasDecl = aliasTy->getDecl();
-  else
+  auto aliasTy = dyn_cast<NameAliasType>(type.getPointer());
+  if (!aliasTy)
+    return false;
+  if (aliasTy->getDecl() == type->getASTContext().getVoidDecl())
+    return false;
+  if (type->is<BuiltinType>())
     return false;
 
-  if (aliasDecl == type->getASTContext().getVoidDecl())
-    return false;
+  auto aliasDecl = aliasTy->getDecl();
 
   // The 'Swift.AnyObject' typealias is not 'interesting'.
   if (aliasDecl->getName() ==
-        aliasDecl->getASTContext().getIdentifier("AnyObject") &&
-      (aliasDecl->getParentModule()->isStdlibModule() ||
-       aliasDecl->getParentModule()->isBuiltinModule())) {
+      aliasDecl->getASTContext().getIdentifier("AnyObject") &&
+      aliasDecl->getParentModule()->isStdlibModule()) {
     return false;
   }
 
-  // Compatibility aliases are only interesting insofar as their underlying
-  // types are interesting.
-  if (aliasDecl->isCompatibilityAlias()) {
-    auto underlyingTy = aliasDecl->getUnderlyingType();
-    return isInterestingTypealias(underlyingTy);
-  }
+  auto underlyingTy = aliasDecl->getUnderlyingTypeLoc().getType();
 
-  // Builtin types are never interesting typealiases.
-  if (type->is<BuiltinType>()) return false;
+  if (aliasDecl->isCompatibilityAlias())
+    return isInterestingTypealias(underlyingTy);
 
   return true;
 }
@@ -430,7 +356,7 @@ static bool shouldShowAKA(Type type, StringRef typeName) {
     return false;
 
   // Don't show generic type parameters.
-  if (type->getCanonicalType()->hasTypeParameter())
+  if (type->hasTypeParameter())
     return false;
 
   // Only show 'aka' if there's a typealias involved; other kinds of sugar
@@ -447,24 +373,7 @@ static bool shouldShowAKA(Type type, StringRef typeName) {
   return true;
 }
 
-/// If a type is part of an argument list which includes another, distinct type
-/// with the same string representation, it should be qualified during
-/// formatting.
-static bool typeSpellingIsAmbiguous(Type type,
-                                    ArrayRef<DiagnosticArgument> Args) {
-  for (auto arg : Args) {
-    if (arg.getKind() == DiagnosticArgumentKind::Type) {
-      auto argType = arg.getAsType();
-      if (argType && !argType->isEqual(type) &&
-          argType->getWithoutParens().getString() == type.getString()) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-/// Format a single diagnostic argument and write it to the given
+/// \brief Format a single diagnostic argument and write it to the given
 /// stream.
 static void formatDiagnosticArgument(StringRef Modifier, 
                                      StringRef ModifierArguments,
@@ -502,14 +411,8 @@ static void formatDiagnosticArgument(StringRef Modifier,
     break;
 
   case DiagnosticArgumentKind::String:
-    if (Modifier == "select") {
-      formatSelectionArgument(ModifierArguments, Args,
-                              Arg.getAsString().empty() ? 0 : 1, FormatOpts,
-                              Out);
-    } else {
-      assert(Modifier.empty() && "Improper modifier for string argument");
-      Out << Arg.getAsString();
-    }
+    assert(Modifier.empty() && "Improper modifier for string argument");
+    Out << Arg.getAsString();
     break;
 
   case DiagnosticArgumentKind::Identifier:
@@ -527,7 +430,7 @@ static void formatDiagnosticArgument(StringRef Modifier,
 
   case DiagnosticArgumentKind::ValueDecl:
     Out << FormatOpts.OpeningQuotationMark;
-    Arg.getAsValueDecl()->getName().printPretty(Out);
+    Arg.getAsValueDecl()->getFullName().printPretty(Out);
     Out << FormatOpts.ClosingQuotationMark;
     break;
 
@@ -536,90 +439,29 @@ static void formatDiagnosticArgument(StringRef Modifier,
     
     // Strip extraneous parentheses; they add no value.
     auto type = Arg.getAsType()->getWithoutParens();
+    std::string typeName = type->getString();
 
-    // If a type has an unresolved type, print it with syntax sugar removed for
-    // clarity. For example, print `Array<_>` instead of `[_]`.
-    if (type->hasUnresolvedType()) {
-      type = type->getWithoutSyntaxSugar();
-    }
-
-    bool isAmbiguous = typeSpellingIsAmbiguous(type, Args);
-
-    if (isAmbiguous && isa<OpaqueTypeArchetypeType>(type.getPointer())) {
-      auto opaqueTypeDecl = type->castTo<OpaqueTypeArchetypeType>()->getDecl();
-
-      llvm::SmallString<256> NamingDeclText;
-      llvm::raw_svector_ostream OutNaming(NamingDeclText);
-      auto namingDecl = opaqueTypeDecl->getNamingDecl();
-      if (namingDecl->getDeclContext()->isTypeContext()) {
-        auto selfTy = namingDecl->getDeclContext()->getSelfInterfaceType();
-        selfTy->print(OutNaming);
-        OutNaming << '.';
-      }
-      namingDecl->getName().printPretty(OutNaming);
-
-      auto descriptiveKind = opaqueTypeDecl->getDescriptiveKind();
-
-      Out << llvm::format(FormatOpts.OpaqueResultFormatString.c_str(),
-                          type->getString().c_str(),
-                          Decl::getDescriptiveKindName(descriptiveKind).data(),
-                          NamingDeclText.c_str());
-
+    if (shouldShowAKA(type, typeName)) {
+      llvm::SmallString<256> AkaText;
+      llvm::raw_svector_ostream OutAka(AkaText);
+      OutAka << type->getCanonicalType();
+      Out << llvm::format(FormatOpts.AKAFormatString.c_str(), typeName.c_str(),
+                          AkaText.c_str());
     } else {
-      auto printOptions = PrintOptions();
-      printOptions.FullyQualifiedTypes = isAmbiguous;
-      std::string typeName = type->getString(printOptions);
-
-      if (shouldShowAKA(type, typeName)) {
-        llvm::SmallString<256> AkaText;
-        llvm::raw_svector_ostream OutAka(AkaText);
-        OutAka << type->getCanonicalType();
-        Out << llvm::format(FormatOpts.AKAFormatString.c_str(),
-                            typeName.c_str(), AkaText.c_str());
-      } else {
-        Out << FormatOpts.OpeningQuotationMark << typeName
-            << FormatOpts.ClosingQuotationMark;
-      }
+      Out << FormatOpts.OpeningQuotationMark << typeName
+          << FormatOpts.ClosingQuotationMark;
     }
     break;
   }
-
   case DiagnosticArgumentKind::TypeRepr:
     assert(Modifier.empty() && "Improper modifier for TypeRepr argument");
-    assert(Arg.getAsTypeRepr() && "TypeRepr argument is null");
     Out << FormatOpts.OpeningQuotationMark << Arg.getAsTypeRepr()
         << FormatOpts.ClosingQuotationMark;
     break;
-
   case DiagnosticArgumentKind::PatternKind:
     assert(Modifier.empty() && "Improper modifier for PatternKind argument");
     Out << Arg.getAsPatternKind();
     break;
-
-  case DiagnosticArgumentKind::SelfAccessKind:
-    if (Modifier == "select") {
-      formatSelectionArgument(ModifierArguments, Args,
-                              unsigned(Arg.getAsSelfAccessKind()),
-                              FormatOpts, Out);
-    } else {
-      assert(Modifier.empty() &&
-             "Improper modifier for SelfAccessKind argument");
-      Out << Arg.getAsSelfAccessKind();
-    }
-    break;
-
-  case DiagnosticArgumentKind::ReferenceOwnership:
-    if (Modifier == "select") {
-      formatSelectionArgument(ModifierArguments, Args,
-                              unsigned(Arg.getAsReferenceOwnership()),
-                              FormatOpts, Out);
-    } else {
-      assert(Modifier.empty() &&
-             "Improper modifier for ReferenceOwnership argument");
-      Out << Arg.getAsReferenceOwnership();
-    }
-    break;
-
   case DiagnosticArgumentKind::StaticSpellingKind:
     if (Modifier == "select") {
       formatSelectionArgument(ModifierArguments, Args,
@@ -662,7 +504,7 @@ static void formatDiagnosticArgument(StringRef Modifier,
   }
 }
 
-/// Format the given diagnostic text and place the result in the given
+/// \brief Format the given diagnostic text and place the result in the given
 /// buffer.
 void DiagnosticEngine::formatDiagnosticText(
     llvm::raw_ostream &Out, StringRef InText, ArrayRef<DiagnosticArgument> Args,
@@ -696,8 +538,9 @@ void DiagnosticEngine::formatDiagnosticText(
     }
     
     if (Modifier == "error") {
-      Out << StringRef("<<INTERNAL ERROR: encountered %error in diagnostic text>>");
-      continue;
+      assert(false && "encountered %error in diagnostic text");
+      Out << StringRef("<<ERROR>>");
+      break;
     }
 
     // Parse the optional argument list for a modifier, which is brace-enclosed.
@@ -710,19 +553,11 @@ void DiagnosticEngine::formatDiagnosticText(
     // Find the digit sequence, and parse it into an argument index.
     size_t Length = InText.find_if_not(isdigit);
     unsigned ArgIndex;      
-    bool IndexParseFailed = InText.substr(0, Length).getAsInteger(10, ArgIndex);
-
-    if (IndexParseFailed) {
-      Out << StringRef("<<INTERNAL ERROR: unparseable argument index in diagnostic text>>");
-      continue;
-    }
-
+    bool Result = InText.substr(0, Length).getAsInteger(10, ArgIndex);
+    assert(!Result && "Unparseable argument index value?");
+    (void)Result;
+    assert(ArgIndex < Args.size() && "Out-of-range argument index");
     InText = InText.substr(Length);
-
-    if (ArgIndex >= Args.size()) {
-      Out << StringRef("<<INTERNAL ERROR: out-of-range argument index in diagnostic text>>");
-      continue;
-    }
 
     // Convert the argument to a string.
     formatDiagnosticArgument(Modifier, ModifierArguments, Args, ArgIndex,
@@ -743,21 +578,10 @@ static DiagnosticKind toDiagnosticKind(DiagnosticState::Behavior behavior) {
     return DiagnosticKind::Note;
   case DiagnosticState::Behavior::Warning:
     return DiagnosticKind::Warning;
-  case DiagnosticState::Behavior::Remark:
-    return DiagnosticKind::Remark;
   }
 
   llvm_unreachable("Unhandled DiagnosticKind in switch.");
 }
-
-// A special option only for compiler writers that causes Diagnostics to assert
-// when a failure diagnostic is emitted. Intended for use in the debugger.
-llvm::cl::opt<bool> AssertOnError("swift-diagnostics-assert-on-error",
-                                  llvm::cl::init(false));
-// A special option only for compiler writers that causes Diagnostics to assert
-// when a warning diagnostic is emitted. Intended for use in the debugger.
-llvm::cl::opt<bool> AssertOnWarning("swift-diagnostics-assert-on-warning",
-                                    llvm::cl::init(false));
 
 DiagnosticState::Behavior DiagnosticState::determineBehavior(DiagID id) {
   auto set = [this](DiagnosticState::Behavior lvl) {
@@ -768,9 +592,6 @@ DiagnosticState::Behavior DiagnosticState::determineBehavior(DiagID id) {
       anyErrorOccurred = true;
     }
 
-    assert((!AssertOnError || !anyErrorOccurred) && "We emitted an error?!");
-    assert((!AssertOnWarning || (lvl != Behavior::Warning)) &&
-           "We emitted a warning?!");
     previousBehavior = lvl;
     return lvl;
   };
@@ -820,8 +641,6 @@ DiagnosticState::Behavior DiagnosticState::determineBehavior(DiagID id) {
     return set(diagInfo.isFatal ? Behavior::Fatal : Behavior::Error);
   case DiagnosticKind::Warning:
     return set(Behavior::Warning);
-  case DiagnosticKind::Remark:
-    return set(Behavior::Remark);
   }
 
   llvm_unreachable("Unhandled DiagnosticKind in switch.");
@@ -832,7 +651,6 @@ void DiagnosticEngine::flushActiveDiagnostic() {
   if (TransactionCount == 0) {
     emitDiagnostic(*ActiveDiagnostic);
   } else {
-    onTentativeDiagnosticFlush(*ActiveDiagnostic);
     TentativeDiagnostics.emplace_back(std::move(*ActiveDiagnostic));
   }
   ActiveDiagnostic.reset();
@@ -845,11 +663,10 @@ void DiagnosticEngine::emitTentativeDiagnostics() {
   TentativeDiagnostics.clear();
 }
 
-Optional<DiagnosticInfo>
-DiagnosticEngine::diagnosticInfoForDiagnostic(const Diagnostic &diagnostic) {
+void DiagnosticEngine::emitDiagnostic(const Diagnostic &diagnostic) {
   auto behavior = state.determineBehavior(diagnostic.getID());
   if (behavior == DiagnosticState::Behavior::Ignore)
-    return None;
+    return;
 
   // Figure out the source location.
   SourceLoc loc = diagnostic.getLoc();
@@ -889,7 +706,7 @@ DiagnosticEngine::diagnosticInfoForDiagnostic(const Diagnostic &diagnostic) {
           // FIXME: Horrible, horrible hackaround. We're not getting a
           // DeclContext everywhere we should.
           if (!dc) {
-            return None;
+            return;
           }
 
           while (!dc->isModuleContext()) {
@@ -915,7 +732,6 @@ DiagnosticEngine::diagnosticInfoForDiagnostic(const Diagnostic &diagnostic) {
             case DeclContextKind::AbstractClosureExpr:
             case DeclContextKind::AbstractFunctionDecl:
             case DeclContextKind::SubscriptDecl:
-            case DeclContextKind::EnumElementDecl:
               break;
             }
 
@@ -966,113 +782,16 @@ DiagnosticEngine::diagnosticInfoForDiagnostic(const Diagnostic &diagnostic) {
     }
   }
 
-  return DiagnosticInfo(
-      diagnostic.getID(), loc, toDiagnosticKind(behavior),
-      diagnosticStringFor(diagnostic.getID(), getPrintDiagnosticNames()),
-      diagnostic.getArgs(), getDefaultDiagnosticLoc(), /*child note info*/ {},
-      diagnostic.getRanges(), diagnostic.getFixIts(), diagnostic.isChildNote());
-}
-
-void DiagnosticEngine::emitDiagnostic(const Diagnostic &diagnostic) {
-  if (auto info = diagnosticInfoForDiagnostic(diagnostic)) {
-    SmallVector<DiagnosticInfo, 1> childInfo;
-    TinyPtrVector<DiagnosticInfo *> childInfoPtrs;
-    auto childNotes = diagnostic.getChildNotes();
-    for (unsigned idx = 0; idx < childNotes.size(); ++idx) {
-      if (auto child = diagnosticInfoForDiagnostic(childNotes[idx])) {
-        childInfo.push_back(*child);
-        childInfoPtrs.push_back(&childInfo[idx]);
-      }
-    }
-    info->ChildDiagnosticInfo = childInfoPtrs;
-    
-    SmallVector<std::string, 1> educationalNotePaths;
-
-    auto associatedNotes = educationalNotes[(uint32_t)diagnostic.getID()];
-    while (associatedNotes && *associatedNotes) {
-      SmallString<128> notePath(getDiagnosticDocumentationPath());
-      llvm::sys::path::append(notePath, *associatedNotes);
-      educationalNotePaths.push_back(notePath.str().str());
-      associatedNotes++;
-    }
-    info->EducationalNotePaths = educationalNotePaths;
-
-    for (auto &consumer : Consumers) {
-      consumer->handleDiagnostic(SourceMgr, *info);
-    }
-  }
-
-  // For compatibility with DiagnosticConsumers which don't know about child
-  // notes. These can be ignored by consumers which do take advantage of the
-  // grouping.
-  for (auto &childNote : diagnostic.getChildNotes())
-    emitDiagnostic(childNote);
-}
-
-const char *DiagnosticEngine::diagnosticStringFor(const DiagID id,
-                                                  bool printDiagnosticName) {
-  if (printDiagnosticName) {
-    return debugDiagnosticStrings[(unsigned)id];
-  }
-  return diagnosticStrings[(unsigned)id];
-}
-
-const char *InFlightDiagnostic::fixItStringFor(const FixItID id) {
-  return fixItStrings[(unsigned)id];
-}
-
-void DiagnosticEngine::setBufferIndirectlyCausingDiagnosticToInput(
-    SourceLoc loc) {
-  // If in the future, nested BufferIndirectlyCausingDiagnosticRAII need be
-  // supported, the compiler will need a stack for
-  // bufferIndirectlyCausingDiagnostic.
-  assert(bufferIndirectlyCausingDiagnostic.isInvalid() &&
-         "Buffer should not already be set.");
-  bufferIndirectlyCausingDiagnostic = loc;
-  assert(bufferIndirectlyCausingDiagnostic.isValid() &&
-         "Buffer must be valid for previous assertion to work.");
-}
-
-void DiagnosticEngine::resetBufferIndirectlyCausingDiagnostic() {
-  bufferIndirectlyCausingDiagnostic = SourceLoc();
-}
-
-DiagnosticSuppression::DiagnosticSuppression(DiagnosticEngine &diags)
-  : diags(diags)
-{
-  consumers = diags.takeConsumers();
-}
-
-DiagnosticSuppression::~DiagnosticSuppression() {
-  for (auto consumer : consumers)
-    diags.addConsumer(*consumer);
-}
-
-bool DiagnosticSuppression::isEnabled(const DiagnosticEngine &diags) {
-  return diags.getConsumers().empty();
-}
-
-BufferIndirectlyCausingDiagnosticRAII::BufferIndirectlyCausingDiagnosticRAII(
-    const SourceFile &SF)
-    : Diags(SF.getASTContext().Diags) {
-  auto id = SF.getBufferID();
-  if (!id)
-    return;
-  auto loc = SF.getASTContext().SourceMgr.getLocForBufferStart(*id);
-  if (loc.isValid())
-    Diags.setBufferIndirectlyCausingDiagnosticToInput(loc);
-}
-
-void DiagnosticEngine::onTentativeDiagnosticFlush(Diagnostic &diagnostic) {
-  for (auto &argument : diagnostic.Args) {
-    if (argument.getKind() != DiagnosticArgumentKind::String)
-      continue;
-
-    auto content = argument.getAsString();
-    if (content.empty())
-      continue;
-
-    auto I = TransactionStrings.insert(content).first;
-    argument = DiagnosticArgument(StringRef(I->getKeyData()));
+  // Pass the diagnostic off to the consumer.
+  DiagnosticInfo Info;
+  Info.ID = diagnostic.getID();
+  Info.Ranges = diagnostic.getRanges();
+  Info.FixIts = diagnostic.getFixIts();
+  for (auto &Consumer : Consumers) {
+    Consumer->handleDiagnostic(SourceMgr, loc, toDiagnosticKind(behavior),
+                               diagnosticStrings[(unsigned)Info.ID],
+                               diagnostic.getArgs(),
+                               Info);
   }
 }
+

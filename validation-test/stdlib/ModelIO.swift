@@ -11,8 +11,7 @@ import ModelIO
 var ModelIOTests = TestSuite("ModelIO")
 
 if #available(OSX 10.13, iOS 11.0, tvOS 11.0, *) {
-    ModelIOTests.test("MDLAnimatedScalar/accessors")
-    .skip(.always("rdar://problem/50449570")).code {
+    ModelIOTests.test("MDLAnimatedScalar/accessors") {
         let animatedVal = MDLAnimatedScalar()
         let testCount = 10
         let testTimeVal = 5.0
@@ -38,8 +37,7 @@ if #available(OSX 10.13, iOS 11.0, tvOS 11.0, *) {
         }
     }
 
-    ModelIOTests.test("MDLAnimatedVector2/accessors")
-    .skip(.always("rdar://problem/50449570")).code {
+    ModelIOTests.test("MDLAnimatedVector2/accessors") {
         let animatedVal = MDLAnimatedVector2()
         let testCount = 10
         let testTimeVal = 5.0
@@ -68,8 +66,7 @@ if #available(OSX 10.13, iOS 11.0, tvOS 11.0, *) {
         }
     }
 
-    ModelIOTests.test("MDLAnimatedVector3/accessors")
-    .skip(.always("rdar://problem/50449570")).code {
+    ModelIOTests.test("MDLAnimatedVector3/accessors") {
         let animatedVal = MDLAnimatedVector3()
         let testCount = 10
         let testTimeVal = 5.0
@@ -100,8 +97,7 @@ if #available(OSX 10.13, iOS 11.0, tvOS 11.0, *) {
         }
     }
 
-    ModelIOTests.test("MDLAnimatedVector4/accessors")
-    .skip(.always("rdar://problem/50449570")).code {
+    ModelIOTests.test("MDLAnimatedVector4/accessors") {
         let animatedVal = MDLAnimatedVector4()
         let testCount = 10
         let testTimeVal = 5.0
@@ -134,8 +130,7 @@ if #available(OSX 10.13, iOS 11.0, tvOS 11.0, *) {
         }
     }
 
-    ModelIOTests.test("MDLAnimatedMatrix4x4/accessors")
-    .skip(.always("rdar://problem/50449570")).code {
+    ModelIOTests.test("MDLAnimatedMatrix4x4/accessors") {
         let animatedVal = MDLAnimatedMatrix4x4()
         let testCount = 10
         let testTimeVal = 5.0
@@ -170,8 +165,7 @@ if #available(OSX 10.13, iOS 11.0, tvOS 11.0, *) {
         }
     }
 
-    ModelIOTests.test("MDLMatrix4x4Array/accessors")
-    .skip(.always("rdar://problem/50449570")).code {
+    ModelIOTests.test("MDLMatrix4x4Array/accessors") {
         let testCount = 10
         let matrixArray = MDLMatrix4x4Array(elementCount: testCount)
         let testFloatVal = float4x4()
@@ -201,8 +195,7 @@ if #available(OSX 10.13, iOS 11.0, tvOS 11.0, *) {
         }
     }
 
-    ModelIOTests.test("MDLAnimatedScalarArray/accessors")
-    .skip(.always("rdar://problem/50449570")).code {
+    ModelIOTests.test("MDLAnimatedScalarArray/accessors") {
         let elementCount = 10
         let animatedVal = MDLAnimatedScalarArray(elementCount: elementCount)
         let subCount = 2
@@ -246,8 +239,7 @@ if #available(OSX 10.13, iOS 11.0, tvOS 11.0, *) {
         }
     }
 
-    ModelIOTests.test("MDLAnimatedQuaternionArray/accessors")
-    .skip(.always("rdar://problem/50449570")).code {
+    ModelIOTests.test("MDLAnimatedQuaternionArray/accessors") {
         let elementCount = 10
         let testCount = 10
         let totalCount = elementCount * testCount
@@ -290,8 +282,7 @@ if #available(OSX 10.13, iOS 11.0, tvOS 11.0, *) {
         }
     }
 
-    ModelIOTests.test("MDLAnimatedVector3Array/accessors")
-    .skip(.always("rdar://problem/50449570")).code {
+    ModelIOTests.test("MDLAnimatedVector3Array/accessors") {
         let elementCount = 10
         let animatedVal = MDLAnimatedVector3Array(elementCount: elementCount)
         let testCount = 10

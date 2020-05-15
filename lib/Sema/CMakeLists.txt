@@ -1,73 +1,64 @@
-add_swift_host_library(swiftSema STATIC
-  BuilderTransform.cpp
+
+if (SWIFT_FORCE_OPTIMIZED_TYPECHECKER)
+  set(EXTRA_TYPECHECKER_FLAGS "FORCE_BUILD_OPTIMIZED")
+endif()
+
+add_swift_library(swiftSema STATIC
   CSApply.cpp
   CSBindings.cpp
+  CSDiag.cpp
   CSGen.cpp
+  CSPropagate.cpp
   CSRanking.cpp
   CSSimplify.cpp
   CSSolver.cpp
-  CSStep.cpp
-  CSFix.cpp
-  CSDiagnostics.cpp
   CodeSynthesis.cpp
-  ConstantnessSemaDiagnostics.cpp
   Constraint.cpp
   ConstraintGraph.cpp
   ConstraintLocator.cpp
   ConstraintSystem.cpp
-  DebuggerTestingTransform.cpp
-  DerivedConformanceAdditiveArithmetic.cpp
-  DerivedConformanceCaseIterable.cpp
   DerivedConformanceCodable.cpp
   DerivedConformanceCodingKey.cpp
-  DerivedConformanceDifferentiable.cpp
   DerivedConformanceEquatableHashable.cpp
-  DerivedConformanceComparable.cpp
   DerivedConformanceError.cpp
   DerivedConformanceRawRepresentable.cpp
   DerivedConformances.cpp
-  ImportResolution.cpp
+  ITCDecl.cpp
+  ITCNameLookup.cpp
+  ITCType.cpp
   InstrumenterSupport.cpp
-  LookupVisibleDecls.cpp
+  IterativeTypeChecker.cpp
   MiscDiagnostics.cpp
+  NameBinding.cpp
   PCMacro.cpp
   PlaygroundTransform.cpp
   ResilienceDiagnostics.cpp
   SourceLoader.cpp
-  TypeCheckAccess.cpp
   TypeCheckAttr.cpp
   TypeCheckAvailability.cpp
   TypeCheckCaptures.cpp
   TypeCheckCircularity.cpp
   TypeCheckConstraints.cpp
   TypeCheckDecl.cpp
-  TypeCheckDeclObjC.cpp
-  TypeCheckDeclOverride.cpp
-  TypeCheckDeclPrimary.cpp
   TypeCheckError.cpp
   TypeCheckExpr.cpp
   TypeCheckExprObjC.cpp
   TypeCheckGeneric.cpp
   TypeCheckNameLookup.cpp
   TypeCheckPattern.cpp
-  TypeCheckPropertyWrapper.cpp
   TypeCheckProtocol.cpp
-  TypeCheckProtocolInference.cpp
-  TypeCheckRequestFunctions.cpp
+  TypeCheckREPL.cpp
+  TypeCheckRequest.cpp
   TypeCheckStmt.cpp
-  TypeCheckStorage.cpp
   TypeCheckSwitchStmt.cpp
   TypeCheckType.cpp
   TypeChecker.cpp
-  IDETypeCheckingRequests.cpp)
-if(SWIFT_FORCE_OPTIMIZED_TYPECHECKER)
-  if(CMAKE_CXX_COMPILER_ID STREQUAL MSVC OR CMAKE_CXX_SIMULATE_ID STREQUAL MSVC)
-    target_compile_options(swiftSema PRIVATE /O2 /Ob2)
-  else()
-    target_compile_options(swiftSema PRIVATE -O3)
-  endif()
-endif()
-target_link_libraries(swiftSema PRIVATE
-  swiftAST
-  swiftParse
-  swiftSerialization)
+  DEPENDS
+    swift-syntax-generated-headers
+  LINK_LIBRARIES
+    swiftParse
+    swiftAST
+    swiftSerialization
+  ${EXTRA_TYPECHECKER_FLAGS}
+)
+

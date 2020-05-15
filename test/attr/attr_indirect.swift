@@ -1,4 +1,4 @@
-// RUN: %target-typecheck-verify-swift
+// RUN: %target-swift-frontend -typecheck -verify %s
 
 enum Foo<T> {
   indirect case A // expected-error{{enum case 'A' without associated value cannot be 'indirect'}}

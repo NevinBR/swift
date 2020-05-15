@@ -29,26 +29,17 @@ namespace Lowering {
 class LLVM_LIBRARY_VISIBILITY Scope {
   CleanupManager &cleanups;
   CleanupsDepth depth;
-  Scope *savedInnermostScope;
+  CleanupsDepth savedInnermostScope;
   CleanupLocation loc;
-
-  friend class CleanupManager;
 
 public:
   explicit Scope(CleanupManager &cleanups, CleanupLocation loc)
       : cleanups(cleanups), depth(cleanups.getCleanupsDepth()),
         savedInnermostScope(cleanups.innermostScope), loc(loc) {
     assert(depth.isValid());
-    cleanups.innermostScope = this;
-    if (savedInnermostScope)
-      cleanups.stack.checkIterator(savedInnermostScope->depth);
+    cleanups.stack.checkIterator(cleanups.innermostScope);
+    cleanups.innermostScope = depth;
   }
-
-  Scope(const Scope &other) = delete;
-  Scope &operator=(const Scope &other) = delete;
-
-  Scope(Scope &&other) = delete;
-  Scope &operator=(Scope &&other) = delete; // implementable if needed
 
   explicit Scope(SILGenFunction &SGF, SILLocation loc)
       : Scope(SGF.Cleanups, CleanupLocation::get(loc)) {}
@@ -63,9 +54,6 @@ public:
     if (depth.isValid())
       popImpl();
   }
-
-  /// Verify that the invariants of this scope still hold.
-  void verify();
 
   bool isValid() const { return depth.isValid(); }
 

@@ -38,11 +38,13 @@
 #include "llvm/ADT/Statistic.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/IR/Attributes.h"
+#include "llvm/IR/CallSite.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/IR/ValueHandle.h"
@@ -73,7 +75,7 @@ static cl::opt<unsigned> FunctionMergeThreshold(
     "swiftmergefunc-threshold",
     cl::desc("Functions larger than the threshold are considered for merging."
              "'0' disables function merging at all."),
-    cl::init(15), cl::Hidden);
+    cl::init(30), cl::Hidden);
 
 namespace {
 
@@ -261,7 +263,7 @@ private:
       return FCmp.compareIgnoringConsts() == -1;
     }
   };
-  using FnTreeType = std::set<EquivalenceClass, FunctionNodeCmp>;
+  typedef std::set<EquivalenceClass, FunctionNodeCmp> FnTreeType;
 
   /// 
   struct FunctionEntry {
@@ -310,7 +312,7 @@ private:
     /// Advances the current instruction to the next instruction.
     void nextInst() {
       assert(CurrentInst);
-      if (CurrentInst->isTerminator()) {
+      if (isa<TerminatorInst>(CurrentInst)) {
         auto BlockIter = std::next(CurrentInst->getParent()->getIterator());
         if (BlockIter == F->end()) {
           CurrentInst = nullptr;
@@ -332,7 +334,7 @@ private:
     int NumParamsNeeded;
   };
 
-  using FunctionInfos = SmallVector<FunctionInfo, 8>;
+  typedef SmallVector<FunctionInfo, 8> FunctionInfos;
 
   /// Describes a parameter which we create to parameterize the merged function.
   struct ParamInfo {
@@ -359,7 +361,7 @@ private:
     }
   };
 
-  using ParamInfos = SmallVector<ParamInfo, maxAddedParams>;
+  typedef SmallVector<ParamInfo, maxAddedParams> ParamInfos;
 
   GlobalNumberState GlobalNumbers;
 
@@ -399,8 +401,6 @@ private:
   FunctionInfo removeFuncWithMostParams(FunctionInfos &FInfos);
 
   bool deriveParams(ParamInfos &Params, FunctionInfos &FInfos);
-
-  bool numOperandsDiffer(FunctionInfos &FInfos);
 
   bool constsDiffer(const FunctionInfos &FInfos, unsigned OpIdx);
 
@@ -460,8 +460,8 @@ bool SwiftMergeFunctions::doSanityCheck(std::vector<WeakTrackingVH> &Worklist) {
         if (Res1 != -Res2) {
           dbgs() << "MERGEFUNC-SANITY: Non-symmetric; triple: " << TripleNumber
                  << "\n";
-          LLVM_DEBUG(F1->dump());
-          LLVM_DEBUG(F2->dump());
+          F1->dump();
+          F2->dump();
           Valid = false;
         }
 
@@ -498,9 +498,9 @@ bool SwiftMergeFunctions::doSanityCheck(std::vector<WeakTrackingVH> &Worklist) {
                    << TripleNumber << "\n";
             dbgs() << "Res1, Res3, Res4: " << Res1 << ", " << Res3 << ", "
                    << Res4 << "\n";
-            LLVM_DEBUG(F1->dump());
-            LLVM_DEBUG(F2->dump());
-            LLVM_DEBUG(F3->dump());
+            F1->dump();
+            F2->dump();
+            F3->dump();
             Valid = false;
           }
         }
@@ -510,17 +510,6 @@ bool SwiftMergeFunctions::doSanityCheck(std::vector<WeakTrackingVH> &Worklist) {
     dbgs() << "MERGEFUNC-SANITY: " << (Valid ? "Passed." : "Failed.") << "\n";
     return Valid;
   }
-  return true;
-}
-
-/// Returns true if functions containing calls to \p F may be merged together.
-static bool mayMergeCallsToFunction(Function &F) {
-  StringRef Name = F.getName();
-
-  // Calls to dtrace probes must generate unique patchpoints.
-  if (Name.startswith("__dtrace"))
-    return false;
-
   return true;
 }
 
@@ -542,10 +531,8 @@ static bool isEligibleFunction(Function *F) {
   // outweighs the benefit.
   for (BasicBlock &BB : *F) {
     for (Instruction &I : BB) {
-      if (CallBase *CB = dyn_cast<CallBase>(&I)) {
-        Function *Callee = CB->getCalledFunction();
-        if (Callee && !mayMergeCallsToFunction(*Callee))
-          return false;
+      if (CallSite CS = CallSite(&I)) {
+        Function *Callee = CS.getCalledFunction();
         if (!Callee || !Callee->isIntrinsic()) {
           Benefit += 5;
           continue;
@@ -608,9 +595,9 @@ bool SwiftMergeFunctions::runOnModule(Module &M) {
     std::vector<WeakTrackingVH> Worklist;
     Deferred.swap(Worklist);
 
-    LLVM_DEBUG(dbgs() << "======\nbuild tree: worklist-size="
-                      << Worklist.size() << '\n');
-    LLVM_DEBUG(doSanityCheck(Worklist));
+    DEBUG(dbgs() << "======\nbuild tree: worklist-size=" << Worklist.size() <<
+                    '\n');
+    DEBUG(doSanityCheck(Worklist));
 
     SmallVector<FunctionEntry *, 8> FuncsToMerge;
 
@@ -629,10 +616,10 @@ bool SwiftMergeFunctions::runOnModule(Module &M) {
 
       if (Result.second) {
         assert(Eq.First == FE);
-        LLVM_DEBUG(dbgs() << "  new in tree: " << F->getName() << '\n');
+        DEBUG(dbgs() << "  new in tree: " << F->getName() << '\n');
       } else {
         assert(Eq.First != FE);
-        LLVM_DEBUG(dbgs() << "  add to existing: " << F->getName() << '\n');
+        DEBUG(dbgs() << "  add to existing: " << F->getName() << '\n');
         // Add the function to the existing equivalence class.
         FE->Next = Eq.First->Next;
         Eq.First->Next = FE;
@@ -642,8 +629,7 @@ bool SwiftMergeFunctions::runOnModule(Module &M) {
           FuncsToMerge.push_back(Eq.First);
       }
     }
-    LLVM_DEBUG(dbgs() << "merge functions: tree-size=" << FnTree.size()
-                      << '\n');
+    DEBUG(dbgs() << "merge functions: tree-size=" << FnTree.size() << '\n');
 
     // Figure out the leaf functions. We want to do the merging in bottom-up
     // call order. This ensures that we don't parameterize on callee function
@@ -776,20 +762,6 @@ bool SwiftMergeFunctions::deriveParams(ParamInfos &Params,
   // Iterate over all instructions synchronously in all functions.
   do {
     if (isEligibleForConstantSharing(FirstFI.CurrentInst)) {
-
-      // Here we handle a rare corner case which needs to be explained:
-      // Usually the number of operands match, because otherwise the functions
-      // in FInfos would not be in the same equivalence class. There is only one
-      // exception to that: If the current instruction is a call to a function,
-      // which was merged in the previous iteration (in tryMergeEquivalenceClass)
-      // then the call could be replaced and has more arguments than the
-      // original call.
-      if (numOperandsDiffer(FInfos)) {
-        assert(isa<CallInst>(FirstFI.CurrentInst) &&
-               "only calls are expected to differ in number of operands");
-        return false;
-      }
-
       for (unsigned OpIdx = 0, NumOps = FirstFI.CurrentInst->getNumOperands();
            OpIdx != NumOps; ++OpIdx) {
 
@@ -809,16 +781,6 @@ bool SwiftMergeFunctions::deriveParams(ParamInfos &Params,
   } while (FirstFI.CurrentInst);
 
   return true;
-}
-
-/// Returns true if the number of operands of the current instruction differs.
-bool SwiftMergeFunctions::numOperandsDiffer(FunctionInfos &FInfos) {
-  unsigned numOps = FInfos[0].CurrentInst->getNumOperands();
-  for (const FunctionInfo &FI : ArrayRef<FunctionInfo>(FInfos).drop_front(1)) {
-    if (FI.CurrentInst->getNumOperands() != numOps)
-      return true;
-  }
-  return false;
 }
 
 /// Returns true if the \p OpIdx's constant operand in the current instruction
@@ -913,7 +875,7 @@ void SwiftMergeFunctions::mergeWithParams(const FunctionInfos &FInfos,
   FirstF->getParent()->getFunctionList().insert(
                         std::next(FInfos[1].F->getIterator()), NewFunction);
   
-  LLVM_DEBUG(dbgs() << "  Merge into " << NewFunction->getName() << '\n');
+  DEBUG(dbgs() << "  Merge into " << NewFunction->getName() << '\n');
 
   // Move the body of FirstF into the NewFunction.
   NewFunction->getBasicBlockList().splice(NewFunction->begin(),
@@ -955,7 +917,7 @@ void SwiftMergeFunctions::mergeWithParams(const FunctionInfos &FInfos,
       assert(!isInEquivalenceClass(&*Iter->second));
       Iter->second->F = nullptr;
       FuncEntries.erase(Iter);
-      LLVM_DEBUG(dbgs() << "    Erase " << OrigFunc->getName() << '\n');
+      DEBUG(dbgs() << "    Erase " << OrigFunc->getName() << '\n');
       OrigFunc->eraseFromParent();
     } else {
       // Otherwise we need a thunk which calls the merged function.
@@ -975,8 +937,7 @@ void SwiftMergeFunctions::removeEquivalenceClassFromTree(FunctionEntry *FE) {
   FunctionEntry *Unlink = Iter->First;
   Unlink->numUnhandledCallees = 0;
   while (Unlink) {
-    LLVM_DEBUG(dbgs() << "    remove from tree: " << Unlink->F->getName()
-                      << '\n');
+    DEBUG(dbgs() << "    remove from tree: " << Unlink->F->getName() << '\n');
     if (!Unlink->isMerged)
       Deferred.emplace_back(Unlink->F);
     Unlink->TreeIter = FnTree.end();
@@ -1055,7 +1016,7 @@ void SwiftMergeFunctions::writeThunk(Function *ToFunc, Function *Thunk,
     Builder.CreateRet(createCast(Builder, CI, Thunk->getReturnType()));
   }
 
-  LLVM_DEBUG(dbgs() << "    writeThunk: " << Thunk->getName() << '\n');
+  DEBUG(dbgs() << "    writeThunk: " << Thunk->getName() << '\n');
   ++NumSwiftThunksWritten;
 }
 
@@ -1078,7 +1039,7 @@ bool SwiftMergeFunctions::replaceDirectCallers(Function *Old, Function *New,
       removeEquivalenceClassFromTree(FE);
     
     auto *CI = dyn_cast<CallInst>(I);
-    if (!CI || CI->getCalledOperand() != Old) {
+    if (!CI || CI->getCalledValue() != Old) {
       AllReplaced = false;
       continue;
     }
@@ -1124,7 +1085,7 @@ bool SwiftMergeFunctions::replaceDirectCallers(Function *Old, Function *New,
                         cast<PointerType>(New->getType())->getAddressSpace());
 
     Value *Callee = ConstantExpr::getBitCast(New, FPtrType);
-    CallInst *NewCI = Builder.CreateCall(FType, Callee, NewArgs);
+    CallInst *NewCI = Builder.CreateCall(Callee, NewArgs);
     NewCI->setCallingConv(CI->getCallingConv());
     // Don't transfer attributes from the function to the callee. Function
     // attributes typically aren't relevant to the calling convention or ABI.
@@ -1137,3 +1098,4 @@ bool SwiftMergeFunctions::replaceDirectCallers(Function *Old, Function *New,
   assert(Old->use_empty() && "should have replaced all uses of old function");
   return Old->hasLocalLinkage();
 }
+

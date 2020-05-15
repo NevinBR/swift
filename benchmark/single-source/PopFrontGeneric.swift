@@ -12,28 +12,24 @@
 
 import TestsUtils
 
-public let PopFrontArrayGeneric = BenchmarkInfo(
-  name: "PopFrontArrayGeneric",
-  runFunction: run_PopFrontArrayGeneric,
-  tags: [.validation, .api, .Array],
-  legacyFactor: 20)
-
+let reps = 1
 let arrayCount = 1024
 
 // This test case exposes rdar://17440222 which caused rdar://17974483 (popFront
 // being really slow).
+@_versioned
 protocol MyArrayBufferProtocol : MutableCollection, RandomAccessCollection {
   mutating func myReplace<C>(
     _ subRange: Range<Int>,
     with newValues: C
-  ) where C : Collection, C.Element == Element
+  ) where C : Collection, C.Iterator.Element == Element
 }
 
 extension Array : MyArrayBufferProtocol {
   mutating func myReplace<C>(
     _ subRange: Range<Int>,
     with newValues: C
-  ) where C : Collection, C.Element == Element {
+  ) where C : Collection, C.Iterator.Element == Element {
     replaceSubrange(subRange, with: newValues)
   }
 }
@@ -42,7 +38,7 @@ func myArrayReplace<
   B: MyArrayBufferProtocol,
   C: Collection
 >(_ target: inout B, _ subRange: Range<Int>, _ newValues: C)
-  where C.Element == B.Element, B.Index == Int {
+  where C.Iterator.Element == B.Element, B.Index == Int {
   target.myReplace(subRange, with: newValues)
 }
 
@@ -50,7 +46,8 @@ func myArrayReplace<
 public func run_PopFrontArrayGeneric(_ N: Int) {
   let orig = Array(repeating: 1, count: arrayCount)
   var a = [Int]()
-  for _ in 1...N {
+  for _ in 1...20*N {
+    for _ in 1...reps {
       var result = 0
       a.append(contentsOf: orig)
       while a.count != 0 {
@@ -58,5 +55,6 @@ public func run_PopFrontArrayGeneric(_ N: Int) {
         myArrayReplace(&a, 0..<1, EmptyCollection())
       }
       CheckResults(result == arrayCount)
+    }
   }
 }

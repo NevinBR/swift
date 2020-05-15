@@ -2,7 +2,7 @@
 
 // We shouldn't be able to successfully use the pre-fix-it passes to
 // fix this file before migration because there is a use of an
-// cannot find 'bar' in scope.
+// unresolved identifier 'bar'.
 
 func foo(s: String) {}
 foo("Hello")

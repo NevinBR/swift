@@ -21,16 +21,18 @@
 #include <string>
 
 namespace swift {
-  class MemoryBufferSerializedModuleLoader;
+  class SerializedModuleLoader;
 
-  /// Provided a memory buffer with an entire Mach-O __swift_ast section, this
-  /// function makes memory buffer copies of all swift modules found in it and
-  /// registers them using registerMemoryBuffer() so they can be found by
-  /// loadModule(). The access path of all modules found in the section is
-  /// appended to the vector foundModules.
+  /// \brief Provided a memory buffer with an entire Mach-O __apple_ast
+  /// section, this function makes memory buffer copies of all swift
+  /// modules found in it and registers them using
+  /// registerMemoryBuffer() so they can be found by loadModule(). The
+  /// access path of all modules found in the section is appended to
+  /// the vector foundModules.
   /// \return true if successful.
-  bool parseASTSection(MemoryBufferSerializedModuleLoader &Loader,
-                       StringRef Data,
+  bool parseASTSection(SerializedModuleLoader* SML, StringRef Data,
                        SmallVectorImpl<std::string> &foundModules);
+
+
 }
 #endif

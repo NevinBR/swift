@@ -40,7 +40,7 @@ NoReturnFolding = Pass('NoReturnFolding')
 PerfInliner = Pass('PerfInliner')
 PerformanceConstantPropagation = Pass('PerformanceConstantPropagation')
 PredictableMemoryOptimizations = Pass('PredictableMemoryOptimizations')
-IRGenPrepare = Pass('IRGenPrepare')
+SILCleanup = Pass('SILCleanup')
 SILCombine = Pass('SILCombine')
 SILLinker = Pass('SILLinker')
 SROA = Pass('SROA')
@@ -89,7 +89,7 @@ PASSES = [
     PerfInliner,
     PerformanceConstantPropagation,
     PredictableMemoryOptimizations,
-    IRGenPrepare,
+    SILCleanup,
     SILCombine,
     SILLinker,
     SROA,

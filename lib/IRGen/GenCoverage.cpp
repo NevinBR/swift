@@ -38,27 +38,15 @@ static std::string getCoverageSection(IRGenModule &IGM) {
 }
 
 void IRGenModule::emitCoverageMapping() {
-  std::vector<const SILCoverageMap *> Mappings;
-  for (const auto &M : getSILModule().getCoverageMaps()) {
-    // Check whether this coverage mapping can reference its name data within
-    // the profile symbol table. If the name global is gone, this function has
-    // been optimized out.
-    StringRef PGOFuncName = M.second->getPGOFuncName();
-    std::string PGOFuncNameVar = llvm::getPGOFuncNameVarName(
-        PGOFuncName, llvm::GlobalValue::LinkOnceAnyLinkage);
-    if (!Module.getNamedGlobal(PGOFuncNameVar))
-      continue;
-    Mappings.push_back(M.second);
-  }
-
+  const auto &Mappings = getSILModule().getCoverageMapList();
   // If there aren't any coverage maps, there's nothing to emit.
   if (Mappings.empty())
     return;
 
   std::vector<StringRef> Files;
   for (const auto &M : Mappings)
-    if (std::find(Files.begin(), Files.end(), M->getFile()) == Files.end())
-      Files.push_back(M->getFile());
+    if (std::find(Files.begin(), Files.end(), M.getFile()) == Files.end())
+      Files.push_back(M.getFile());
 
   // Awkwardly munge absolute filenames into a vector of StringRefs.
   // TODO: This is heinous - the same thing is happening in clang, but the API
@@ -80,7 +68,7 @@ void IRGenModule::emitCoverageMapping() {
   size_t CurrentSize, PrevSize = FilenamesSize;
 
   // Now we need to build up the list of function records.
-  llvm::LLVMContext &Ctx = getLLVMContext();
+  llvm::LLVMContext &Ctx = LLVMContext;
   auto *Int32Ty = llvm::Type::getInt32Ty(Ctx);
 
   llvm::Type *FunctionRecordTypes[] = {
@@ -97,25 +85,31 @@ void IRGenModule::emitCoverageMapping() {
   std::vector<CounterMappingRegion> Regions;
   for (const auto &M : Mappings) {
     unsigned FileID =
-        std::find(Files.begin(), Files.end(), M->getFile()) - Files.begin();
+        std::find(Files.begin(), Files.end(), M.getFile()) - Files.begin();
     Regions.clear();
-    for (const auto &MR : M->getMappedRegions())
+    for (const auto &MR : M.getMappedRegions())
       Regions.emplace_back(CounterMappingRegion::makeRegion(
           MR.Counter, /*FileID=*/0, MR.StartLine, MR.StartCol, MR.EndLine,
           MR.EndCol));
     // Append each function's regions into the encoded buffer.
     ArrayRef<unsigned> VirtualFileMapping(FileID);
     llvm::coverage::CoverageMappingWriter W(VirtualFileMapping,
-                                            M->getExpressions(), Regions);
+                                            M.getExpressions(), Regions);
     W.write(OS);
+
+    std::string NameValue = llvm::getPGOFuncName(
+        M.getName(),
+        M.isPossiblyUsedExternally() ? llvm::GlobalValue::ExternalLinkage
+                                     : llvm::GlobalValue::PrivateLinkage,
+        M.getFile());
+    llvm::createPGOFuncNameVar(
+        *getModule(), llvm::GlobalValue::LinkOnceAnyLinkage, NameValue);
 
     CurrentSize = OS.str().size();
     unsigned MappingLen = CurrentSize - PrevSize;
     StringRef CoverageMapping(OS.str().c_str() + PrevSize, MappingLen);
 
-    StringRef NameValue = M->getPGOFuncName();
-    assert(!NameValue.empty() && "Expected a named record");
-    uint64_t FuncHash = M->getHash();
+    uint64_t FuncHash = M.getHash();
 
     // Create a record for this function.
     llvm::Constant *FunctionRecordVals[] = {
@@ -174,6 +168,6 @@ void IRGenModule::emitCoverageMapping() {
       CovDataVal, llvm::getCoverageMappingVarName());
   std::string CovSection = getCoverageSection(*this);
   CovData->setSection(CovSection);
-  CovData->setAlignment(llvm::MaybeAlign(8));
+  CovData->setAlignment(8);
   addUsedGlobal(CovData);
 }

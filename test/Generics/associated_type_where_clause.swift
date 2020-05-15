@@ -1,4 +1,4 @@
-// RUN: %target-typecheck-verify-swift -swift-version 4
+// RUN: %target-typecheck-verify-swift -typecheck %s -verify -swift-version 4
 
 func needsSameType<T>(_: T.Type, _: T.Type) {}
 
@@ -22,7 +22,7 @@ struct ConcreteConforms2: Conforms { typealias T = Int }
 struct ConcreteConformsNonFoo2: Conforms { typealias T = Float }
 
 protocol NestedConforms {
-    associatedtype U where U: Conforms, U.T: Foo2 // expected-note{{protocol requires nested type 'U'; do you want to add it?}}
+    associatedtype U where U: Conforms, U.T: Foo2
 
     func foo(_: U)
 }
@@ -43,7 +43,7 @@ struct BadConcreteNestedConforms: NestedConforms {
     typealias U = ConcreteConformsNonFoo2
 }
 struct BadConcreteNestedConformsInfer: NestedConforms {
-    // expected-error@-1 {{type 'BadConcreteNestedConformsInfer' does not conform to protocol 'NestedConforms'}}
+    // expected-error@-1 {{type 'ConcreteConformsNonFoo2.T' (aka 'Float') does not conform to protocol 'Foo2'}}
     func foo(_: ConcreteConformsNonFoo2) {}
 }
 
@@ -61,7 +61,7 @@ func needsNestedConformsDefault<X: NestedConformsDefault>(_: X.Type) {
 }
 
 protocol NestedSameType {
-    associatedtype U: Conforms where U.T == Int // expected-note{{protocol requires nested type 'U'; do you want to add it?}}
+    associatedtype U: Conforms where U.T == Int
 
     func foo(_: U)
 }
@@ -76,7 +76,8 @@ struct BadConcreteNestedSameType: NestedSameType {
     typealias U = ConcreteConformsNonFoo2
 }
 struct BadConcreteNestedSameTypeInfer: NestedSameType {
-    // expected-error@-1 {{type 'BadConcreteNestedSameTypeInfer' does not conform to protocol 'NestedSameType'}}
+    // expected-error@-1 {{'NestedSameType' requires the types 'ConcreteConformsNonFoo2.T' (aka 'Float') and 'Int' be equivalent}}
+    // expected-note@-2 {{requirement specified as 'Self.U.T' == 'Int' [with Self = BadConcreteNestedSameTypeInfer]}}
     func foo(_: ConcreteConformsNonFoo2) {}
 }
 
@@ -137,16 +138,16 @@ protocol P {
 
 // Lookup of same-named associated types aren't ambiguous in this context.
 protocol P1 {
-  associatedtype A
+  associatedtype A // expected-note 2{{declared here}}
 }
 
 protocol P2: P1 {
-  associatedtype A
+  associatedtype A // expected-warning{{redeclaration of associated type}}
   associatedtype B where A == B
 }
 
 protocol P3: P1 {
-  associatedtype A
+  associatedtype A // expected-warning{{redeclaration of associated type}}
 }
 
 protocol P4 {

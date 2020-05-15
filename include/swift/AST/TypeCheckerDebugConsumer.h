@@ -18,7 +18,7 @@
 
 namespace swift {
 
-/// A consumer of type checker debug output.
+/// \brief A consumer of type checker debug output.
 class TypeCheckerDebugConsumer {
 public:
   virtual ~TypeCheckerDebugConsumer();
@@ -26,7 +26,7 @@ public:
   virtual raw_ostream &getStream() = 0;
 };
 
-/// A consumer of type checker debug output that dumps the information
+/// \brief A consumer of type checker debug output that dumps the information
 /// to stderr.
 class StderrTypeCheckerDebugConsumer : public TypeCheckerDebugConsumer {
 public:
@@ -35,12 +35,13 @@ public:
   }
 };
 
-/// A base class for a custom consumer of type checker debug output.
+/// \brief A base class for a custom consumer of type checker debug output.
 class CapturingTypeCheckerDebugConsumer : public TypeCheckerDebugConsumer {
-  std::unique_ptr<raw_ostream> Log;
+  raw_ostream *Log;
 
 public:
   CapturingTypeCheckerDebugConsumer();
+  ~CapturingTypeCheckerDebugConsumer();
 
   raw_ostream &getStream() override {
     return *Log;

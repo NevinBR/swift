@@ -14,14 +14,13 @@
 
 // FIXME: This test runs very slowly on watchOS.
 // UNSUPPORTED: OS=watchos
-
-import SwiftPrivate
+// UNSUPPORTED: CPU=armv7
 
 public enum ApproximateCount {
   case Unknown
-  case Precise(Int64)
-  case Underestimate(Int64)
-  case Overestimate(Int64)
+  case Precise(IntMax)
+  case Underestimate(IntMax)
+  case Overestimate(IntMax)
 }
 
 public protocol ApproximateCountableSequence : Sequence {
@@ -200,14 +199,14 @@ import Darwin
 import Dispatch
 
 // FIXME: port to Linux.
-// XFAIL: linux, windows
+// XFAIL: linux
 
 // A wrapper for pthread_t with platform-independent interface.
 public struct _stdlib_pthread_t : Equatable, Hashable {
   internal let _value: pthread_t
 
-  public func hash(into hasher: inout Hasher) {
-    hasher.combine(_value)
+  public var hashValue: Int {
+    return _value.hashValue
   }
 }
 
@@ -233,8 +232,8 @@ struct _ForkJoinMutex {
     if pthread_mutex_destroy(_mutex) != 0 {
       fatalError("pthread_mutex_init")
     }
-    _mutex.deinitialize(count: 1)
-    _mutex.deallocate()
+    _mutex.deinitialize()
+    _mutex.deallocate(capacity: 1)
   }
 
   func withLock<Result>(_ body: () -> Result) -> Result {
@@ -263,8 +262,8 @@ struct _ForkJoinCond {
     if pthread_cond_destroy(_cond) != 0 {
       fatalError("pthread_cond_destroy")
     }
-    _cond.deinitialize(count: 1)
-    _cond.deallocate()
+    _cond.deinitialize()
+    _cond.deallocate(capacity: 1)
   }
 
   func signal() {
@@ -641,7 +640,7 @@ final public class ForkJoinPool {
   internal let _maxThreads: Int
   /// Total number of threads: number of running threads plus the number of
   /// threads that are preparing to start).
-  internal let _totalThreads = _stdlib_AtomicInt(0)
+  internal let _totalThreads: _stdlib_AtomicInt = _stdlib_AtomicInt(0)
 
   internal var _runningThreads: [_ForkJoinWorkerThread] = []
   internal var _runningThreadsMutex: _ForkJoinMutex = _ForkJoinMutex()
@@ -682,7 +681,7 @@ final public class ForkJoinPool {
       _runningThreadsMutex.withLock {
         _submissionQueuesMutex.withLock {
           _workDequesMutex.withLock {
-            let i = _runningThreads.firstIndex { $0 === thread }!
+            let i = _runningThreads.index { $0 === thread }!
             ForkJoinPool._threadRegistry[thread._tid!] = nil
             _runningThreads.remove(at: i)
             _submissionQueues.remove(at: i)
@@ -731,7 +730,7 @@ final public class ForkJoinPool {
 
   internal func _stealTask() -> ForkJoinTaskBase? {
     return _workDequesMutex.withLock {
-      let randomOffset = _workDeques.indices.randomElement()!
+      let randomOffset = pickRandom(_workDeques.indices)
       let count = _workDeques.count
       for i in _workDeques.indices {
         let index = (i + randomOffset) % count
@@ -769,7 +768,7 @@ final public class ForkJoinPool {
     _submissionQueuesMutex.withLock {
       precondition(!_submissionQueues.isEmpty)
       for task in tasks {
-        _submissionQueues.randomElement()!.append(task)
+        pickRandom(_submissionQueues).append(task)
       }
     }
   }
@@ -786,7 +785,7 @@ final public class ForkJoinPool {
       let done = _submissionQueuesMutex.withLock {
         () -> Bool in
         if !_submissionQueues.isEmpty {
-          _submissionQueues.randomElement()!.append(task)
+          pickRandom(_submissionQueues).append(task)
           return true
         }
         return false
@@ -1450,3 +1449,4 @@ http://habrahabr.ru/post/255659/
 */
 
 runAllTests()
+

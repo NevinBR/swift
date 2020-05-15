@@ -17,4 +17,6 @@
 // TWO_RECORDS: Record | user | {{.*}}s2.swift | s2.swift-
 // TWO_RECORDS: DEPEND END
 
+// XFAIL: linux
+
 func foo() {}
